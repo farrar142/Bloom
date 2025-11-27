@@ -118,7 +118,7 @@ class CorsMiddleware(Middleware):
         self.allow_credentials = allow_credentials
         self.max_age = max_age
 
-    async def process_request(self, request: HttpRequest) -> Optional[Any]:
+    async def process_request(self, request: HttpRequest) -> HttpResponse | None:
         """
         Preflight (OPTIONS) 요청 처리
 

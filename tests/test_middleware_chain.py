@@ -236,7 +236,7 @@ class TestMiddlewareChainExecution:
     """MiddlewareChain 실행 흐름 테스트"""
 
     @pytest.mark.asyncio
-    async def test_execute_request_passes_through(self):
+    async def test_process_request_passes_through(self):
         """요청이 모든 미들웨어 통과"""
         chain = MiddlewareChain()
         m1 = LoggingMiddleware()
@@ -245,14 +245,15 @@ class TestMiddlewareChainExecution:
         chain.default_group.add(m1, m2)
 
         request = HttpRequest(method="GET", path="/test")
-        result = await chain.execute_request(request)
 
-        assert result is None
+        async with chain.process(request) as ctx:
+            ctx.set_response(HttpResponse.ok("test"))
+
         assert len(m1.request_log) == 1
         assert len(m2.request_log) == 1
 
     @pytest.mark.asyncio
-    async def test_execute_request_early_return(self):
+    async def test_process_request_early_return(self):
         """미들웨어가 early return하면 후속 미들웨어 실행 안됨"""
         chain = MiddlewareChain()
         m1 = AuthMiddleware()  # 인증 없으면 401 반환
@@ -261,14 +262,18 @@ class TestMiddlewareChainExecution:
         chain.default_group.add(m1, m2)
 
         request = HttpRequest(method="GET", path="/test")  # Authorization 없음
-        result = await chain.execute_request(request)
 
-        assert result is not None
+        async with chain.process(request) as ctx:
+            if not ctx.early_response:
+                ctx.set_response(HttpResponse.ok("test"))
+
+        result = chain.get_final_response(ctx)
+
         assert result.status_code == 401
         assert len(m2.request_log) == 0  # m2는 실행 안됨
 
     @pytest.mark.asyncio
-    async def test_execute_response_reverse_order(self):
+    async def test_process_response_reverse_order(self):
         """응답 처리는 역순 실행"""
         chain = MiddlewareChain()
         m1 = HeaderInjectionMiddleware("X-First", "1")
@@ -278,8 +283,11 @@ class TestMiddlewareChainExecution:
         chain.default_group.add(m1, m2, m3)
 
         request = HttpRequest(method="GET", path="/test")
-        response = HttpResponse.ok("test")
-        result = await chain.execute_response(request, response)
+
+        async with chain.process(request) as ctx:
+            ctx.set_response(HttpResponse.ok("test"))
+
+        result = chain.get_final_response(ctx)
 
         # 모든 헤더가 추가됨 (역순이라도 모두 실행됨)
         assert result.headers["X-First"] == "1"
@@ -287,7 +295,7 @@ class TestMiddlewareChainExecution:
         assert result.headers["X-Third"] == "3"
 
     @pytest.mark.asyncio
-    async def test_execute_with_authorization_header(self):
+    async def test_process_with_authorization_header(self):
         """Authorization 헤더 있으면 정상 통과"""
         chain = MiddlewareChain()
         m1 = AuthMiddleware()
@@ -298,9 +306,13 @@ class TestMiddlewareChainExecution:
         request = HttpRequest(
             method="GET", path="/test", headers={"Authorization": "Bearer token"}
         )
-        result = await chain.execute_request(request)
 
-        assert result is None
+        async with chain.process(request) as ctx:
+            ctx.set_response(HttpResponse.ok("test"))
+
+        result = chain.get_final_response(ctx)
+
+        assert result.status_code == 200
         assert len(m2.request_log) == 1
 
     @pytest.mark.asyncio
@@ -314,9 +326,11 @@ class TestMiddlewareChainExecution:
         chain.disable(m1)
 
         request = HttpRequest(method="GET", path="/test")
-        response = HttpResponse.ok("test")
-        await chain.execute_request(request)
-        result = await chain.execute_response(request, response)
+
+        async with chain.process(request) as ctx:
+            ctx.set_response(HttpResponse.ok("test"))
+
+        result = chain.get_final_response(ctx)
 
         assert len(m1.request_log) == 0
         # TimingMiddleware는 실행되어야 함
@@ -334,7 +348,9 @@ class TestMiddlewareChainExecution:
         group.disable()
 
         request = HttpRequest(method="GET", path="/test")
-        await chain.execute_request(request)
+
+        async with chain.process(request) as ctx:
+            ctx.set_response(HttpResponse.ok("test"))
 
         assert len(m1.request_log) == 0
         assert len(m2.request_log) == 1

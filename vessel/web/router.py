@@ -172,50 +172,47 @@ class Router:
 
     async def dispatch(self, request: HttpRequest) -> HttpResponse:
         """요청을 핸들러에 디스패치 (비동기)"""
-        try:
-            # 미들웨어 요청 처리 (process_request) - 핸들러 찾기 전에 실행
-            early_response = await self.middleware_chain.execute_request(request)
-            if early_response is not None:
-                # early return - 핸들러 호출 스킵 (CORS preflight 등)
-                if isinstance(early_response, HttpResponse):
-                    return await self.middleware_chain.execute_response(
-                        request, early_response
+
+        async with self.middleware_chain.process(request) as ctx:
+            # early return 확인 (인증 실패 등)
+            if ctx.early_response:
+                return self.middleware_chain.get_final_response(ctx)
+
+            try:
+                # 핸들러 찾기
+                handler, path_params = self.find_handler(request.method, request.path)
+
+                if handler is None:
+                    ctx.set_response(
+                        HttpResponse.not_found(
+                            f"No handler for {request.method} {request.path}"
+                        )
                     )
-                return await self.middleware_chain.execute_response(
-                    request, HttpResponse.ok(early_response)
-                )
+                else:
+                    # 핸들러의 타입 힌트로 파라미터 리졸버를 통해 값 주입
+                    type_hints = handler.get_type_hints()
+                    resolved_params = await resolve_parameters(
+                        type_hints, request, path_params
+                    )
 
-            # 핸들러 찾기
-            handler, path_params = self.find_handler(request.method, request.path)
+                    # 핸들러 호출 - 비동기
+                    result = await handler(**resolved_params)
 
-            if handler is None:
-                return HttpResponse.not_found(
-                    f"No handler for {request.method} {request.path}"
-                )
+                    # 결과 타입에 따라 응답 생성
+                    if isinstance(result, HttpResponse):
+                        ctx.set_response(result)
+                    else:
+                        # response_type이 있으면 변환
+                        if handler.response_type is not None:
+                            result = _convert_to_response_type(
+                                result, handler.response_type
+                            )
+                        ctx.set_response(HttpResponse.ok(result))
 
-            # 핸들러의 타입 힌트로 파라미터 리졸버를 통해 값 주입
-            type_hints = handler.get_type_hints()
-            resolved_params = await resolve_parameters(type_hints, request, path_params)
+            except Exception as e:
+                ctx.set_exception(e)
 
-            # 핸들러 호출 - 비동기
-            result = await handler(**resolved_params)
-
-            # 결과 타입에 따라 응답 생성
-            if isinstance(result, HttpResponse):
-                response = result
-            else:
-                # response_type이 있으면 변환
-                if handler.response_type is not None:
-                    result = _convert_to_response_type(result, handler.response_type)
-                response = HttpResponse.ok(result)
-
-            # 미들웨어 응답 처리 (process_response) - 역순
-            response = await self.middleware_chain.execute_response(request, response)
-
-            return response
-
-        except Exception as e:
-            return HttpResponse.internal_error(str(e))
+        return self.middleware_chain.get_final_response(ctx)
 
     def get_routes(self) -> list[tuple[str, str, str]]:
         """등록된 라우트 목록 반환 (method, path, handler_name)"""

@@ -49,12 +49,33 @@ Router에서 자동으로 수집되어 요청/응답 처리 시 실행됩니다.
     ```
 """
 
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import Any, Optional, overload
 
 from ..http import HttpRequest, HttpResponse
 
 from .base import Middleware
 from .group import MiddlewareGroup
+
+
+@dataclass
+class MiddlewareContext:
+    """미들웨어 실행 컨텍스트 - 응답을 설정하고 예외를 전달하는 역할"""
+
+    _generators: list = field(default_factory=list)
+    _response: HttpResponse | None = None
+    _exception: Exception | None = None
+    early_response: HttpResponse | None = None
+
+    def set_response(self, response: HttpResponse) -> None:
+        """핸들러 응답 설정"""
+        self._response = response
+
+    def set_exception(self, exc: Exception) -> None:
+        """예외 설정 (핸들러에서 발생한 예외)"""
+        self._exception = exc
 
 
 class MiddlewareChain:
@@ -282,40 +303,163 @@ class MiddlewareChain:
 
         return all_middlewares
 
-    async def execute_request(self, request: HttpRequest) -> Optional[Any]:
+    @asynccontextmanager
+    async def process(
+        self, request: HttpRequest
+    ) -> AsyncGenerator[MiddlewareContext, None]:
         """
-        요청 처리 단계 실행
+        미들웨어 체인 실행 (asynccontextmanager)
+
+        async with 문으로 사용하며, 요청 전처리 → 핸들러 → 응답 후처리 흐름을 제어합니다.
+
+        사용법:
+            ```python
+            async with self.middleware_chain.process(request) as ctx:
+                if ctx.early_response:
+                    return ctx.early_response
+
+                try:
+                    response = await call_handler()
+                    ctx.set_response(response)
+                except Exception as e:
+                    ctx.set_exception(e)
+            # with 블록을 나가면 자동으로 응답 후처리 및 예외 처리
+            return ctx.get_final_response()
+            ```
 
         Args:
             request: HTTP 요청
 
-        Returns:
-            None: 정상 진행
-            Any: early return 값
+        Yields:
+            MiddlewareContext: 응답/예외를 설정하는 컨텍스트 객체
         """
-        for middleware in self.get_all_middlewares():
-            result = await middleware.process_request(request)
-            if result is not None:
-                # Early return
-                return result
-        return None
+        middlewares = self.get_all_middlewares()
+        ctx = MiddlewareContext()
 
-    async def execute_response(
-        self, request: HttpRequest, response: HttpResponse
+        # 요청 단계: 모든 미들웨어의 첫 번째 yield까지 실행
+        for middleware in middlewares:
+            gen = middleware._process_request(request)
+            first_yield = await gen.asend(None)  # type: ignore
+
+            ctx._generators.append(gen)
+
+            # early return 확인
+            if first_yield is not None:
+                response = (
+                    first_yield
+                    if isinstance(first_yield, HttpResponse)
+                    else HttpResponse.ok(first_yield)
+                )
+                ctx.early_response = response
+                # early return 이전까지의 미들웨어만 응답 처리
+                ctx._generators.pop()  # 현재 generator는 이미 응답 반환함
+                break
+
+        try:
+            yield ctx
+        finally:
+            # 응답 단계: 역순으로 응답/예외 처리
+            if ctx.early_response:
+                # early return인 경우
+                ctx._response = await self._finish_generators(
+                    ctx._generators, request, ctx.early_response
+                )
+            elif ctx._exception:
+                # 예외 발생한 경우
+                ctx._response = await self._handle_exception(
+                    ctx._generators, request, ctx._exception
+                )
+            elif ctx._response:
+                # 정상 응답인 경우
+                ctx._response = await self._finish_generators(
+                    ctx._generators, request, ctx._response
+                )
+            else:
+                # 응답이 설정되지 않은 경우
+                ctx._response = await self._finish_generators(
+                    ctx._generators,
+                    request,
+                    HttpResponse.internal_error("No response set"),
+                )
+
+    def get_final_response(self, ctx: MiddlewareContext) -> HttpResponse:
+        """컨텍스트에서 최종 응답 반환"""
+        if ctx._response:
+            return ctx._response
+        if ctx.early_response:
+            return ctx.early_response
+        return HttpResponse.internal_error("No response")
+
+    async def _finish_generators(
+        self,
+        generators: list,
+        request: HttpRequest,
+        response: HttpResponse,
     ) -> HttpResponse:
         """
-        응답 처리 단계 실행 (역순)
+        미들웨어 generator들에 응답을 전달하고 마무리
 
         Args:
+            generators: 미들웨어 generator 리스트
             request: HTTP 요청
-            response: HTTP 응답
+            response: 현재 응답
 
         Returns:
-            처리된 응답
+            최종 응답
         """
-        # 역순으로 실행
-        for middleware in reversed(self.get_all_middlewares()):
-            response = await middleware.process_response(request, response)
+        # 역순으로 응답 전달
+        for gen in reversed(generators):
+            try:
+                result = await gen.asend(response)
+                if result is not None and isinstance(result, HttpResponse):
+                    response = result
+            except StopAsyncIteration:
+                pass
+
+        return response
+
+    async def _handle_exception(
+        self,
+        generators: list,
+        request: HttpRequest,
+        exc: Exception,
+    ) -> HttpResponse:
+        """
+        예외를 미들웨어에 전달하여 처리
+
+        역순으로 예외를 throw하여 미들웨어가 처리할 기회를 줍니다.
+
+        Args:
+            generators: 미들웨어 generator 리스트
+            request: HTTP 요청
+            exc: 발생한 예외
+
+        Returns:
+            에러 응답
+        """
+        response: HttpResponse | None = None
+
+        # 역순으로 예외 전달
+        for gen in reversed(generators):
+            try:
+                if response is None:
+                    # 첫 번째 미들웨어에 예외 throw
+                    result = await gen.athrow(exc)
+                else:
+                    # 이미 처리된 응답 전달
+                    result = await gen.asend(response)
+
+                if result is not None and isinstance(result, HttpResponse):
+                    response = result
+            except StopAsyncIteration:
+                pass
+            except Exception as new_exc:
+                # 미들웨어가 예외를 다시 던지면 다음 미들웨어로 전달
+                exc = new_exc
+
+        # 아무 미들웨어도 예외를 처리하지 않으면 기본 에러 응답
+        if response is None:
+            return HttpResponse.internal_error(str(exc))
 
         return response
 

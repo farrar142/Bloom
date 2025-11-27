@@ -68,16 +68,20 @@ class ErrorHandlerMiddleware(Middleware):
         """Controller prefix 매핑 설정 (Application에서 호출)"""
         self._controller_prefixes = prefixes
 
-    async def process_request(self, request: HttpRequest) -> Optional[Any]:
-        """요청 전처리 - 예외 컨텍스트 초기화"""
-        self._caught_exception = None
-        return None
+    async def _process_request(self, request: HttpRequest):
+        """
+        요청/응답 처리 (yield 기반)
 
-    async def process_response(
-        self, request: HttpRequest, response: HttpResponse
-    ) -> HttpResponse:
-        """응답 후처리"""
-        return response
+        핸들러에서 발생하는 예외를 잡아서 적절한 에러 응답으로 변환합니다.
+        """
+        try:
+            response = yield  # 다음 미들웨어/핸들러 실행
+        except Exception as exc:
+            # 예외 발생 시 에러 핸들러로 처리
+            yield await self.handle_exception(request, exc)
+            return
+
+        yield response
 
     def _get_error_handlers(self) -> list[ErrorHandlerContainer]:
         """ContainerManager에서 모든 ErrorHandlerContainer 수집"""
@@ -176,15 +180,8 @@ class ErrorHandlerMiddleware(Middleware):
                     handler.owner_cls, raise_exception=False
                 )
 
-            # 핸들러 호출
-            if owner_instance:
-                result = handler.handler_method(owner_instance, exc)
-            else:
-                result = handler.handler_method(exc)
-
-            # async 함수인 경우 await
-            if asyncio.iscoroutine(result):
-                result = await result
+            # 핸들러 호출 - request 파라미터 지원
+            result = await self._call_handler(handler, owner_instance, exc, request)
 
             # HttpResponse가 아니면 변환
             if isinstance(result, HttpResponse):
@@ -203,3 +200,58 @@ class ErrorHandlerMiddleware(Middleware):
         return HttpResponse.internal_error(
             error_body.get("message", "Internal Server Error")
         )
+
+    async def _call_handler(
+        self,
+        handler: ErrorHandlerContainer,
+        owner_instance: Any,
+        exc: Exception,
+        request: HttpRequest,
+    ) -> Any:
+        """
+        에러 핸들러 메서드 호출
+
+        핸들러 메서드의 타입 힌트를 확인하여 request 파라미터가 있으면 전달합니다.
+
+        Args:
+            handler: 에러 핸들러 컨테이너
+            owner_instance: 핸들러를 소유한 클래스 인스턴스
+            exc: 발생한 예외
+            request: HTTP 요청
+
+        Returns:
+            핸들러 반환값
+        """
+        import inspect
+
+        # 핸들러 메서드의 파라미터 검사
+        sig = inspect.signature(handler.handler_method)
+        params = list(sig.parameters.values())
+
+        # self 제외하고 파라미터 이름과 타입 힌트 확인
+        needs_request = False
+        for param in params:
+            if param.name == "self":
+                continue
+            # 타입 힌트가 HttpRequest인지 또는 이름이 request인지 확인
+            if param.annotation is HttpRequest or param.name == "request":
+                needs_request = True
+                break
+
+        # 핸들러 호출
+        if owner_instance:
+            if needs_request:
+                result = handler.handler_method(owner_instance, exc, request)
+            else:
+                result = handler.handler_method(owner_instance, exc)
+        else:
+            if needs_request:
+                result = handler.handler_method(exc, request)
+            else:
+                result = handler.handler_method(exc)
+
+        # async 함수인 경우 await
+        if asyncio.iscoroutine(result):
+            result = await result
+
+        return result
