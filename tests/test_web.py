@@ -607,3 +607,149 @@ class TestASGI:
         await asgi_app(scope, receive, send)
 
         assert received_messages[0]["status"] == 200
+
+
+class TestResponseTypeConversion:
+    """response 파라미터를 통한 반환값 타입 변환 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_response_with_pydantic(self):
+        """pydantic BaseModel로 response 변환"""
+        from pydantic import BaseModel
+
+        class UserOutput(BaseModel):
+            id: int
+            name: str
+
+        class M:
+            pass
+
+        @Module(M)
+        @Component
+        class UserController:
+            @Get("/user", response=UserOutput)
+            def get_user(self) -> dict:
+                return {"id": 1, "name": "홍길동"}
+
+        app = Application("test_pydantic_response").scan(M).ready()
+        request = HttpRequest(method="GET", path="/user")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert isinstance(response.body, UserOutput)
+        assert response.body.id == 1
+        assert response.body.name == "홍길동"
+
+    @pytest.mark.asyncio
+    async def test_response_with_dataclass(self):
+        """dataclass로 response 변환"""
+        from dataclasses import dataclass
+
+        @dataclass
+        class ProductOutput:
+            id: int
+            name: str
+            price: float
+
+        class M:
+            pass
+
+        @Module(M)
+        @Component
+        class ProductController:
+            @Post("/product", response=ProductOutput)
+            def create_product(self) -> dict:
+                return {"id": 1, "name": "상품", "price": 1000.0}
+
+        app = Application("test_dataclass_response").scan(M).ready()
+        request = HttpRequest(method="POST", path="/product", body=b"{}")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert isinstance(response.body, ProductOutput)
+        assert response.body.id == 1
+        assert response.body.name == "상품"
+        assert response.body.price == 1000.0
+
+    @pytest.mark.asyncio
+    async def test_response_already_correct_type(self):
+        """이미 올바른 타입이면 그대로 반환"""
+        from pydantic import BaseModel
+
+        class ItemOutput(BaseModel):
+            id: int
+
+        class M:
+            pass
+
+        @Module(M)
+        @Component
+        class ItemController:
+            @Get("/item", response=ItemOutput)
+            def get_item(self) -> ItemOutput:
+                return ItemOutput(id=42)
+
+        app = Application("test_already_correct_type").scan(M).ready()
+        request = HttpRequest(method="GET", path="/item")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert isinstance(response.body, ItemOutput)
+        assert response.body.id == 42
+
+    @pytest.mark.asyncio
+    async def test_response_without_conversion(self):
+        """response 없으면 변환 안 함"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Component
+        class RawController:
+            @Get("/raw")
+            def get_raw(self) -> dict:
+                return {"data": "raw"}
+
+        app = Application("test_no_response").scan(M).ready()
+        request = HttpRequest(method="GET", path="/raw")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"data": "raw"}
+
+    def test_handler_repr_with_response_type(self):
+        """response_type이 있으면 __repr__에 포함"""
+        from pydantic import BaseModel
+
+        class Output(BaseModel):
+            value: str
+
+        class M:
+            pass
+
+        @Module(M)
+        @Component
+        class TestController:
+            @Get("/test", response=Output)
+            def test_method(self) -> dict:
+                return {"value": "test"}
+
+        handler = TestController.test_method.__container__
+        assert "response=Output" in repr(handler)
+
+    def test_handler_repr_without_response_type(self):
+        """response_type 없으면 __repr__에 미포함"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Component
+        class TestController:
+            @Get("/test")
+            def test_method(self) -> str:
+                return "test"
+
+        handler = TestController.test_method.__container__
+        assert "response=" not in repr(handler)

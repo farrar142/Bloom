@@ -5,6 +5,7 @@ from typing import Any, Callable, TypeVar, overload
 from vessel.core.container import HandlerContainer
 
 T = TypeVar("T")
+R = TypeVar("R")  # Response type
 
 
 class HttpMethodHandler[**P, R](HandlerContainer[P, R]):
@@ -31,16 +32,21 @@ class HttpMethodHandler[**P, R](HandlerContainer[P, R]):
         handler_method: Callable[P, R],
         method: str,
         path: str,
+        response_type: type | None = None,
     ):
         # handler_key는 (method, path) 튜플
         super().__init__(handler_method, (method, path))
         self.method = method
         self.path = path
+        self.response_type = response_type
 
     def __repr__(self) -> str:
+        response_info = (
+            f", response={self.response_type.__name__}" if self.response_type else ""
+        )
         return (
             f"HttpMethodHandler(method={self.handler_method.__name__}, "
-            f"{self.method} {self.path})"
+            f"{self.method} {self.path}{response_info})"
         )
 
 
@@ -54,21 +60,32 @@ def _create_http_method_decorator(http_method: str):
 
     @overload
     def decorator(
-        __path: str = ..., /
+        __path: str = ...,
+        /,
+        *,
+        response: type[R] | None = ...,
     ) -> Callable[[Callable[..., T]], Callable[..., T]]:
-        """@Get("/users") 형태"""
+        """@Get("/users") 또는 @Get("/users", response=UserOutput) 형태"""
         ...
 
     def decorator(
-        __path_or_func: Callable[..., T] | str | None = None, /
+        __path_or_func: Callable[..., T] | str | None = None,
+        /,
+        *,
+        response: type | None = None,
     ) -> Callable[..., T] | Callable[[Callable[..., T]], Callable[..., T]]:
         """
         HTTP 메서드 데코레이터
 
         사용법:
-            @Get                # path = /함수명
-            @Get()              # path = /함수명
-            @Get("/users")      # path = /users
+            @Get                              # path = /함수명
+            @Get()                            # path = /함수명
+            @Get("/users")                    # path = /users
+            @Get("/users", response=Output)   # path = /users, 반환값을 Output으로 변환
+
+        Args:
+            __path_or_func: 경로 문자열 또는 데코레이트할 함수
+            response: 반환값을 변환할 타입 (pydantic BaseModel 또는 dataclass)
         """
 
         def wrapper(func: Callable[..., T]) -> Callable[..., T]:
@@ -78,7 +95,7 @@ def _create_http_method_decorator(http_method: str):
             else:
                 path = __path_or_func if __path_or_func else f"/{func.__name__}"
 
-            container = HttpMethodHandler(func, http_method, path)
+            container = HttpMethodHandler(func, http_method, path, response)
             setattr(func, "__container__", container)
             return func
 
@@ -86,7 +103,7 @@ def _create_http_method_decorator(http_method: str):
         if callable(__path_or_func):
             return wrapper(__path_or_func)
 
-        # @Get() 또는 @Get("/path")
+        # @Get() 또는 @Get("/path") 또는 @Get("/path", response=Output)
         return wrapper
 
     return decorator

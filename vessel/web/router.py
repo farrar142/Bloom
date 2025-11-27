@@ -1,6 +1,7 @@
 """라우터 - HTTP 요청을 핸들러에 매칭"""
 
 import asyncio
+import dataclasses
 import re
 from typing import Any
 
@@ -10,6 +11,49 @@ from .controller import ControllerContainer
 from .handler import HttpMethodHandler
 from .http import HttpRequest, HttpResponse
 from .params import resolve_parameters
+
+
+def _convert_to_response_type(result: Any, response_type: type) -> Any:
+    """
+    핸들러 반환값을 response_type으로 변환
+
+    - pydantic BaseModel: model_validate()로 변환
+    - dataclass: 직접 생성자 호출
+
+    Args:
+        result: 핸들러 반환값 (dict 또는 다른 객체)
+        response_type: 변환할 타입
+
+    Returns:
+        response_type의 인스턴스
+    """
+    # 이미 response_type 인스턴스면 그대로 반환
+    if isinstance(result, response_type):
+        return result
+
+    # pydantic BaseModel인 경우
+    if hasattr(response_type, "model_validate"):
+        if isinstance(result, dict):
+            return response_type.model_validate(result)
+        # dict가 아니면 model_validate에 맡김
+        return response_type.model_validate(result)
+
+    # dataclass인 경우
+    if dataclasses.is_dataclass(response_type):
+        if isinstance(result, dict):
+            return response_type(**result)
+        # 이미 dataclass 인스턴스면 그대로 반환
+        if dataclasses.is_dataclass(result):
+            return result
+        raise TypeError(
+            f"Cannot convert {type(result).__name__} to dataclass {response_type.__name__}"
+        )
+
+    # 그 외: 직접 생성자 호출 시도
+    if isinstance(result, dict):
+        return response_type(**result)
+
+    return result
 
 
 class Router:
@@ -116,6 +160,11 @@ class Router:
             # 결과 타입에 따라 응답 생성
             if isinstance(result, HttpResponse):
                 return result
+
+            # response_type이 있으면 변환
+            if handler.response_type is not None:
+                result = _convert_to_response_type(result, handler.response_type)
+
             return HttpResponse.ok(result)
 
         except Exception as e:
