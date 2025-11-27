@@ -293,7 +293,9 @@ class TestController:
             pass
 
         assert hasattr(TestController, "__container__")
-        assert isinstance(TestController.__container__, ControllerContainer)
+        assert isinstance(
+            TestController.__container__, ControllerContainer  # type:ignore
+        )
 
     def test_request_mapping_sets_path(self):
         """@RequestMapping이 경로를 설정"""
@@ -307,7 +309,7 @@ class TestController:
         class ApiController:
             pass
 
-        container = ApiController.__container__
+        container = ApiController.__container__  # type:ignore
         # get_metadatas returns a list of metadata values for the given key
         assert container.get_metadatas("request_mapping")[0] == "/api/v1"
 

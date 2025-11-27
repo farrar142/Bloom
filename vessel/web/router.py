@@ -3,7 +3,7 @@
 import asyncio
 import dataclasses
 import re
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from vessel.core import ContainerManager
 
@@ -11,6 +11,9 @@ from .controller import ControllerContainer
 from .handler import HttpMethodHandler
 from .http import HttpRequest, HttpResponse
 from .params import resolve_parameters
+
+if TYPE_CHECKING:
+    from .middleware import MiddlewareChain
 
 
 def _convert_to_response_type(result: Any, response_type: type) -> Any:
@@ -72,9 +75,28 @@ class Router:
         self._routes: dict[tuple[str, str], HttpMethodHandler] = {}
         # 컴파일된 정규식 패턴 캐시
         self._compiled_patterns: dict[str, re.Pattern] = {}
+        # 미들웨어 체인 (collect_routes에서 수집)
+        self._middleware_chain: "MiddlewareChain | None" = None
+
+    @property
+    def middleware_chain(self) -> "MiddlewareChain":
+        if self._middleware_chain is None:
+            raise RuntimeError("MiddlewareChain has not been initialized.")
+        return self._middleware_chain
 
     def collect_routes(self) -> None:
         """ContainerManager에서 HttpMethodHandler들을 수집"""
+        from .middleware import MiddlewareChain
+
+        # MiddlewareChain 인스턴스 수집
+        if not (
+            middleware_chain := ContainerManager.get_instance(
+                MiddlewareChain, raise_exception=False
+            )
+        ):
+            middleware_chain = MiddlewareChain()
+        self._middleware_chain = middleware_chain
+
         # Controller의 RequestMapping prefix 매핑
         controller_prefixes: dict[type, str] = {}
         for qual_containers in ContainerManager.get_all_containers().values():
@@ -150,6 +172,14 @@ class Router:
             )
 
         try:
+            # 미들웨어 요청 처리 (process_request)
+            early_response = await self.middleware_chain.execute_request(request)
+            if early_response is not None:
+                # early return - 핸들러 호출 스킵
+                if isinstance(early_response, HttpResponse):
+                    return early_response
+                return HttpResponse.ok(early_response)
+
             # 핸들러의 타입 힌트로 파라미터 리졸버를 통해 값 주입
             type_hints = handler.get_type_hints()
             resolved_params = await resolve_parameters(type_hints, request, path_params)
@@ -159,13 +189,17 @@ class Router:
 
             # 결과 타입에 따라 응답 생성
             if isinstance(result, HttpResponse):
-                return result
+                response = result
+            else:
+                # response_type이 있으면 변환
+                if handler.response_type is not None:
+                    result = _convert_to_response_type(result, handler.response_type)
+                response = HttpResponse.ok(result)
 
-            # response_type이 있으면 변환
-            if handler.response_type is not None:
-                result = _convert_to_response_type(result, handler.response_type)
+            # 미들웨어 응답 처리 (process_response) - 역순
+            response = await self.middleware_chain.execute_response(request, response)
 
-            return HttpResponse.ok(result)
+            return response
 
         except Exception as e:
             return HttpResponse.internal_error(str(e))

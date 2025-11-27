@@ -86,10 +86,29 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
         owner_type = self._get_owner_type()
         if owner_type:
             dependencies.append(owner_type)
+
         hints = self._get_type_hints()
-        for param_name, param_type in hints.items():
-            if param_name != "return" and param_type != owner_type:
+        sig = inspect.signature(self.factory_method)
+        first_param_name = list(sig.parameters.keys())[0] if sig.parameters else None
+
+        for param_name, param in sig.parameters.items():
+            if param_name == first_param_name:
+                continue
+            param_type = hints.get(param_name)
+            if param_type is None or param_type == owner_type:
+                continue
+
+            if param.kind == inspect.Parameter.VAR_POSITIONAL:
+                # varargs (*args: Type) - 해당 타입의 서브클래스 컨테이너들을 의존성으로 추가
+                for (
+                    kls,
+                    qual_containers,
+                ) in ContainerManager.get_all_containers().items():
+                    if kls != param_type and issubclass(kls, param_type):
+                        dependencies.append(kls)
+            else:
                 dependencies.append(param_type)
+
         return dependencies
 
     def _create_instance(self) -> R:
@@ -104,9 +123,28 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
         hints = self._get_type_hints()
         sig = inspect.signature(self.factory_method)
         first_param_name = list(sig.parameters.keys())[0] if sig.parameters else None
-        filtered_hints = {k: v for k, v in hints.items() if k != first_param_name}
+
+        # varargs (*args) 파라미터 처리
+        varargs: list = []
+        vararg_param_name: str | None = None
+        for param_name, param in sig.parameters.items():
+            if param_name == first_param_name:
+                continue
+            if param.kind == inspect.Parameter.VAR_POSITIONAL:
+                vararg_param_name = param_name
+                # *args: Type 형태 - 해당 타입의 모든 서브 인스턴스 수집
+                vararg_type = hints.get(param_name)
+                if vararg_type:
+                    varargs = ContainerManager.get_sub_instances(vararg_type)
+
+        # varargs 파라미터는 kwargs에서 제외
+        filtered_hints = {
+            k: v
+            for k, v in hints.items()
+            if k != first_param_name and k != vararg_param_name
+        }
         kwargs = self._inject_dependencies(filtered_hints)
-        return self.factory_method(owner_instance, **kwargs)  # type: ignore
+        return self.factory_method(owner_instance, *varargs, **kwargs)  # type: ignore
 
     @classmethod
     def get_or_create(cls, factory_method: Callable[P, R]) -> Self:
