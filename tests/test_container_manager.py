@@ -1,8 +1,8 @@
 """ContainerManager 테스트"""
 
 import pytest
-from vessel.core import ComponentContainer
-from vessel.core.manager import ContainerManager
+from bloom.core import ComponentContainer
+from bloom.core.manager import ContainerManager
 
 from .conftest import Repository, Service
 

@@ -1,12 +1,12 @@
 """데코레이터 테스트 - Component, Qualifier, Factory, Handler"""
 
 import pytest
-from vessel.core import (
+from bloom.core import (
     ComponentContainer,
     FactoryContainer,
     HandlerContainer,
 )
-from vessel.core.manager import ContainerManager
+from bloom.core.manager import ContainerManager
 
 from .conftest import (
     Configuration,
@@ -77,7 +77,7 @@ class TestHandler:
     async def test_handler_callable(self, reset_container_manager):
         """HandlerContainer가 호출 가능 (비동기)"""
         manager = reset_container_manager
-        
+
         # 컨테이너 등록
         manager.register_container(getattr(Controller, "__container__"))
 

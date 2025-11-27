@@ -1,9 +1,9 @@
 """웹 기능 테스트"""
 
 import pytest
-from vessel import Application, Component
-from vessel.core import ContainerManager
-from vessel.web import (
+from bloom import Application, Component
+from bloom.core import ContainerManager
+from bloom.web import (
     HttpRequest,
     HttpResponse,
     HttpMethodHandler,
@@ -393,10 +393,9 @@ class TestASGI:
 
         app = Application("test_asgi")
         app.scan(M).ready()
-        
 
         router = app.router
-        
+
         asgi_app = ASGIApplication(router)
 
         # Mock ASGI scope, receive, send
@@ -441,10 +440,9 @@ class TestASGI:
 
         app = Application("test_asgi_post")
         app.scan(M).ready()
-        
 
         router = app.router
-        
+
         asgi_app = ASGIApplication(router)
 
         scope = {
@@ -494,10 +492,9 @@ class TestASGI:
 
         app = Application("test_asgi_query")
         app.scan(M).ready()
-        
 
         router = app.router
-        
+
         asgi_app = ASGIApplication(router)
 
         scope = {
@@ -539,10 +536,9 @@ class TestASGI:
 
         app = Application("test_asgi_async")
         app.scan(M).ready()
-        
 
         router = app.router
-        
+
         asgi_app = ASGIApplication(router)
 
         scope = {
@@ -585,7 +581,6 @@ class TestASGI:
 
         app = Application("test_factory")
         app.scan(M).ready()
-        
 
         # 팩토리로 생성
         asgi_app = create_asgi_app()

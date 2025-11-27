@@ -2,9 +2,9 @@
 
 import pytest
 
-from vessel.web.handler import MethodElement, PathElement
-from vessel.web.http import HttpRequest, HttpResponse
-from vessel.web.middleware import Middleware, MiddlewareChain, MiddlewareGroup
+from bloom.web.handler import MethodElement, PathElement
+from bloom.web.http import HttpRequest, HttpResponse
+from bloom.web.middleware import Middleware, MiddlewareChain, MiddlewareGroup
 
 
 # ===========================================
@@ -101,7 +101,7 @@ class TestMiddlewareChain:
 
     def test_default_chain_has_cors(self):
         """기본 체인에 CorsMiddleware 포함"""
-        from vessel.web.middleware.cors import CorsMiddleware
+        from bloom.web.middleware.cors import CorsMiddleware
 
         chain = MiddlewareChain()
         assert len(chain.groups) == 1  # default group
@@ -111,7 +111,7 @@ class TestMiddlewareChain:
 
     def test_get_middleware(self):
         """get_middleware로 특정 타입 미들웨어 조회"""
-        from vessel.web.middleware.cors import CorsMiddleware
+        from bloom.web.middleware.cors import CorsMiddleware
 
         chain = MiddlewareChain()
         cors = chain.get_middleware(CorsMiddleware)
@@ -423,11 +423,11 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_middleware_executes_before_handler(self):
         """미들웨어가 핸들러 전에 실행됨"""
-        from vessel.core.manager import get_current_manager
-        from vessel.web.middleware import MiddlewareChain
-        from vessel.web.router import Router
-        from vessel.web.handler import HttpMethodHandler
-        from vessel.web.controller import ControllerContainer
+        from bloom.core.manager import get_current_manager
+        from bloom.web.middleware import MiddlewareChain
+        from bloom.web.router import Router
+        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.controller import ControllerContainer
 
         execution_order = []
 
@@ -479,11 +479,11 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_middleware_early_return_skips_handler(self):
         """미들웨어 early return 시 핸들러 실행 안됨"""
-        from vessel.core.manager import get_current_manager
-        from vessel.web.middleware import MiddlewareChain
-        from vessel.web.router import Router
-        from vessel.web.handler import HttpMethodHandler
-        from vessel.web.controller import ControllerContainer
+        from bloom.core.manager import get_current_manager
+        from bloom.web.middleware import MiddlewareChain
+        from bloom.web.router import Router
+        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.controller import ControllerContainer
 
         handler_called = False
 
@@ -532,12 +532,12 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_cors_middleware_with_router(self):
         """CorsMiddleware가 Router와 함께 동작 - preflight 및 실제 요청"""
-        from vessel.core.manager import get_current_manager
-        from vessel.web.middleware import MiddlewareChain
-        from vessel.web.middleware.cors import CorsMiddleware
-        from vessel.web.router import Router
-        from vessel.web.handler import HttpMethodHandler
-        from vessel.web.controller import ControllerContainer
+        from bloom.core.manager import get_current_manager
+        from bloom.web.middleware import MiddlewareChain
+        from bloom.web.middleware.cors import CorsMiddleware
+        from bloom.web.router import Router
+        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.controller import ControllerContainer
 
         class TestController:
             async def get_users(self) -> list:
@@ -600,11 +600,11 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_multiple_middlewares_with_router(self):
         """여러 미들웨어가 순서대로 실행"""
-        from vessel.core.manager import get_current_manager
-        from vessel.web.middleware import MiddlewareChain
-        from vessel.web.router import Router
-        from vessel.web.handler import HttpMethodHandler
-        from vessel.web.controller import ControllerContainer
+        from bloom.core.manager import get_current_manager
+        from bloom.web.middleware import MiddlewareChain
+        from bloom.web.router import Router
+        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.controller import ControllerContainer
 
         class TestController:
             async def get_data(self) -> dict:
@@ -643,11 +643,11 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_auth_middleware_blocks_unauthorized(self):
         """AuthMiddleware가 인증 없는 요청 차단"""
-        from vessel.core.manager import get_current_manager
-        from vessel.web.middleware import MiddlewareChain
-        from vessel.web.router import Router
-        from vessel.web.handler import HttpMethodHandler
-        from vessel.web.controller import ControllerContainer
+        from bloom.core.manager import get_current_manager
+        from bloom.web.middleware import MiddlewareChain
+        from bloom.web.router import Router
+        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.controller import ControllerContainer
 
         handler_called = False
 

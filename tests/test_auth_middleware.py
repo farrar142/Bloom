@@ -1,11 +1,11 @@
 """AuthMiddleware 테스트"""
 
 import pytest
-from vessel import Application, Component
-from vessel.core.decorators import Factory
-from vessel.web import Authenticator, Authentication, Controller, Get, HttpRequest
-from vessel.web.auth import AuthMiddleware
-from vessel.web.middleware import MiddlewareChain
+from bloom import Application, Component
+from bloom.core.decorators import Factory
+from bloom.web import Authenticator, Authentication, Controller, Get, HttpRequest
+from bloom.web.auth import AuthMiddleware
+from bloom.web.middleware import MiddlewareChain
 
 from .conftest import Module
 
@@ -1531,7 +1531,7 @@ class TestAuthorizeDecorator:
     @pytest.mark.asyncio
     async def test_authorize_authenticated_user_access(self):
         """인증된 사용자가 @Authorize 엔드포인트에 접근 성공"""
-        from vessel.web.auth import Authorize
+        from bloom.web.auth import Authorize
 
         class M:
             pass
@@ -1579,7 +1579,7 @@ class TestAuthorizeDecorator:
     @pytest.mark.asyncio
     async def test_authorize_unauthenticated_user_forbidden(self):
         """인증되지 않은 사용자가 @Authorize 엔드포인트에 접근 시 403"""
-        from vessel.web.auth import Authorize
+        from bloom.web.auth import Authorize
 
         class M:
             pass
@@ -1625,7 +1625,7 @@ class TestAuthorizeDecorator:
     @pytest.mark.asyncio
     async def test_authorize_with_authority_check(self):
         """권한 검사 - has_authority 사용"""
-        from vessel.web.auth import Authorize
+        from bloom.web.auth import Authorize
 
         class M:
             pass
@@ -1688,7 +1688,7 @@ class TestAuthorizeDecorator:
     @pytest.mark.asyncio
     async def test_authorize_with_custom_predicate(self):
         """커스텀 predicate 사용"""
-        from vessel.web.auth import Authorize
+        from bloom.web.auth import Authorize
 
         class M:
             pass
@@ -1756,7 +1756,7 @@ class TestAuthorizeDecorator:
     @pytest.mark.asyncio
     async def test_authorize_with_require_auth_group(self):
         """require()로 인증 필수 그룹과 @Authorize 결합"""
-        from vessel.web.auth import Authorize
+        from bloom.web.auth import Authorize
 
         class M:
             pass
@@ -1841,7 +1841,7 @@ class TestAuthorizeDecorator:
     @pytest.mark.asyncio
     async def test_authorize_multiple_decorators(self):
         """여러 @Authorize 데코레이터 사용"""
-        from vessel.web.auth import Authorize
+        from bloom.web.auth import Authorize
 
         class M:
             pass

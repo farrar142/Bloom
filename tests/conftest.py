@@ -3,8 +3,8 @@
 from typing import Callable, TypeVar
 
 import pytest
-from vessel.core import Component, Factory, Handler
-from vessel.core.manager import ContainerManager, set_current_manager
+from bloom.core import Component, Factory, Handler
+from bloom.core.manager import ContainerManager, set_current_manager
 
 T = TypeVar("T", bound=type)
 

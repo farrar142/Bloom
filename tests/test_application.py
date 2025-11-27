@@ -1,7 +1,7 @@
 """Application 및 의존성 정렬 테스트"""
 
-from vessel import Application, Component
-from vessel.core import Factory
+from bloom import Application, Component
+from bloom.core import Factory
 
 from . import conftest
 
@@ -55,7 +55,7 @@ class TestApplication:
         app = Application("test_app").scan(conftest).ready()
 
         # asgi 속성 접근 가능
-        from vessel.web import ASGIApplication
+        from bloom.web import ASGIApplication
 
         assert isinstance(app.asgi, ASGIApplication)
 

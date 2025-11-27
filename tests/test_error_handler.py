@@ -1,10 +1,10 @@
 """ErrorHandler 테스트"""
 
 import pytest
-from vessel import Application, Component, Controller
-from vessel.web import Get, RequestMapping
-from vessel.web.error import ErrorHandler
-from vessel.web.http import HttpRequest, HttpResponse
+from bloom import Application, Component, Controller
+from bloom.web import Get, RequestMapping
+from bloom.web.error import ErrorHandler
+from bloom.web.http import HttpRequest, HttpResponse
 
 from .conftest import Module
 

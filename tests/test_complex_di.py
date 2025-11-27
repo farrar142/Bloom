@@ -1,8 +1,8 @@
 """복잡한 의존성 주입 시나리오 테스트"""
 
 import pytest
-from vessel import Application, Component
-from vessel.core import (
+from bloom import Application, Component
+from bloom.core import (
     Factory,
     Handler,
 )

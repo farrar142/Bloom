@@ -3,10 +3,10 @@
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Optional
 import pytest
-from vessel import Application, Component
-from vessel.core import ContainerManager
-from vessel.core.decorators import Factory
-from vessel.web import (
+from bloom import Application, Component
+from bloom.core import ContainerManager
+from bloom.core.decorators import Factory
+from bloom.web import (
     HttpRequest,
     HttpResponse,
     HttpMethodHandler,
@@ -24,7 +24,7 @@ from vessel.web import (
 
 from .conftest import Module
 
-from vessel.web.middleware import Middleware, MiddlewareChain
+from bloom.web.middleware import Middleware, MiddlewareChain
 
 
 class TestMiddleware:

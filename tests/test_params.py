@@ -6,7 +6,7 @@ import pytest
 
 from tests.conftest import Module, reset_container_manager
 
-from vessel import (
+from bloom import (
     Application,
     Component,
     Controller,
@@ -17,7 +17,7 @@ from vessel import (
     HttpCookie,
     UploadedFile,
 )
-from vessel.web.http import HttpRequest, HttpResponse
+from bloom.web.http import HttpRequest, HttpResponse
 
 
 class TestRequestBodyResolver:
@@ -1086,7 +1086,7 @@ class TestAuthenticationResolver:
     @pytest.mark.asyncio
     async def test_authentication_injection(self, reset_container_manager):
         """Authentication 주입"""
-        from vessel.web.auth import Authentication
+        from bloom.web.auth import Authentication
 
         class M:
             pass
@@ -1115,7 +1115,7 @@ class TestAuthenticationResolver:
     @pytest.mark.asyncio
     async def test_authentication_none_when_not_set(self, reset_container_manager):
         """Authentication이 설정되지 않으면 None"""
-        from vessel.web.auth import Authentication
+        from bloom.web.auth import Authentication
 
         class M:
             pass
@@ -1141,7 +1141,7 @@ class TestAuthenticationResolver:
     @pytest.mark.asyncio
     async def test_optional_authentication(self, reset_container_manager):
         """Optional[Authentication] 주입"""
-        from vessel.web.auth import Authentication
+        from bloom.web.auth import Authentication
 
         class M:
             pass
@@ -1175,7 +1175,7 @@ class TestAuthenticationResolver:
     @pytest.mark.asyncio
     async def test_authentication_with_authorities(self, reset_container_manager):
         """authorities 포함한 Authentication 주입"""
-        from vessel.web.auth import Authentication
+        from bloom.web.auth import Authentication
 
         class M:
             pass
@@ -1211,7 +1211,7 @@ class TestAuthenticationResolver:
         self, reset_container_manager
     ):
         """Authentication + HttpRequest + path param 조합"""
-        from vessel.web.auth import Authentication
+        from bloom.web.auth import Authentication
 
         class M:
             pass

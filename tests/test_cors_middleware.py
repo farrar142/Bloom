@@ -2,8 +2,8 @@
 
 import pytest
 
-from vessel.web.http import HttpRequest, HttpResponse
-from vessel.web.middleware.cors import CorsMiddleware
+from bloom.web.http import HttpRequest, HttpResponse
+from bloom.web.middleware.cors import CorsMiddleware
 
 
 class TestCorsMiddleware:
