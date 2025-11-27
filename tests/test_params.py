@@ -15,6 +15,7 @@ from vessel import (
     RequestBody,
     HttpHeader,
     HttpCookie,
+    UploadedFile,
 )
 from vessel.web.http import HttpRequest, HttpResponse
 
@@ -670,3 +671,188 @@ class TestHttpCookieResolver:
             "token_key": "auth_token",
             "token_value": "tok456",
         }
+
+
+class TestUploadedFileResolver:
+    """UploadedFile 리졸버 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_single_file_by_param_name(self, reset_container_manager):
+        """파라미터 이름으로 단일 파일 추출"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UploadController:
+            @Post("/upload")
+            async def upload(self, file: UploadedFile) -> dict:
+                return {
+                    "filename": file.filename,
+                    "content_type": file.content_type,
+                    "size": file.size,
+                }
+
+        app = Application("test").scan(M).ready()
+
+        uploaded = UploadedFile(
+            filename="test.txt",
+            content_type="text/plain",
+            content=b"Hello, World!",
+        )
+        request = HttpRequest(
+            method="POST",
+            path="/upload",
+            files={"file": [uploaded]},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {
+            "filename": "test.txt",
+            "content_type": "text/plain",
+            "size": 13,
+        }
+
+    @pytest.mark.asyncio
+    async def test_single_file_with_explicit_field(self, reset_container_manager):
+        """지정된 필드명으로 단일 파일 추출"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UploadController:
+            @Post("/avatar")
+            async def upload_avatar(self, image: UploadedFile["avatar"]) -> dict:
+                return {"filename": image.filename}
+
+        app = Application("test").scan(M).ready()
+
+        uploaded = UploadedFile(
+            filename="profile.png",
+            content_type="image/png",
+            content=b"\x89PNG...",
+        )
+        request = HttpRequest(
+            method="POST",
+            path="/avatar",
+            files={"avatar": [uploaded]},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"filename": "profile.png"}
+
+    @pytest.mark.asyncio
+    async def test_multiple_files_by_param_name(self, reset_container_manager):
+        """파라미터 이름으로 여러 파일 추출"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UploadController:
+            @Post("/upload-multiple")
+            async def upload_many(self, files: list[UploadedFile]) -> dict:
+                return {
+                    "count": len(files),
+                    "filenames": [f.filename for f in files],
+                }
+
+        app = Application("test").scan(M).ready()
+
+        file1 = UploadedFile(
+            filename="doc1.pdf",
+            content_type="application/pdf",
+            content=b"PDF1...",
+        )
+        file2 = UploadedFile(
+            filename="doc2.pdf",
+            content_type="application/pdf",
+            content=b"PDF2...",
+        )
+        request = HttpRequest(
+            method="POST",
+            path="/upload-multiple",
+            files={"files": [file1, file2]},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {
+            "count": 2,
+            "filenames": ["doc1.pdf", "doc2.pdf"],
+        }
+
+    @pytest.mark.asyncio
+    async def test_multiple_files_with_explicit_field(self, reset_container_manager):
+        """지정된 필드명으로 여러 파일 추출"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UploadController:
+            @Post("/gallery")
+            async def upload_images(
+                self, photos: list[UploadedFile["images"]]
+            ) -> dict:
+                return {"count": len(photos)}
+
+        app = Application("test").scan(M).ready()
+
+        img1 = UploadedFile(
+            filename="photo1.jpg",
+            content_type="image/jpeg",
+            content=b"JPEG1...",
+        )
+        img2 = UploadedFile(
+            filename="photo2.jpg",
+            content_type="image/jpeg",
+            content=b"JPEG2...",
+        )
+        request = HttpRequest(
+            method="POST",
+            path="/gallery",
+            files={"images": [img1, img2]},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"count": 2}
+
+    @pytest.mark.asyncio
+    async def test_file_content_access(self, reset_container_manager):
+        """파일 내용 접근"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UploadController:
+            @Post("/read")
+            async def read_file(self, file: UploadedFile) -> dict:
+                return {"content": file.content.decode("utf-8")}
+
+        app = Application("test").scan(M).ready()
+
+        uploaded = UploadedFile(
+            filename="message.txt",
+            content_type="text/plain",
+            content=b"Hello from file!",
+        )
+        request = HttpRequest(
+            method="POST",
+            path="/read",
+            files={"file": [uploaded]},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"content": "Hello from file!"}

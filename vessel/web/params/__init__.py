@@ -18,14 +18,16 @@ from .resolvers import (
     PathParamResolver,
     QueryParamResolver,
     RequestBodyResolver,
+    UploadedFileResolver,
 )
-from .types import HttpCookie, HttpHeader, KeyValue, RequestBody
+from .types import HttpCookie, HttpHeader, KeyValue, RequestBody, UploadedFile
 
 # 기본 리졸버들 등록
 _registry = get_default_registry()
 _registry.register(HttpRequestResolver())  # HttpRequest 먼저
 _registry.register(HttpHeaderResolver())  # HttpHeader
 _registry.register(HttpCookieResolver())  # HttpCookie
+_registry.register(UploadedFileResolver())  # UploadedFile, list[UploadedFile]
 _registry.register(RequestBodyResolver())  # RequestBody[T]
 _registry.register(ListBodyResolver())  # list[T]
 _registry.register(ModelParamResolver())  # dataclass, BaseModel (마커 없는 경우)
@@ -47,6 +49,7 @@ __all__ = [
     "HttpHeader",
     "HttpCookie",
     "KeyValue",
+    "UploadedFile",
     # Resolvers
     "RequestBodyResolver",
     "ListBodyResolver",
@@ -56,4 +59,5 @@ __all__ = [
     "HttpHeaderResolver",
     "HttpCookieResolver",
     "KeyValueResolver",
+    "UploadedFileResolver",
 ]

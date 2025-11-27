@@ -19,7 +19,7 @@ from .web import (
     Controller,
     RequestMapping,
 )
-from .web.params import HttpCookie, HttpHeader, RequestBody
+from .web.params import HttpCookie, HttpHeader, RequestBody, UploadedFile
 
 __all__ = [
     # Application
@@ -43,4 +43,5 @@ __all__ = [
     "RequestBody",
     "HttpHeader",
     "HttpCookie",
+    "UploadedFile",
 ]

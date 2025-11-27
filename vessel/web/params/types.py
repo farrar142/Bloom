@@ -1,6 +1,6 @@
 """파라미터 마커 타입들"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Annotated, TypeVar
 
 T = TypeVar("T")
@@ -80,6 +80,55 @@ class HttpCookie(KeyValue):
     def __class_getitem__(cls, cookie_name: str):
         """쿠키 이름 지정"""
         return Annotated[cls, cookie_name]
+
+
+@dataclass
+class UploadedFile:
+    """
+    업로드된 파일
+
+    Attributes:
+        filename: 원본 파일명
+        content_type: MIME 타입 (예: image/png)
+        content: 파일 내용 (bytes)
+        size: 파일 크기 (bytes)
+        headers: 파일 파트 헤더 (multipart에서)
+
+    사용법:
+        # 단일 파일
+        @Post("/upload")
+        async def upload(self, file: UploadedFile) -> dict:
+            return {"filename": file.filename, "size": file.size}
+
+        # 여러 파일
+        @Post("/upload-multiple")
+        async def upload_many(self, files: list[UploadedFile]) -> dict:
+            return {"count": len(files)}
+
+        # 특정 필드명으로 파일 가져오기
+        @Post("/avatar")
+        async def avatar(self, image: UploadedFile["avatar"]) -> dict:
+            return {"filename": image.filename}
+    """
+
+    filename: str
+    content_type: str
+    content: bytes
+    size: int = 0
+    headers: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if self.size == 0:
+            self.size = len(self.content)
+
+    def __class_getitem__(cls, field_name: str):
+        """필드 이름 지정"""
+        return Annotated[cls, field_name]
+
+    def save(self, path: str) -> None:
+        """파일을 지정된 경로에 저장"""
+        with open(path, "wb") as f:
+            f.write(self.content)
 
 
 # 런타임 alias (RequestBodyType을 RequestBody로 사용)

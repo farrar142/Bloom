@@ -9,6 +9,7 @@ from .model_param import ModelParamResolver
 from .path_param import PathParamResolver
 from .query_param import QueryParamResolver
 from .request_body import RequestBodyResolver
+from .uploaded_file import UploadedFileResolver
 
 __all__ = [
     "HttpCookieResolver",
@@ -20,4 +21,5 @@ __all__ = [
     "PathParamResolver",
     "QueryParamResolver",
     "RequestBodyResolver",
+    "UploadedFileResolver",
 ]

@@ -1,7 +1,12 @@
 """HTTP 요청/응답 모델"""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from vessel.web.params.types import UploadedFile
 
 
 @dataclass
@@ -13,6 +18,7 @@ class HttpRequest:
     headers: dict[str, str] = field(default_factory=dict)
     query_params: dict[str, str] = field(default_factory=dict)
     body: bytes | None = None
+    files: dict[str, list[UploadedFile]] = field(default_factory=dict)
 
     @property
     def json(self) -> Any:
