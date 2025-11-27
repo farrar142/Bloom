@@ -19,7 +19,7 @@ from .web import (
     Controller,
     RequestMapping,
 )
-from .web.params import RequestBody
+from .web.params import HttpCookie, HttpHeader, RequestBody
 
 __all__ = [
     # Application
@@ -41,4 +41,6 @@ __all__ = [
     "Controller",
     "RequestMapping",
     "RequestBody",
+    "HttpHeader",
+    "HttpCookie",
 ]
