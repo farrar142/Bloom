@@ -373,6 +373,62 @@ class TestQueryParamResolver:
         assert response.status_code == 200
         assert response.body == {"query": "hello", "limit": 10}
 
+    @pytest.mark.asyncio
+    async def test_primitive_params_from_body(self, reset_container_manager):
+        """body에서 기본 타입 파라미터 추출"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UserController:
+            @Post("/users")
+            async def create_user(self, name: str, age: int) -> dict:
+                return {"name": name, "age": age}
+
+        app = Application("test").scan(M).ready()
+
+        request = HttpRequest(
+            method="POST",
+            path="/users",
+            body=b'{"name": "Alice", "age": 30}',
+            headers={"content-type": "application/json"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"name": "Alice", "age": 30}
+
+    @pytest.mark.asyncio
+    async def test_mixed_query_and_body_params(self, reset_container_manager):
+        """query와 body 혼합 - query 우선"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class MixedController:
+            @Post("/items")
+            async def create(self, name: str, quantity: int) -> dict:
+                return {"name": name, "quantity": quantity}
+
+        app = Application("test").scan(M).ready()
+
+        # name은 query에서, quantity는 body에서
+        request = HttpRequest(
+            method="POST",
+            path="/items",
+            query_params={"name": "from_query"},
+            body=b'{"name": "from_body", "quantity": 5}',
+            headers={"content-type": "application/json"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"name": "from_query", "quantity": 5}
+
 
 class TestHttpRequestResolver:
     """HttpRequest 리졸버 테스트"""
@@ -799,9 +855,7 @@ class TestUploadedFileResolver:
         @Controller
         class UploadController:
             @Post("/gallery")
-            async def upload_images(
-                self, photos: list[UploadedFile["images"]]
-            ) -> dict:
+            async def upload_images(self, photos: list[UploadedFile["images"]]) -> dict:
                 return {"count": len(photos)}
 
         app = Application("test").scan(M).ready()
@@ -856,3 +910,171 @@ class TestUploadedFileResolver:
 
         assert response.status_code == 200
         assert response.body == {"content": "Hello from file!"}
+
+
+class TestOptionalParameters:
+    """Optional 파라미터 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_optional_query_param(self, reset_container_manager):
+        """Optional 쿼리 파라미터"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class SearchController:
+            @Get("/search")
+            async def search(self, q: str, limit: int | None = None) -> dict:
+                return {"q": q, "limit": limit}
+
+        app = Application("test").scan(M).ready()
+
+        # limit 없이 요청
+        request = HttpRequest(
+            method="GET",
+            path="/search",
+            query_params={"q": "hello"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"q": "hello", "limit": None}
+
+        # limit 있는 요청
+        request2 = HttpRequest(
+            method="GET",
+            path="/search",
+            query_params={"q": "hello", "limit": "10"},
+        )
+        response2 = await app.router.dispatch(request2)
+
+        assert response2.status_code == 200
+        assert response2.body == {"q": "hello", "limit": 10}
+
+    @pytest.mark.asyncio
+    async def test_optional_header(self, reset_container_manager):
+        """Optional 헤더"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class HeaderController:
+            @Get("/info")
+            async def info(self, authorization: HttpHeader | None = None) -> dict:
+                if authorization is None:
+                    return {"auth": None}
+                return {"auth": authorization.value}
+
+        app = Application("test").scan(M).ready()
+
+        # 헤더 없이
+        request = HttpRequest(method="GET", path="/info")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"auth": None}
+
+        # 헤더 있이
+        request2 = HttpRequest(
+            method="GET",
+            path="/info",
+            headers={"authorization": "Bearer token123"},
+        )
+        response2 = await app.router.dispatch(request2)
+
+        assert response2.status_code == 200
+        assert response2.body == {"auth": "Bearer token123"}
+
+    @pytest.mark.asyncio
+    async def test_optional_cookie(self, reset_container_manager):
+        """Optional 쿠키"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class CookieController:
+            @Get("/session")
+            async def session(self, session_id: HttpCookie | None = None) -> dict:
+                if session_id is None:
+                    return {"session": None}
+                return {"session": session_id.value}
+
+        app = Application("test").scan(M).ready()
+
+        # 쿠키 없이
+        request = HttpRequest(method="GET", path="/session")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"session": None}
+
+    @pytest.mark.asyncio
+    async def test_optional_model(self, reset_container_manager):
+        """Optional dataclass/BaseModel"""
+
+        @dataclass
+        class Metadata:
+            key: str
+
+        @dataclass
+        class Data:
+            value: str
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class DataController:
+            @Post("/data")
+            async def create(
+                self, data: Data, metadata: Metadata | None = None
+            ) -> dict:
+                if metadata is None:
+                    return {"data": data.value, "metadata": None}
+                return {"data": data.value, "metadata": metadata.key}
+
+        app = Application("test").scan(M).ready()
+
+        # metadata 없이
+        request = HttpRequest(
+            method="POST",
+            path="/data",
+            body=b'{"data": {"value": "hello"}}',
+            headers={"content-type": "application/json"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"data": "hello", "metadata": None}
+
+    @pytest.mark.asyncio
+    async def test_optional_uploaded_file(self, reset_container_manager):
+        """Optional UploadedFile"""
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UploadController:
+            @Post("/upload")
+            async def upload(self, file: UploadedFile | None = None) -> dict:
+                if file is None:
+                    return {"uploaded": False}
+                return {"uploaded": True, "filename": file.filename}
+
+        app = Application("test").scan(M).ready()
+
+        # 파일 없이
+        request = HttpRequest(method="POST", path="/upload")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"uploaded": False}

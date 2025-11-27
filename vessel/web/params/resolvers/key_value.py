@@ -1,11 +1,11 @@
 """키-값 리졸버 베이스 클래스"""
 
 from abc import abstractmethod
-from typing import Annotated, Any, get_args
+from typing import Annotated, Any, get_args, get_origin
 
 from vessel.web.http import HttpRequest
 
-from ..base import ParameterResolver
+from ..base import ParameterResolver, is_optional, unwrap_optional
 from ..registry import UNRESOLVED
 from ..types import KeyValue
 
@@ -16,6 +16,7 @@ class KeyValueResolver[T: KeyValue](ParameterResolver):
 
     HttpHeader, HttpCookie 등 키-값 형태의 파라미터를 처리하는
     리졸버들의 공통 로직을 제공합니다.
+    Optional[T] 지원: 값이 없으면 None 반환.
     """
 
     @property
@@ -26,6 +27,20 @@ class KeyValueResolver[T: KeyValue](ParameterResolver):
 
     def supports(self, param_name: str, param_type: type, origin: type | None) -> bool:
         target = self.target_type
+
+        # Optional[T] 처리
+        if is_optional(param_type):
+            inner_type = unwrap_optional(param_type)
+            inner_origin = get_origin(inner_type)
+            # Optional[HttpHeader], Optional[HttpCookie]
+            if inner_type is target:
+                return True
+            # Optional[HttpHeader["Key"]], Optional[HttpCookie["Key"]]
+            if inner_origin is Annotated:
+                args = get_args(inner_type)
+                if args and args[0] is target:
+                    return True
+            return False
 
         # HttpHeader, HttpCookie (Annotated 없이)
         if param_type is target:
@@ -46,14 +61,18 @@ class KeyValueResolver[T: KeyValue](ParameterResolver):
         request: HttpRequest,
         path_params: dict[str, str],
     ) -> Any:
+        # Optional 처리
+        optional = is_optional(param_type)
+        actual_type = unwrap_optional(param_type) if optional else param_type
+
         # 키 결정
-        key = self._get_key(param_name, param_type)
+        key = self._get_key(param_name, actual_type)
 
         # 값 추출 (서브클래스에서 구현)
         value = self._extract_value(request, key)
 
         if value is None:
-            return UNRESOLVED
+            return None if optional else UNRESOLVED
 
         # KeyValue 인스턴스 생성
         return self.target_type(key=key, value=value)
