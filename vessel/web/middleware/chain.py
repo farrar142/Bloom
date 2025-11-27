@@ -102,6 +102,7 @@ class MiddlewareChain:
 
     def __init__(self):
         from .cors import CorsMiddleware
+        from .error_handler import ErrorHandlerMiddleware
 
         self.groups: list[MiddlewareGroup] = []
         self.default_group = MiddlewareGroup("default")
@@ -111,6 +112,7 @@ class MiddlewareChain:
 
         # CorsMiddleware를 기본 그룹에 추가
         self.default_group.add(CorsMiddleware())
+        self.default_group.add(ErrorHandlerMiddleware())
 
     def get_default_group(self) -> MiddlewareGroup:
         """기본 그룹 반환"""

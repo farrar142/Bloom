@@ -86,7 +86,7 @@ class Router:
 
     def collect_routes(self) -> None:
         """ContainerManager에서 HttpMethodHandler들을 수집"""
-        from .middleware import MiddlewareChain
+        from .middleware import ErrorHandlerMiddleware, MiddlewareChain
 
         # MiddlewareChain 인스턴스 수집
         if not (
@@ -107,6 +107,14 @@ class Router:
                     controller_prefixes[container.target] = (
                         prefixes[0] if prefixes else ""
                     )
+        self._controller_prefixes = controller_prefixes
+
+        # ErrorHandlerMiddleware에 controller_prefixes 전달
+        error_handler_middleware = middleware_chain.get_middleware(
+            ErrorHandlerMiddleware, raise_exception=False
+        )
+        if error_handler_middleware:
+            error_handler_middleware.set_controller_prefixes(controller_prefixes)
 
         # 모든 컨테이너를 순회하며 HttpMethodHandler 찾기
         for qual_containers in ContainerManager.get_all_containers().values():
