@@ -41,6 +41,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
+import inspect
 from typing import Any, Optional
 
 from .authenticator import Authentication, Authenticator, ANONYMOUS
@@ -323,9 +324,11 @@ class AuthMiddleware(Middleware):
         """
         from .authenticator import Authentication
 
-        if target_type is Authentication:
-            return request.auth
-
+        if inspect.isclass(target_type):
+            if issubclass(target_type, Authentication):
+                return request.auth
+        else:
+            return target_type(request)
         return None
 
     async def _try_authenticate(

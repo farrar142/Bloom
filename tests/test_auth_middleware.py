@@ -1523,3 +1523,393 @@ class TestAuthenticationResolver:
         response2 = await app.router.dispatch(request2)
         assert response2.status_code == 200
         assert response2.body == {"user": "web-user", "type": "web"}
+
+
+class TestAuthorizeDecorator:
+    """@Authorize 데코레이터와 AuthMiddleware 결합 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_authorize_authenticated_user_access(self):
+        """인증된 사용자가 @Authorize 엔드포인트에 접근 성공"""
+        from vessel.web.auth import Authorize
+
+        class M:
+            pass
+
+        class TokenAuthenticator(Authenticator):
+            def authenticate(self, request: HttpRequest) -> Authentication | None:
+                if request.headers.get("Authorization") == "Bearer valid":
+                    return Authentication(user_id="user1", authenticated=True)
+                return None
+
+            def supports(self, request: HttpRequest) -> bool:
+                return "Authorization" in request.headers
+
+        @Module(M)
+        @Component
+        class MiddlewareConfig:
+            @Factory
+            def auth_middleware(self) -> AuthMiddleware:
+                return AuthMiddleware().register(TokenAuthenticator())
+
+            @Factory
+            def middleware_chain(self, auth: AuthMiddleware) -> MiddlewareChain:
+                chain = MiddlewareChain()
+                chain.default_group.add(auth)
+                return chain
+
+        @Module(M)
+        @Controller
+        class ProtectedController:
+            @Get("/protected")
+            @Authorize(Authentication, lambda auth: auth.is_authenticated())
+            async def protected(self) -> str:
+                return "protected content"
+
+        app = Application("test").scan(M).ready()
+
+        # 인증된 사용자 - 접근 성공
+        request = HttpRequest(
+            method="GET", path="/protected", headers={"Authorization": "Bearer valid"}
+        )
+        response = await app.router.dispatch(request)
+        assert response.status_code == 200
+        assert response.body == "protected content"
+
+    @pytest.mark.asyncio
+    async def test_authorize_unauthenticated_user_forbidden(self):
+        """인증되지 않은 사용자가 @Authorize 엔드포인트에 접근 시 403"""
+        from vessel.web.auth import Authorize
+
+        class M:
+            pass
+
+        class TokenAuthenticator(Authenticator):
+            def authenticate(self, request: HttpRequest) -> Authentication | None:
+                if request.headers.get("Authorization") == "Bearer valid":
+                    return Authentication(user_id="user1", authenticated=True)
+                return None
+
+            def supports(self, request: HttpRequest) -> bool:
+                return "Authorization" in request.headers
+
+        @Module(M)
+        @Component
+        class MiddlewareConfig:
+            @Factory
+            def auth_middleware(self) -> AuthMiddleware:
+                return AuthMiddleware().register(TokenAuthenticator())
+
+            @Factory
+            def middleware_chain(self, auth: AuthMiddleware) -> MiddlewareChain:
+                chain = MiddlewareChain()
+                chain.default_group.add(auth)
+                return chain
+
+        @Module(M)
+        @Controller
+        class ProtectedController:
+            @Get("/protected")
+            @Authorize(Authentication, lambda auth: auth.is_authenticated())
+            async def protected(self) -> str:
+                return "protected content"
+
+        app = Application("test").scan(M).ready()
+
+        # 인증되지 않은 사용자 - 403 Forbidden
+        request = HttpRequest(method="GET", path="/protected")
+        response = await app.router.dispatch(request)
+        assert response.status_code == 403
+        assert response.body["error"] == "Forbidden"
+
+    @pytest.mark.asyncio
+    async def test_authorize_with_authority_check(self):
+        """권한 검사 - has_authority 사용"""
+        from vessel.web.auth import Authorize
+
+        class M:
+            pass
+
+        class TokenAuthenticator(Authenticator):
+            def authenticate(self, request: HttpRequest) -> Authentication | None:
+                token = request.headers.get("Authorization", "").replace("Bearer ", "")
+                if token == "admin":
+                    return Authentication(
+                        user_id="admin", authenticated=True, authorities=["ADMIN"]
+                    )
+                elif token == "user":
+                    return Authentication(
+                        user_id="user", authenticated=True, authorities=["USER"]
+                    )
+                return None
+
+            def supports(self, request: HttpRequest) -> bool:
+                return "Authorization" in request.headers
+
+        @Module(M)
+        @Component
+        class MiddlewareConfig:
+            @Factory
+            def auth_middleware(self) -> AuthMiddleware:
+                return AuthMiddleware().register(TokenAuthenticator())
+
+            @Factory
+            def middleware_chain(self, auth: AuthMiddleware) -> MiddlewareChain:
+                chain = MiddlewareChain()
+                chain.default_group.add(auth)
+                return chain
+
+        @Module(M)
+        @Controller
+        class AdminController:
+            @Get("/admin")
+            @Authorize(Authentication, lambda auth: auth.has_authority("ADMIN"))
+            async def admin_only(self) -> str:
+                return "admin area"
+
+        app = Application("test").scan(M).ready()
+
+        # ADMIN 권한 있는 사용자 - 접근 성공
+        admin_request = HttpRequest(
+            method="GET", path="/admin", headers={"Authorization": "Bearer admin"}
+        )
+        admin_response = await app.router.dispatch(admin_request)
+        assert admin_response.status_code == 200
+        assert admin_response.body == "admin area"
+
+        # USER 권한만 있는 사용자 - 403 Forbidden
+        user_request = HttpRequest(
+            method="GET", path="/admin", headers={"Authorization": "Bearer user"}
+        )
+        user_response = await app.router.dispatch(user_request)
+        assert user_response.status_code == 403
+        assert user_response.body["error"] == "Forbidden"
+
+    @pytest.mark.asyncio
+    async def test_authorize_with_custom_predicate(self):
+        """커스텀 predicate 사용"""
+        from vessel.web.auth import Authorize
+
+        class M:
+            pass
+
+        class TokenAuthenticator(Authenticator):
+            def authenticate(self, request: HttpRequest) -> Authentication | None:
+                token = request.headers.get("Authorization", "").replace("Bearer ", "")
+                if token == "premium":
+                    return Authentication(
+                        user_id="premium_user",
+                        authenticated=True,
+                        details={"plan": "premium"},
+                    )
+                elif token == "free":
+                    return Authentication(
+                        user_id="free_user",
+                        authenticated=True,
+                        details={"plan": "free"},
+                    )
+                return None
+
+            def supports(self, request: HttpRequest) -> bool:
+                return "Authorization" in request.headers
+
+        @Module(M)
+        @Component
+        class MiddlewareConfig:
+            @Factory
+            def auth_middleware(self) -> AuthMiddleware:
+                return AuthMiddleware().register(TokenAuthenticator())
+
+            @Factory
+            def middleware_chain(self, auth: AuthMiddleware) -> MiddlewareChain:
+                chain = MiddlewareChain()
+                chain.default_group.add(auth)
+                return chain
+
+        @Module(M)
+        @Controller
+        class PremiumController:
+            @Get("/premium")
+            @Authorize(
+                Authentication, lambda auth: auth.details.get("plan") == "premium"
+            )
+            async def premium_content(self) -> str:
+                return "premium content"
+
+        app = Application("test").scan(M).ready()
+
+        # Premium 사용자 - 접근 성공
+        premium_request = HttpRequest(
+            method="GET", path="/premium", headers={"Authorization": "Bearer premium"}
+        )
+        premium_response = await app.router.dispatch(premium_request)
+        assert premium_response.status_code == 200
+        assert premium_response.body == "premium content"
+
+        # Free 사용자 - 403 Forbidden
+        free_request = HttpRequest(
+            method="GET", path="/premium", headers={"Authorization": "Bearer free"}
+        )
+        free_response = await app.router.dispatch(free_request)
+        assert free_response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_authorize_with_require_auth_group(self):
+        """require()로 인증 필수 그룹과 @Authorize 결합"""
+        from vessel.web.auth import Authorize
+
+        class M:
+            pass
+
+        class TokenAuthenticator(Authenticator):
+            def authenticate(self, request: HttpRequest) -> Authentication | None:
+                token = request.headers.get("Authorization", "").replace("Bearer ", "")
+                if token == "admin":
+                    return Authentication(
+                        user_id="admin", authenticated=True, authorities=["ADMIN"]
+                    )
+                elif token == "user":
+                    return Authentication(
+                        user_id="user", authenticated=True, authorities=["USER"]
+                    )
+                return None
+
+            def supports(self, request: HttpRequest) -> bool:
+                return "Authorization" in request.headers
+
+        @Module(M)
+        @Component
+        class MiddlewareConfig:
+            @Factory
+            def auth_middleware(self) -> AuthMiddleware:
+                return (
+                    AuthMiddleware()
+                    .group("api")
+                    .register(TokenAuthenticator())
+                    .include("/api/")
+                    .require()  # 인증 필수
+                )
+
+            @Factory
+            def middleware_chain(self, auth: AuthMiddleware) -> MiddlewareChain:
+                chain = MiddlewareChain()
+                chain.default_group.add(auth)
+                return chain
+
+        @Module(M)
+        @Controller
+        class ApiController:
+            @Get("/api/admin")
+            @Authorize(Authentication, lambda auth: auth.has_authority("ADMIN"))
+            async def admin_api(self) -> str:
+                return "admin api"
+
+            @Get("/api/user")
+            async def user_api(self) -> str:
+                return "user api"
+
+        app = Application("test").scan(M).ready()
+
+        # 인증 없이 접근 - 401 Unauthorized (require() 때문)
+        no_auth_request = HttpRequest(method="GET", path="/api/admin")
+        no_auth_response = await app.router.dispatch(no_auth_request)
+        assert no_auth_response.status_code == 401
+
+        # USER로 admin API 접근 - 403 Forbidden (@Authorize 때문)
+        user_request = HttpRequest(
+            method="GET", path="/api/admin", headers={"Authorization": "Bearer user"}
+        )
+        user_response = await app.router.dispatch(user_request)
+        assert user_response.status_code == 403
+
+        # ADMIN으로 admin API 접근 - 성공
+        admin_request = HttpRequest(
+            method="GET", path="/api/admin", headers={"Authorization": "Bearer admin"}
+        )
+        admin_response = await app.router.dispatch(admin_request)
+        assert admin_response.status_code == 200
+        assert admin_response.body == "admin api"
+
+        # USER로 user API 접근 - 성공 (@Authorize 없음)
+        user_api_request = HttpRequest(
+            method="GET", path="/api/user", headers={"Authorization": "Bearer user"}
+        )
+        user_api_response = await app.router.dispatch(user_api_request)
+        assert user_api_response.status_code == 200
+        assert user_api_response.body == "user api"
+
+    @pytest.mark.asyncio
+    async def test_authorize_multiple_decorators(self):
+        """여러 @Authorize 데코레이터 사용"""
+        from vessel.web.auth import Authorize
+
+        class M:
+            pass
+
+        class TokenAuthenticator(Authenticator):
+            def authenticate(self, request: HttpRequest) -> Authentication | None:
+                token = request.headers.get("Authorization", "").replace("Bearer ", "")
+                if token == "super":
+                    return Authentication(
+                        user_id="super",
+                        authenticated=True,
+                        authorities=["ADMIN", "MANAGER"],
+                    )
+                elif token == "admin":
+                    return Authentication(
+                        user_id="admin", authenticated=True, authorities=["ADMIN"]
+                    )
+                elif token == "manager":
+                    return Authentication(
+                        user_id="manager", authenticated=True, authorities=["MANAGER"]
+                    )
+                return None
+
+            def supports(self, request: HttpRequest) -> bool:
+                return "Authorization" in request.headers
+
+        @Module(M)
+        @Component
+        class MiddlewareConfig:
+            @Factory
+            def auth_middleware(self) -> AuthMiddleware:
+                return AuthMiddleware().register(TokenAuthenticator())
+
+            @Factory
+            def middleware_chain(self, auth: AuthMiddleware) -> MiddlewareChain:
+                chain = MiddlewareChain()
+                chain.default_group.add(auth)
+                return chain
+
+        @Module(M)
+        @Controller
+        class SuperController:
+            @Get("/super")
+            @Authorize(Authentication, lambda auth: auth.has_authority("ADMIN"))
+            @Authorize(Authentication, lambda auth: auth.has_authority("MANAGER"))
+            async def super_only(self) -> str:
+                return "super area"
+
+        app = Application("test").scan(M).ready()
+
+        # ADMIN + MANAGER 권한 있는 사용자 - 접근 성공
+        super_request = HttpRequest(
+            method="GET", path="/super", headers={"Authorization": "Bearer super"}
+        )
+        super_response = await app.router.dispatch(super_request)
+        assert super_response.status_code == 200
+        assert super_response.body == "super area"
+
+        # ADMIN만 있는 사용자 - 403 (MANAGER 없음)
+        admin_request = HttpRequest(
+            method="GET", path="/super", headers={"Authorization": "Bearer admin"}
+        )
+        admin_response = await app.router.dispatch(admin_request)
+        assert admin_response.status_code == 403
+
+        # MANAGER만 있는 사용자 - 403 (ADMIN 없음)
+        manager_request = HttpRequest(
+            method="GET", path="/super", headers={"Authorization": "Bearer manager"}
+        )
+        manager_response = await app.router.dispatch(manager_request)
+        assert manager_response.status_code == 403

@@ -3,6 +3,7 @@
 from typing import Any, Callable, TypeVar
 
 from vessel.core.container.element import Element
+from vessel.web.http import HttpRequest
 from ..handler import HttpMethodHandler
 
 
@@ -21,7 +22,11 @@ class AuthorizeElement[T, U](Element[T]):
         predicate: 조건 검사 함수 (예: lambda auth: auth.is_authenticated())
     """
 
-    def __init__(self, target_type: type[U], predicate: Callable[[U], bool]):
+    def __init__(
+        self,
+        target_type: Callable[[HttpRequest], U] | type[U],
+        predicate: Callable[[U], bool],
+    ):
         super().__init__()
         self.metadata["authorize_target_type"] = target_type
         self.metadata["authorize_predicate"] = predicate
@@ -30,7 +35,9 @@ class AuthorizeElement[T, U](Element[T]):
         return f"AuthorizeElement(target_type={self.metadata['authorize_target_type'].__name__})"
 
 
-def Authorize(target_type: type[T], predicate: Callable[[T], bool]) -> Callable[[F], F]:
+def Authorize(
+    target_type: Callable[[HttpRequest], T] | type[T], predicate: Callable[[T], bool]
+) -> Callable[[F], F]:
     """
     인가(Authorization) 검사 데코레이터
 
