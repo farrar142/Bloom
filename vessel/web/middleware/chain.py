@@ -124,7 +124,7 @@ class MiddlewareChain:
 
     def __init__(self):
         from .cors import CorsMiddleware
-        from .error_handler import ErrorHandlerMiddleware
+        from ..error import ErrorHandlerMiddleware
 
         self.groups: list[MiddlewareGroup] = []
         self.default_group = MiddlewareGroup("default")

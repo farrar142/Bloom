@@ -86,7 +86,8 @@ class Router:
 
     def collect_routes(self) -> None:
         """ContainerManager에서 HttpMethodHandler들을 수집"""
-        from .middleware import ErrorHandlerMiddleware, MiddlewareChain
+        from .error import ErrorHandlerMiddleware
+        from .middleware import MiddlewareChain
 
         # MiddlewareChain 인스턴스 수집
         if not (

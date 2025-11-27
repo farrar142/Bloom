@@ -1,6 +1,7 @@
 """vessel.web 패키지"""
 
 from .auth import Authenticator, Authentication, ANONYMOUS, Authorize, AuthorizeElement
+from .error import ErrorHandler, ErrorHandlerContainer, ErrorHandlerMiddleware
 from .http import HttpRequest, HttpResponse
 from .handler import HttpMethodHandler, Get, Post, Put, Patch, Delete
 from .router import Router
@@ -18,6 +19,9 @@ __all__ = [
     "ANONYMOUS",
     "Authorize",
     "AuthorizeElement",
+    "ErrorHandler",
+    "ErrorHandlerContainer",
+    "ErrorHandlerMiddleware",
     "HttpRequest",
     "HttpResponse",
     "HttpMethodHandler",

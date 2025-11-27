@@ -6,7 +6,7 @@
 사용 예시:
     ```python
     from vessel import Component
-    from vessel.web.middleware import ErrorHandlerMiddleware
+    from vessel.web.error import ErrorHandlerMiddleware, ErrorHandler
 
     # 기본 사용 (500 에러로 변환)
     @Component
@@ -36,9 +36,9 @@ from typing import Any, Optional
 
 from vessel.core import ContainerManager
 
-from ..error_handler import ErrorHandlerContainer
+from .container import ErrorHandlerContainer
 from ..http import HttpRequest, HttpResponse
-from .base import Middleware
+from ..middleware.base import Middleware
 
 
 class ErrorHandlerMiddleware(Middleware):

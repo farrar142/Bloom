@@ -73,7 +73,7 @@
 from .base import Middleware
 from .chain import MiddlewareChain
 from .cors import CorsMiddleware
-from .error_handler import ErrorHandlerMiddleware
+from ..error import ErrorHandlerMiddleware
 from .group import MiddlewareGroup
 
 __all__ = [

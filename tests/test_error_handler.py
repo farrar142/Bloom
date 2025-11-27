@@ -3,7 +3,7 @@
 import pytest
 from vessel import Application, Component, Controller
 from vessel.web import Get, RequestMapping
-from vessel.web.error_handler import ErrorHandler
+from vessel.web.error import ErrorHandler
 from vessel.web.http import HttpRequest, HttpResponse
 
 from .conftest import Module
