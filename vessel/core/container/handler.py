@@ -1,0 +1,123 @@
+"""HandlerContainer 클래스"""
+
+import asyncio
+import inspect
+from typing import Any, Callable, Self, get_type_hints
+
+from ..manager import ContainerManager
+from .base import Container
+
+
+class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
+    """
+    메서드를 핸들러로 등록하는 컨테이너
+
+    @Component
+    class MyController:
+        @Get("/users")
+        def get_users(self) -> list[User]:
+            return []
+
+        @ExceptionHandler(ValueError)
+        def handle_value_error(self, error: ValueError) -> Response:
+            return Response(400, str(error))
+
+    에서 get_users, handle_value_error 메서드에 대한 컨테이너 역할을 한다
+
+    초기화 시: HandlerContainer 자체가 인스턴스로 저장됨
+    호출 시: container(...) 또는 container.invoke(...) 로 실제 메서드 실행
+    """
+
+    def __init__(
+        self,
+        handler_method: Callable[P, R],
+        handler_key: Any = None,
+    ):
+        self.handler_method = handler_method
+        self.handler_key = handler_key  # ex: ValueError, ("GET", "/users")
+        self._bound_method: Callable[P, R] | None = None
+        self._resolved_hints: dict | None = None
+        self.owner_cls: type | None = None  # scan_components 후 주입됨
+        # target은 HandlerContainer 자신의 타입
+        super().__init__(type(self))  # type: ignore
+
+    def __repr__(self) -> str:
+        return (
+            f"HandlerContainer(method={self.handler_method.__name__}, "
+            f"key={self.handler_key})"
+        )
+
+    def get_type_hints(self) -> dict:
+        """타입 힌트를 resolve하여 캐시 (Annotated 포함)"""
+        if self._resolved_hints is None:
+            try:
+                globalns = getattr(self.handler_method, "__globals__", {})
+                self._resolved_hints = get_type_hints(
+                    self.handler_method, globalns=globalns, include_extras=True
+                )
+            except Exception:
+                self._resolved_hints = getattr(
+                    self.handler_method, "__annotations__", {}
+                )
+        return self._resolved_hints  # type: ignore
+
+    def _get_owner_type(self) -> type | None:
+        """owner 타입 반환 (scan_components에서 주입됨)"""
+        return self.owner_cls
+
+    def get_dependencies(self) -> list[type]:
+        """이 핸들러 컨테이너가 의존하는 타입들을 반환"""
+        owner_type = self._get_owner_type()
+        return [owner_type] if owner_type else []
+
+    def _bind_method(self) -> Callable[P, R]:
+        """owner 인스턴스에 바인딩된 메서드 반환"""
+        if self._bound_method is None:
+            owner_type = self._get_owner_type()
+            if owner_type is None:
+                raise Exception(
+                    f"Handler method {self.handler_method.__name__} must have 'self' parameter with type hint"
+                )
+            owner_instance = ContainerManager.get_instance(owner_type)
+            self._bound_method = self.handler_method.__get__(owner_instance, owner_type)
+        return self._bound_method  # type: ignore
+
+    def initialize_instance(self) -> Self:
+        """HandlerContainer 자체를 인스턴스로 반환"""
+        return self
+
+    def get_qual_name(self) -> str:
+        """handler_key 기반으로 고유 qualifier 생성"""
+        if self.handler_key is not None:
+            return f"handler:{self.handler_key}"
+        return f"handler:{self.handler_method.__name__}"
+
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        """핸들러 메서드 호출 (비동기)
+
+        핸들러가 동기 함수인 경우에도 async로 래핑하여 호출
+        """
+        bound_method = self._bind_method()
+
+        # 핸들러가 코루틴 함수인지 확인
+        if asyncio.iscoroutinefunction(bound_method):
+            return await bound_method(*args, **kwargs)
+        else:
+            # 동기 함수는 그대로 호출
+            return bound_method(*args, **kwargs)
+
+    async def invoke(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        """핸들러 메서드 호출 (별칭)"""
+        return await self(*args, **kwargs)
+
+    @classmethod
+    def get_or_create(
+        cls,
+        handler_method: Callable[P, R],
+        handler_key: Any = None,
+    ) -> Self:
+        """핸들러 메서드에 대한 컨테이너 생성"""
+        if not (container := getattr(handler_method, "__container__", None)):
+            container = cls(handler_method, handler_key)
+            setattr(handler_method, "__container__", container)
+        return container
