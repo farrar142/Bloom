@@ -1078,3 +1078,164 @@ class TestOptionalParameters:
 
         assert response.status_code == 200
         assert response.body == {"uploaded": False}
+
+
+class TestAuthenticationResolver:
+    """Authentication 리졸버 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_authentication_injection(self, reset_container_manager):
+        """Authentication 주입"""
+        from vessel.web.auth import Authentication
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UserController:
+            @Get("/me")
+            async def me(self, auth: Authentication) -> dict:
+                return {
+                    "user_id": auth.user_id,
+                    "authenticated": auth.authenticated,
+                }
+
+        app = Application("test").scan(M).ready()
+
+        # auth가 설정된 request
+        auth = Authentication(user_id="user123", authenticated=True)
+        request = HttpRequest(method="GET", path="/me", auth=auth)
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body["user_id"] == "user123"
+        assert response.body["authenticated"] is True
+
+    @pytest.mark.asyncio
+    async def test_authentication_none_when_not_set(self, reset_container_manager):
+        """Authentication이 설정되지 않으면 None"""
+        from vessel.web.auth import Authentication
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UserController:
+            @Get("/me")
+            async def me(self, auth: Authentication) -> dict:
+                if auth is None:
+                    return {"authenticated": False}
+                return {"authenticated": auth.authenticated}
+
+        app = Application("test").scan(M).ready()
+
+        # auth 없이
+        request = HttpRequest(method="GET", path="/me")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body["authenticated"] is False
+
+    @pytest.mark.asyncio
+    async def test_optional_authentication(self, reset_container_manager):
+        """Optional[Authentication] 주입"""
+        from vessel.web.auth import Authentication
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class UserController:
+            @Get("/me")
+            async def me(self, auth: Authentication | None) -> dict:
+                if auth is None:
+                    return {"guest": True}
+                return {"user_id": auth.user_id}
+
+        app = Application("test").scan(M).ready()
+
+        # auth 없이
+        request = HttpRequest(method="GET", path="/me")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"guest": True}
+
+        # auth 있을 때
+        auth = Authentication(user_id="user456", authenticated=True)
+        request = HttpRequest(method="GET", path="/me", auth=auth)
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"user_id": "user456"}
+
+    @pytest.mark.asyncio
+    async def test_authentication_with_authorities(self, reset_container_manager):
+        """authorities 포함한 Authentication 주입"""
+        from vessel.web.auth import Authentication
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class AdminController:
+            @Get("/admin")
+            async def admin(self, auth: Authentication) -> dict:
+                return {
+                    "user_id": auth.user_id,
+                    "is_admin": "ADMIN" in auth.authorities,
+                    "authorities": auth.authorities,
+                }
+
+        app = Application("test").scan(M).ready()
+
+        auth = Authentication(
+            user_id="admin1",
+            authenticated=True,
+            authorities=["USER", "ADMIN"],
+        )
+        request = HttpRequest(method="GET", path="/admin", auth=auth)
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body["user_id"] == "admin1"
+        assert response.body["is_admin"] is True
+        assert response.body["authorities"] == ["USER", "ADMIN"]
+
+    @pytest.mark.asyncio
+    async def test_authentication_with_request_and_path_param(
+        self, reset_container_manager
+    ):
+        """Authentication + HttpRequest + path param 조합"""
+        from vessel.web.auth import Authentication
+
+        class M:
+            pass
+
+        @Module(M)
+        @Controller
+        class PostController:
+            @Get("/posts/{id}")
+            async def get_post(
+                self, id: str, auth: Authentication, request: HttpRequest
+            ) -> dict:
+                return {
+                    "post_id": id,
+                    "viewer": auth.user_id if auth else None,
+                    "method": request.method,
+                }
+
+        app = Application("test").scan(M).ready()
+
+        auth = Authentication(user_id="viewer1", authenticated=True)
+        request = HttpRequest(method="GET", path="/posts/123", auth=auth)
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body["post_id"] == "123"
+        assert response.body["viewer"] == "viewer1"
+        assert response.body["method"] == "GET"

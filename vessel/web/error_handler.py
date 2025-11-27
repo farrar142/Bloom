@@ -44,7 +44,7 @@ class ErrorHandlerContainer[**P, R](HandlerContainer[P, R]):
         handler_method: Callable[P, R],
         exception_type: type[Exception],
     ):
-        super().__init__(handler_method, exception_type)
+        super().__init__(handler_method)
         self.exception_type = exception_type
 
     def __repr__(self) -> str:

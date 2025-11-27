@@ -1,6 +1,6 @@
 """Container 베이스 클래스"""
 
-from typing import Any, Self, Optional, cast
+from typing import Any, Self, Optional, cast, overload
 
 from ..manager import ContainerManager
 from .element import Element
@@ -82,7 +82,7 @@ class Container[T]:
         """컨테이너에 엘리먼트 추가"""
         self.elements.append(element)
 
-    def get_metadatas(self, key: str, default: Optional[T] = None) -> list[T]:
+    def get_metadatas[U](self, key: str, default: Optional[U] = None) -> list[U]:
         """
         주어진 메타데이터 키에 해당하는 모든 값들을 리스트로 반환한다.
 
@@ -93,13 +93,46 @@ class Container[T]:
         사용 예:
             container.get_metadatas("request_mapping") -> ["/api/v1"]
         """
-        values: list[T] = []
+        values: list[U] = []
         for element in self.elements:
             if key in element.metadata:
                 val = element.metadata.get(key)
-                values.append(cast(T, val))
+                values.append(cast(U, val))
 
         if not values and default is not None:
             return [default]
 
         return values
+
+    @overload
+    def get_metadata[U](
+        self, key: str, default: Optional[U] = None, raise_exception: bool = True
+    ) -> U: ...
+    @overload
+    def get_metadata[U](
+        self, key: str, default: Optional[U] = None, raise_exception: bool = False
+    ) -> U | None: ...
+
+    def get_metadata[U](
+        self, key: str, default: Optional[U] = None, raise_exception: bool = False
+    ) -> U | None:
+        """
+        주어진 메타데이터 키에 해당하는 첫 번째 값을 반환한다.
+
+        - elements를 순회하며 element.metadata에 key가 있으면 그 값을 반환한다.
+        - 수집된 값이 없다면 default가 제공되었을 경우 default를 반환하고,
+          그렇지 않으면 None을 반환한다.
+
+        사용 예:
+            container.get_metadata("request_mapping") -> "/api/v1"
+        """
+        for element in self.elements:
+            if key in element.metadata:
+                val = element.metadata.get(key)
+                return cast(U, val)
+
+        if default is not None:
+            return default
+        if raise_exception:
+            raise KeyError(f"Metadata key '{key}' not found in container elements.")
+        return None

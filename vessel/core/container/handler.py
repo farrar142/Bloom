@@ -44,7 +44,7 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
     def __repr__(self) -> str:
         return (
             f"HandlerContainer(method={self.handler_method.__name__}, "
-            f"key={self.handler_key})"
+            # f"key={self.handler_key})"
         )
 
     def get_type_hints(self) -> dict:

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from vessel.web.auth import Authentication
     from vessel.web.params.types import UploadedFile
 
 
@@ -19,6 +20,7 @@ class HttpRequest:
     query_params: dict[str, str] = field(default_factory=dict)
     body: bytes | None = None
     files: dict[str, list[UploadedFile]] = field(default_factory=dict)
+    auth: "Authentication | None" = None
 
     @property
     def json(self) -> Any:

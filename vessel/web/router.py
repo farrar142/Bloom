@@ -126,8 +126,8 @@ class Router:
                         prefix = controller_prefixes.get(container.owner_cls, "")
 
                     # prefix + handler path 결합
-                    full_path = prefix + container.path
-                    key = (container.method, full_path)
+                    full_path = prefix + container.get_metadata("http_path")
+                    key = (container.get_metadata("http_method"), full_path)
                     self._routes[key] = container
                     # 경로 패턴 컴파일 (path parameter 지원)
                     self._compile_pattern(full_path)
@@ -203,10 +203,10 @@ class Router:
                         ctx.set_response(result)
                     else:
                         # response_type이 있으면 변환
-                        if handler.response_type is not None:
-                            result = _convert_to_response_type(
-                                result, handler.response_type
-                            )
+                        if response_type := handler.get_metadata(
+                            "response_type", raise_exception=False
+                        ):
+                            result = _convert_to_response_type(result, response_type)
                         ctx.set_response(HttpResponse.ok(result))
 
             except Exception as e:

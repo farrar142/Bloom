@@ -9,6 +9,7 @@ from .registry import (
     resolve_parameters,
 )
 from .resolvers import (
+    AuthenticationResolver,
     HttpCookieResolver,
     HttpHeaderResolver,
     HttpRequestResolver,
@@ -25,6 +26,7 @@ from .types import HttpCookie, HttpHeader, KeyValue, RequestBody, UploadedFile
 # 기본 리졸버들 등록
 _registry = get_default_registry()
 _registry.register(HttpRequestResolver())  # HttpRequest 먼저
+_registry.register(AuthenticationResolver())  # Authentication
 _registry.register(HttpHeaderResolver())  # HttpHeader
 _registry.register(HttpCookieResolver())  # HttpCookie
 _registry.register(UploadedFileResolver())  # UploadedFile, list[UploadedFile]
@@ -51,6 +53,7 @@ __all__ = [
     "KeyValue",
     "UploadedFile",
     # Resolvers
+    "AuthenticationResolver",
     "RequestBodyResolver",
     "ListBodyResolver",
     "PathParamResolver",

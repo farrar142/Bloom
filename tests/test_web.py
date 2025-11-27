@@ -73,8 +73,8 @@ class TestHttpMethodHandler:
 
         container = TestController.list_items.__container__
         assert isinstance(container, HttpMethodHandler)
-        assert container.method == "GET"
-        assert container.path == "/items"
+        assert container.get_metadata("http_method") == "GET"
+        assert container.get_metadata("http_path") == "/items"
         assert container.handler_key == ("GET", "/items")
 
     def test_post_decorator(self):
@@ -91,8 +91,8 @@ class TestHttpMethodHandler:
                 return {"id": 1}
 
         container = TestController.create_item.__container__
-        assert container.method == "POST"
-        assert container.path == "/items"
+        assert container.get_metadata("http_method") == "POST"
+        assert container.get_metadata("http_path") == "/items"
 
     @pytest.mark.asyncio
     async def test_handler_invocation(self):
@@ -738,7 +738,7 @@ class TestResponseTypeConversion:
                 return {"value": "test"}
 
         handler = TestController.test_method.__container__
-        assert "response=Output" in repr(handler)
+        assert "Output" in repr(handler.get_metadata("response_type"))
 
     def test_handler_repr_without_response_type(self):
         """response_type 없으면 __repr__에 미포함"""
@@ -754,4 +754,4 @@ class TestResponseTypeConversion:
                 return "test"
 
         handler = TestController.test_method.__container__
-        assert "response=" not in repr(handler)
+        assert handler.get_metadata("response_type", raise_exception=False) is None

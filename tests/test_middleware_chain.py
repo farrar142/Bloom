@@ -2,6 +2,7 @@
 
 import pytest
 
+from vessel.web.handler import MethodElement, PathElement
 from vessel.web.http import HttpRequest, HttpResponse
 from vessel.web.middleware import Middleware, MiddlewareChain, MiddlewareGroup
 
@@ -456,9 +457,9 @@ class TestRouterMiddlewareIntegration:
 
         handler = HttpMethodHandler(
             handler_method=TestController.test_handler,
-            method="GET",
-            path="/test",
         )
+        handler.add_elements(MethodElement("GET"))
+        handler.add_elements(PathElement("/test"))
         handler.owner_cls = TestController
         ContainerManager.register_container(handler)
 
@@ -513,9 +514,9 @@ class TestRouterMiddlewareIntegration:
 
         handler = HttpMethodHandler(
             handler_method=TestController.test_handler,
-            method="GET",
-            path="/test",
         )
+        handler.add_elements(MethodElement("GET"))
+        handler.add_elements(PathElement("/test"))
         handler.owner_cls = TestController
         ContainerManager.register_container(handler)
 
@@ -560,9 +561,9 @@ class TestRouterMiddlewareIntegration:
 
         handler = HttpMethodHandler(
             handler_method=TestController.get_users,
-            method="GET",
-            path="/api/users",
         )
+        handler.add_elements(MethodElement("GET"))
+        handler.add_elements(PathElement("/api/users"))
         handler.owner_cls = TestController
         ContainerManager.register_container(handler)
 
@@ -623,9 +624,8 @@ class TestRouterMiddlewareIntegration:
 
         handler = HttpMethodHandler(
             handler_method=TestController.get_data,
-            method="GET",
-            path="/data",
         )
+        handler.add_elements(MethodElement("GET"), PathElement("/data"))
         handler.owner_cls = TestController
         ContainerManager.register_container(handler)
 
@@ -667,9 +667,9 @@ class TestRouterMiddlewareIntegration:
 
         handler = HttpMethodHandler(
             handler_method=TestController.protected_resource,
-            method="GET",
-            path="/protected",
         )
+        handler.add_elements(MethodElement("GET"))
+        handler.add_elements(PathElement("/protected"))
         handler.owner_cls = TestController
         ContainerManager.register_container(handler)
 

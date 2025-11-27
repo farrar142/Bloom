@@ -1,11 +1,36 @@
 """HTTP 메서드 핸들러"""
 
 from typing import Any, Callable, TypeVar, overload
-
+import uuid
+from vessel.core.container import Element
 from vessel.core.container import HandlerContainer
 
 T = TypeVar("T")
 R = TypeVar("R")  # Response type
+
+
+class MethodElement(Element[T]):
+    """HTTP 메서드 정보를 담는 Element"""
+
+    def __init__(self, method: str):
+        super().__init__()
+        self.metadata["http_method"] = method
+
+
+class PathElement(Element[T]):
+    """HTTP 경로 정보를 담는 Element"""
+
+    def __init__(self, path: str):
+        super().__init__()
+        self.metadata["http_path"] = path
+
+
+class ResponseTypeElement(Element[T]):
+    """HTTP 응답 타입 정보를 담는 Element"""
+
+    def __init__(self, response_type: type):
+        super().__init__()
+        self.metadata["response_type"] = response_type
 
 
 class HttpMethodHandler[**P, R](HandlerContainer[P, R]):
@@ -30,23 +55,35 @@ class HttpMethodHandler[**P, R](HandlerContainer[P, R]):
     def __init__(
         self,
         handler_method: Callable[P, R],
-        method: str,
-        path: str,
-        response_type: type | None = None,
+        handler_key: tuple[str, str] | None = None,
     ):
-        # handler_key는 (method, path) 튜플
-        super().__init__(handler_method, (method, path))
-        self.method = method
-        self.path = path
-        self.response_type = response_type
+        super().__init__(handler_method)
+        self.handler_key = handler_key
+
+    # @property
+    # def method(self) -> str:
+    #     return self.get_metadatas("http_method")[0]
+
+    # @property
+    # def path(self) -> str:
+    #     return self.get_metadatas("http_path")[0]
+
+    # @property
+    # def response_type(self) -> type | None:
+    #     return (
+    #         self.get_metadatas("response_type")[0]
+    #         if self.get_metadatas("response_type")
+    #         else None
+    #     )
 
     def __repr__(self) -> str:
-        response_info = (
-            f", response={self.response_type.__name__}" if self.response_type else ""
-        )
+        response_type = self.get_metadata("response_type")
+        method = self.get_metadata("http_method")
+        path = self.get_metadata("http_path")
+        response_info = f", response={response_type}" if self else ""
         return (
             f"HttpMethodHandler(method={self.handler_method.__name__}, "
-            f"{self.method} {self.path}{response_info})"
+            f"{method} {path}{response_info})"
         )
 
 
@@ -94,9 +131,12 @@ def _create_http_method_decorator(http_method: str):
                 path = f"/{func.__name__}"
             else:
                 path = __path_or_func if __path_or_func else f"/{func.__name__}"
-
-            container = HttpMethodHandler(func, http_method, path, response)
+            container = HttpMethodHandler.get_or_create(func, (http_method, path))
             setattr(func, "__container__", container)
+            container.add_elements(MethodElement(http_method))
+            container.add_elements(PathElement(path))
+            if response:
+                container.add_elements(ResponseTypeElement(response))
             return func
 
         # @Get (인자 없이 함수 직접 전달)
