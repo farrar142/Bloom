@@ -68,6 +68,7 @@ class MiddlewareContext:
     _response: HttpResponse | None = None
     _exception: Exception | None = None
     early_response: HttpResponse | None = None
+    handler: Any = None  # 라우팅된 핸들러 (HttpMethodHandler)
 
     def set_response(self, response: HttpResponse) -> None:
         """핸들러 응답 설정"""
@@ -305,7 +306,7 @@ class MiddlewareChain:
 
     @asynccontextmanager
     async def process(
-        self, request: HttpRequest
+        self, request: HttpRequest, handler: Any = None
     ) -> AsyncGenerator[MiddlewareContext, None]:
         """
         미들웨어 체인 실행 (asynccontextmanager)
@@ -314,7 +315,7 @@ class MiddlewareChain:
 
         사용법:
             ```python
-            async with self.middleware_chain.process(request) as ctx:
+            async with self.middleware_chain.process(request, handler) as ctx:
                 if ctx.early_response:
                     return ctx.early_response
 
@@ -329,16 +330,18 @@ class MiddlewareChain:
 
         Args:
             request: HTTP 요청
+            handler: 라우팅된 핸들러 (HttpMethodHandler)
 
         Yields:
             MiddlewareContext: 응답/예외를 설정하는 컨텍스트 객체
         """
         middlewares = self.get_all_middlewares()
         ctx = MiddlewareContext()
+        ctx.handler = handler  # 핸들러 저장
 
         # 요청 단계: 모든 미들웨어의 첫 번째 yield까지 실행
         for middleware in middlewares:
-            gen = middleware._process_request(request)
+            gen = middleware._process_request(request, handler)
             first_yield = await gen.asend(None)  # type: ignore
 
             ctx._generators.append(gen)

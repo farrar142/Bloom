@@ -7,8 +7,8 @@
     ```python
     from vessel import Component
     from vessel.core.decorators import Factory
-    from vessel.web.auth import Authenticator, Authentication
-    from vessel.web.middleware import AuthMiddleware, MiddlewareChain
+    from vessel.web.auth import Authenticator, Authentication, AuthMiddleware
+    from vessel.web.middleware import MiddlewareChain
 
     @Component
     class MiddlewareConfig:
@@ -39,12 +39,14 @@
 """
 
 import asyncio
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
-from ..auth import Authentication, Authenticator, ANONYMOUS
+from .authenticator import Authentication, Authenticator, ANONYMOUS
+from .authorize import AuthorizeElement
 from ..http import HttpRequest, HttpResponse
-from .base import Middleware
+from ..middleware.base import Middleware
 
 
 @dataclass
@@ -212,12 +214,21 @@ class AuthMiddleware(Middleware):
 
     async def process_request(self, request: HttpRequest) -> Optional[HttpResponse]:
         """
-        인증 처리
+        인증 처리 (process_request는 사용하지 않고 _process_request에서 처리)
+        """
+        return None
+
+    async def _process_request(
+        self, request: HttpRequest, handler: Any = None
+    ) -> AsyncGenerator[HttpResponse | None, HttpResponse]:
+        """
+        인증 및 인가 처리
 
         1. 경로에 매칭되는 그룹 찾기
         2. 그룹의 인증기들로 인증 시도
         3. 인증 성공 시 request.auth에 저장
         4. 인증 필수인데 실패하면 401 반환
+        5. @Authorize 검사 - 실패 시 403 반환
         """
         # 매칭되는 그룹 찾기
         group = self._find_matching_group(request.path)
@@ -225,20 +236,95 @@ class AuthMiddleware(Middleware):
         if group is None:
             # 매칭되는 그룹 없음 - 인증 없이 통과
             request.auth = ANONYMOUS
+        else:
+            # 인증 시도
+            authentication = await self._try_authenticate(request, group)
+
+            # request에 인증 정보 저장
+            request.auth = authentication
+
+            # 인증 필수인데 실패한 경우
+            if group.require_auth and not authentication.is_authenticated():
+                yield HttpResponse(
+                    status_code=401,
+                    body={
+                        "error": "Unauthorized",
+                        "message": "Authentication required",
+                    },
+                )
+                return
+
+        # @Authorize 검사
+        if handler is not None:
+            authorize_response = self._check_authorize(request, handler)
+            if authorize_response is not None:
+                yield authorize_response
+                return
+
+        # 다음 미들웨어/핸들러로 진행
+        response = yield
+        yield response
+
+    def _check_authorize(
+        self, request: HttpRequest, handler: Any
+    ) -> HttpResponse | None:
+        """
+        핸들러의 @Authorize 검사
+
+        Args:
+            request: HTTP 요청 (request.auth 사용)
+            handler: HttpMethodHandler
+
+        Returns:
+            None: 통과
+            HttpResponse: 403 Forbidden
+        """
+        # handler의 elements에서 AuthorizeElement 찾기
+        if not hasattr(handler, "elements"):
             return None
 
-        # 인증 시도
-        authentication = await self._try_authenticate(request, group)
+        for element in handler.elements:
+            if isinstance(element, AuthorizeElement):
+                # metadata에서 target_type과 predicate 가져오기
+                target_type = element.metadata.get("authorize_target_type")
+                predicate = element.metadata.get("authorize_predicate")
 
-        # request에 인증 정보 저장
-        request.auth = authentication
+                if target_type is None or predicate is None:
+                    continue
 
-        # 인증 필수인데 실패한 경우
-        if group.require_auth and not authentication.is_authenticated():
-            return HttpResponse(
-                status_code=401,
-                body={"error": "Unauthorized", "message": "Authentication required"},
-            )
+                # target_type에 맞는 값 가져오기
+                target_value = self._get_target_value(request, target_type)
+
+                if target_value is None:
+                    # target 값이 없으면 실패
+                    return HttpResponse(
+                        status_code=403,
+                        body={
+                            "error": "Forbidden",
+                            "message": f"Required {target_type.__name__} not available",
+                        },
+                    )
+
+                # predicate 검사
+                if not predicate(target_value):
+                    return HttpResponse(
+                        status_code=403,
+                        body={"error": "Forbidden", "message": "Access denied"},
+                    )
+
+        return None
+
+    def _get_target_value(self, request: HttpRequest, target_type: type) -> Any:
+        """
+        target_type에 맞는 값을 request에서 가져오기
+
+        현재 지원:
+            - Authentication: request.auth
+        """
+        from .authenticator import Authentication
+
+        if target_type is Authentication:
+            return request.auth
 
         return None
 

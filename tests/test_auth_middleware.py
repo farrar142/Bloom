@@ -4,7 +4,8 @@ import pytest
 from vessel import Application, Component
 from vessel.core.decorators import Factory
 from vessel.web import Authenticator, Authentication, Controller, Get, HttpRequest
-from vessel.web.middleware import AuthMiddleware, MiddlewareChain
+from vessel.web.auth import AuthMiddleware
+from vessel.web.middleware import MiddlewareChain
 
 from .conftest import Module
 

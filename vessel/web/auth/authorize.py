@@ -3,7 +3,7 @@
 from typing import Any, Callable, TypeVar
 
 from vessel.core.container.element import Element
-from .handler import HttpMethodHandler
+from ..handler import HttpMethodHandler
 
 
 T = TypeVar("T")
@@ -23,11 +23,11 @@ class AuthorizeElement[T, U](Element[T]):
 
     def __init__(self, target_type: type[U], predicate: Callable[[U], bool]):
         super().__init__()
-        self.target_type = target_type
-        self.predicate = predicate
+        self.metadata["authorize_target_type"] = target_type
+        self.metadata["authorize_predicate"] = predicate
 
     def __repr__(self) -> str:
-        return f"AuthorizeElement(target_type={self.target_type.__name__})"
+        return f"AuthorizeElement(target_type={self.metadata['authorize_target_type'].__name__})"
 
 
 def Authorize(target_type: type[T], predicate: Callable[[T], bool]) -> Callable[[F], F]:

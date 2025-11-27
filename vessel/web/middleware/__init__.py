@@ -72,7 +72,6 @@
 
 from .base import Middleware
 from .chain import MiddlewareChain
-from .auth import AuthMiddleware
 from .cors import CorsMiddleware
 from .error_handler import ErrorHandlerMiddleware
 from .group import MiddlewareGroup
@@ -81,7 +80,6 @@ __all__ = [
     "Middleware",
     "MiddlewareChain",
     "MiddlewareGroup",
-    "AuthMiddleware",
     "CorsMiddleware",
     "ErrorHandlerMiddleware",
 ]

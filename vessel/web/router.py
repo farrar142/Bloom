@@ -173,15 +173,15 @@ class Router:
     async def dispatch(self, request: HttpRequest) -> HttpResponse:
         """요청을 핸들러에 디스패치 (비동기)"""
 
-        async with self.middleware_chain.process(request) as ctx:
+        # 핸들러 먼저 찾기 (미들웨어에서 Authorize 검사에 필요)
+        handler, path_params = self.find_handler(request.method, request.path)
+
+        async with self.middleware_chain.process(request, handler) as ctx:
             # early return 확인 (인증 실패 등)
             if ctx.early_response:
                 return self.middleware_chain.get_final_response(ctx)
 
             try:
-                # 핸들러 찾기
-                handler, path_params = self.find_handler(request.method, request.path)
-
                 if handler is None:
                     ctx.set_response(
                         HttpResponse.not_found(

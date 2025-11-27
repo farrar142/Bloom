@@ -31,7 +31,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .http import HttpRequest
+from ..http import HttpRequest
 
 
 @dataclass

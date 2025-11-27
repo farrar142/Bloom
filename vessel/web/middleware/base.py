@@ -124,7 +124,7 @@ class Middleware(ABC):
         return response
 
     async def _process_request(
-        self, request: HttpRequest
+        self, request: HttpRequest, handler: Any = None
     ) -> AsyncGenerator[HttpResponse | None, HttpResponse]:
         """
         요청/응답 처리 (yield 기반 - 내부용)
@@ -132,9 +132,13 @@ class Middleware(ABC):
         MiddlewareChain에서 호출됩니다.
         기본 구현은 process_request/process_response를 호출합니다.
 
+        Args:
+            request: HTTP 요청
+            handler: 라우팅된 핸들러 (HttpMethodHandler) - Authorize 검사 등에 사용
+
         예외 처리가 필요한 미들웨어는 이 메서드를 오버라이드하세요:
             ```python
-            async def _process_request(self, request):
+            async def _process_request(self, request, handler):
                 try:
                     response = yield
                 except Exception as e:

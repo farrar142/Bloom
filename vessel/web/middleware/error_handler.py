@@ -68,7 +68,7 @@ class ErrorHandlerMiddleware(Middleware):
         """Controller prefix 매핑 설정 (Application에서 호출)"""
         self._controller_prefixes = prefixes
 
-    async def _process_request(self, request: HttpRequest):
+    async def _process_request(self, request: HttpRequest, handler: Any = None):
         """
         요청/응답 처리 (yield 기반)
 
