@@ -49,7 +49,7 @@ Router에서 자동으로 수집되어 요청/응답 처리 시 실행됩니다.
     ```
 """
 
-from typing import Any, Optional
+from typing import Any, Optional, overload
 
 from ..http import HttpRequest, HttpResponse
 
@@ -101,14 +101,61 @@ class MiddlewareChain:
     """
 
     def __init__(self):
+        from .cors import CorsMiddleware
+
         self.groups: list[MiddlewareGroup] = []
         self.default_group = MiddlewareGroup("default")
         self.groups.append(self.default_group)
-        self.disabled_middlewares: set = set()
+        # 개별 비활성화된 미들웨어 인스턴스 id 저장
+        self.disabled_middlewares: set[int] = set()
+
+        # CorsMiddleware를 기본 그룹에 추가
+        self.default_group.add(CorsMiddleware())
 
     def get_default_group(self) -> MiddlewareGroup:
         """기본 그룹 반환"""
         return self.default_group
+
+    @overload
+    def get_middleware[T: Middleware](
+        self, middleware_type: type[T], raise_exception: bool = True
+    ) -> T: ...
+
+    @overload
+    def get_middleware[T: Middleware](
+        self, middleware_type: type[T], raise_exception: bool = False
+    ) -> T | None: ...
+
+    def get_middleware[T: Middleware](
+        self, middleware_type: type[T], raise_exception: bool = True
+    ) -> T | None:
+        """
+        특정 타입의 미들웨어 인스턴스 반환
+
+        Args:
+            middleware_type: 찾을 미들웨어 타입
+            raise_exception: True면 못 찾을 시 예외, False면 None 반환
+
+        Returns:
+            미들웨어 인스턴스 또는 None
+
+        Raises:
+            ValueError: 미들웨어를 찾을 수 없을 때 (raise_exception=True)
+
+        사용 예시:
+            ```python
+            cors = chain.get_middleware(CorsMiddleware)
+            chain.disable(cors)
+            ```
+        """
+        for group in self.groups:
+            for middleware in group.middlewares:
+                if isinstance(middleware, middleware_type):
+                    return middleware
+
+        if raise_exception:
+            raise ValueError(f"Middleware {middleware_type.__name__} not found")
+        return None
 
     def add_group(self, name: str) -> MiddlewareGroup:
         """
@@ -174,31 +221,44 @@ class MiddlewareChain:
 
     def disable(self, *middlewares: Middleware) -> "MiddlewareChain":
         """
-        특정 미들웨어 비활성화
+        특정 미들웨어 인스턴스 비활성화
+
+        그룹 비활성화와 별개로 동작합니다.
+        그룹이 enable되어도 개별 비활성화된 미들웨어는 실행되지 않습니다.
 
         Args:
-            *middlewares: 비활성화할 미들웨어들
+            *middlewares: 비활성화할 미들웨어 인스턴스들
 
         Returns:
             self (메서드 체이닝용)
+
+        사용 예시:
+            ```python
+            cors = chain.get_middleware(CorsMiddleware)
+            chain.disable(cors)
+            ```
         """
         for middleware in middlewares:
-            self.disabled_middlewares.add(type(middleware))
+            self.disabled_middlewares.add(id(middleware))
         return self
 
     def enable(self, *middlewares: Middleware) -> "MiddlewareChain":
         """
-        특정 미들웨어 활성화
+        특정 미들웨어 인스턴스 활성화
 
         Args:
-            *middlewares: 활성화할 미들웨어들
+            *middlewares: 활성화할 미들웨어 인스턴스들
 
         Returns:
             self (메서드 체이닝용)
         """
         for middleware in middlewares:
-            self.disabled_middlewares.discard(type(middleware))
+            self.disabled_middlewares.discard(id(middleware))
         return self
+
+    def is_disabled(self, middleware: Middleware) -> bool:
+        """미들웨어가 개별적으로 비활성화되었는지 확인"""
+        return id(middleware) in self.disabled_middlewares
 
     def get_all_middlewares(self) -> list[Middleware]:
         """
@@ -215,7 +275,7 @@ class MiddlewareChain:
 
             for middleware in group.middlewares:
                 # 개별적으로 비활성화된 미들웨어는 제외
-                if type(middleware) not in self.disabled_middlewares:
+                if not self.is_disabled(middleware):
                     all_middlewares.append(middleware)
 
         return all_middlewares

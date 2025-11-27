@@ -164,21 +164,26 @@ class Router:
 
     async def dispatch(self, request: HttpRequest) -> HttpResponse:
         """요청을 핸들러에 디스패치 (비동기)"""
-        handler, path_params = self.find_handler(request.method, request.path)
-
-        if handler is None:
-            return HttpResponse.not_found(
-                f"No handler for {request.method} {request.path}"
-            )
-
         try:
-            # 미들웨어 요청 처리 (process_request)
+            # 미들웨어 요청 처리 (process_request) - 핸들러 찾기 전에 실행
             early_response = await self.middleware_chain.execute_request(request)
             if early_response is not None:
-                # early return - 핸들러 호출 스킵
+                # early return - 핸들러 호출 스킵 (CORS preflight 등)
                 if isinstance(early_response, HttpResponse):
-                    return early_response
-                return HttpResponse.ok(early_response)
+                    return await self.middleware_chain.execute_response(
+                        request, early_response
+                    )
+                return await self.middleware_chain.execute_response(
+                    request, HttpResponse.ok(early_response)
+                )
+
+            # 핸들러 찾기
+            handler, path_params = self.find_handler(request.method, request.path)
+
+            if handler is None:
+                return HttpResponse.not_found(
+                    f"No handler for {request.method} {request.path}"
+                )
 
             # 핸들러의 타입 힌트로 파라미터 리졸버를 통해 값 주입
             type_hints = handler.get_type_hints()

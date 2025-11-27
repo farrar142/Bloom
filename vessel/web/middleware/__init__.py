@@ -9,6 +9,10 @@
     - MiddlewareChain: 미들웨어 실행 순서 관리
     - MiddlewareGroup: 관련 미들웨어 그룹화
 
+내장 미들웨어:
+    - CorsMiddleware: CORS 헤더 처리
+    - ErrorHandlerMiddleware: 예외를 HTTP 응답으로 변환
+
 빠른 시작:
     1. Middleware 상속하여 미들웨어 구현:
 
@@ -45,6 +49,22 @@
 
     3. Application 초기화 시 자동으로 Router에 적용됨
 
+    4. 내장 미들웨어 사용:
+
+        ```python
+        from vessel import Component
+        from vessel.web.middleware import CorsMiddleware, ErrorHandlerMiddleware
+
+        @Component
+        class MyCors(CorsMiddleware):
+            allow_origins = ["https://example.com"]
+            allow_credentials = True
+
+        @Component
+        class MyErrorHandler(ErrorHandlerMiddleware):
+            debug = True  # 개발 환경에서 스택 트레이스 표시
+        ```
+
 실행 순서:
     요청: Middleware A → B → C → 핸들러
     응답: 핸들러 → C → B → A (역순)
@@ -52,6 +72,14 @@
 
 from .base import Middleware
 from .chain import MiddlewareChain
+from .cors import CorsMiddleware
+from .error_handler import ErrorHandlerMiddleware
 from .group import MiddlewareGroup
 
-__all__ = ["Middleware", "MiddlewareChain", "MiddlewareGroup"]
+__all__ = [
+    "Middleware",
+    "MiddlewareChain",
+    "MiddlewareGroup",
+    "CorsMiddleware",
+    "ErrorHandlerMiddleware",
+]
