@@ -1,7 +1,7 @@
 """Application 및 의존성 정렬 테스트"""
 
 from vessel import Application, Component
-from vessel.core import ContainerManager, Factory
+from vessel.core import Factory
 
 from . import conftest
 
@@ -12,13 +12,13 @@ class TestApplication:
     def test_application_sets_name(self):
         """Application이 app_name을 설정"""
         app = Application("my_app")
-        assert ContainerManager.app_name == "my_app"
+        assert app.manager.app_name == "my_app"
 
     def test_scan_and_ready(self):
         """새 API: scan().ready() 체이닝"""
         app = Application("test_app").scan(conftest).ready()
 
-        service = ContainerManager.get_instance(conftest.Service)
+        service = app.manager.get_instance(conftest.Service)
         assert service is not None
         assert isinstance(service.repository, conftest.Repository)
 
@@ -28,7 +28,7 @@ class TestApplication:
         app.scan_components(conftest)
         app.initialize_components()
 
-        service = ContainerManager.get_instance(conftest.Service)
+        service = app.manager.get_instance(conftest.Service)
         assert service is not None
         assert isinstance(service.repository, conftest.Repository)
 
@@ -36,7 +36,7 @@ class TestApplication:
         """팩토리를 통한 인스턴스 생성"""
         app = Application("test_app").scan(conftest).ready()
 
-        external = ContainerManager.get_instance(conftest.ExternalService)
+        external = app.manager.get_instance(conftest.ExternalService)
         assert external is not None
         assert isinstance(external.repo, conftest.Repository)
 

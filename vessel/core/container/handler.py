@@ -2,9 +2,11 @@
 
 import asyncio
 import inspect
-from typing import Any, Callable, Self, get_type_hints
+from typing import Any, Callable, Self, get_type_hints, TYPE_CHECKING
 
-from ..manager import ContainerManager
+if TYPE_CHECKING:
+    from ..manager import ContainerManager
+
 from .base import Container
 
 
@@ -38,6 +40,7 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
         self._bound_method: Callable[P, R] | None = None
         self._resolved_hints: dict | None = None
         self.owner_cls: type | None = None  # scan_components 후 주입됨
+        self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
         # target은 HandlerContainer 자신의 타입
         super().__init__(type(self))  # type: ignore
 
@@ -78,7 +81,7 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
                 raise Exception(
                     f"Handler method {self.handler_method.__name__} must have 'self' parameter with type hint"
                 )
-            owner_instance = ContainerManager.get_instance(owner_type)
+            owner_instance = self._get_manager().get_instance(owner_type)
             self._bound_method = self.handler_method.__get__(owner_instance, owner_type)
         return self._bound_method  # type: ignore
 

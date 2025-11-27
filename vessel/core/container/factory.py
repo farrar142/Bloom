@@ -1,9 +1,11 @@
 """FactoryContainer 클래스"""
 
 import inspect
-from typing import Callable, Self, get_type_hints
+from typing import Callable, Self, get_type_hints, TYPE_CHECKING
 
-from ..manager import ContainerManager
+if TYPE_CHECKING:
+    from ..manager import ContainerManager
+
 from .base import Container
 
 
@@ -40,6 +42,7 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
         self._target: type | None = None
         self.elements = list()
         self.owner_cls: type | None = None  # scan_components 후 주입됨
+        self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
 
     def _get_type_hints(self) -> dict:
         """타입 힌트를 resolve하여 캐시"""
@@ -100,10 +103,11 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
 
             if param.kind == inspect.Parameter.VAR_POSITIONAL:
                 # varargs (*args: Type) - 해당 타입의 서브클래스 컨테이너들을 의존성으로 추가
+                manager = self._get_manager()
                 for (
                     kls,
                     qual_containers,
-                ) in ContainerManager.get_all_containers().items():
+                ) in manager.get_all_containers().items():
                     if kls != param_type and issubclass(kls, param_type):
                         dependencies.append(kls)
             else:
@@ -113,12 +117,13 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
 
     def _create_instance(self) -> R:
         """팩토리 메서드를 통해 인스턴스 생성"""
+        manager = self._get_manager()
         owner_type = self._get_owner_type()
         if owner_type is None:
             raise Exception(
                 f"Factory method {self.factory_method.__name__} must have 'self' parameter with type hint"
             )
-        owner_instance = ContainerManager.get_instance(owner_type)
+        owner_instance = manager.get_instance(owner_type)
         # self를 제외한 hints만 전달
         hints = self._get_type_hints()
         sig = inspect.signature(self.factory_method)
@@ -135,7 +140,7 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
                 # *args: Type 형태 - 해당 타입의 모든 서브 인스턴스 수집
                 vararg_type = hints.get(param_name)
                 if vararg_type:
-                    varargs = ContainerManager.get_sub_instances(vararg_type)
+                    varargs = manager.get_sub_instances(vararg_type)
 
         # varargs 파라미터는 kwargs에서 제외
         filtered_hints = {

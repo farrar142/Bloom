@@ -129,13 +129,14 @@ def create_asgi_app(router: Router | None = None) -> ASGIApplication:
     ASGI 애플리케이션 팩토리
 
     Args:
-        router: Router 인스턴스. None이면 새로 생성하고 라우트 수집
+        router: Router 인스턴스. None이면 get_current_manager()를 사용해 생성
 
     Returns:
         ASGIApplication 인스턴스
     """
     if router is None:
-        router = Router()
+        from vessel.core.manager import get_current_manager
+        router = Router(get_current_manager())
         router.collect_routes()
 
     return ASGIApplication(router)

@@ -5,15 +5,14 @@ import dataclasses
 import re
 from typing import Any, TYPE_CHECKING
 
-from vessel.core import ContainerManager
+if TYPE_CHECKING:
+    from vessel.core.manager import ContainerManager
+    from .middleware import MiddlewareChain
 
 from .controller import ControllerContainer
 from .handler import HttpMethodHandler
 from .http import HttpRequest, HttpResponse
 from .params import resolve_parameters
-
-if TYPE_CHECKING:
-    from .middleware import MiddlewareChain
 
 
 def _convert_to_response_type(result: Any, response_type: type) -> Any:
@@ -64,13 +63,14 @@ class Router:
     HTTP 요청을 적절한 핸들러에 라우팅
 
     사용 예시:
-        router = Router()
+        router = Router(manager)
         router.collect_routes()  # 등록된 HttpMethodHandler들 수집
 
         response = router.dispatch(request)
     """
 
-    def __init__(self):
+    def __init__(self, manager: "ContainerManager"):
+        self.manager = manager
         # (method, path_pattern) -> HttpMethodHandler
         self._routes: dict[tuple[str, str], HttpMethodHandler] = {}
         # 컴파일된 정규식 패턴 캐시
@@ -91,7 +91,7 @@ class Router:
 
         # MiddlewareChain 인스턴스 수집
         if not (
-            middleware_chain := ContainerManager.get_instance(
+            middleware_chain := self.manager.get_instance(
                 MiddlewareChain, raise_exception=False
             )
         ):
@@ -100,7 +100,7 @@ class Router:
 
         # Controller의 RequestMapping prefix 매핑
         controller_prefixes: dict[type, str] = {}
-        for qual_containers in ContainerManager.get_all_containers().values():
+        for qual_containers in self.manager.get_all_containers().values():
             for container in qual_containers.values():
                 if isinstance(container, ControllerContainer):
                     # Use generic metadata API to obtain request mapping prefixes.
@@ -118,7 +118,7 @@ class Router:
             error_handler_middleware.set_controller_prefixes(controller_prefixes)
 
         # 모든 컨테이너를 순회하며 HttpMethodHandler 찾기
-        for qual_containers in ContainerManager.get_all_containers().values():
+        for qual_containers in self.manager.get_all_containers().values():
             for container in qual_containers.values():
                 if isinstance(container, HttpMethodHandler):
                     # owner_cls의 RequestMapping prefix 가져오기

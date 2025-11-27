@@ -3,7 +3,8 @@
 from typing import Callable, TypeVar
 
 import pytest
-from vessel.core import Component, ContainerManager, Factory, Handler
+from vessel.core import Component, Factory, Handler
+from vessel.core.manager import ContainerManager, set_current_manager
 
 T = TypeVar("T", bound=type)
 
@@ -99,9 +100,9 @@ class Controller:
 @pytest.fixture(autouse=True)
 def reset_container_manager():
     """각 테스트 전후로 ContainerManager 초기화"""
-    ContainerManager.global_container_registry.clear()
-    ContainerManager.global_instance_registry.clear()
-    ContainerManager.app_name = "test"
-    yield
-    ContainerManager.global_container_registry.clear()
-    ContainerManager.global_instance_registry.clear()
+    # 새로운 테스트용 manager 생성 및 설정
+    manager = ContainerManager("test")
+    set_current_manager(manager)
+    yield manager
+    # 테스트 후 정리
+    set_current_manager(None)

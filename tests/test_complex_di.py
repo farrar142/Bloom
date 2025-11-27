@@ -3,7 +3,6 @@
 import pytest
 from vessel import Application, Component
 from vessel.core import (
-    ContainerManager,
     Factory,
     Handler,
 )
@@ -59,7 +58,7 @@ class TestComplexDependencyInjection:
         assert init_order == ["D", "C", "B", "A"]
 
         # 의존성이 제대로 주입되었는지 확인
-        a_instance = ContainerManager.get_instance(A)
+        a_instance = app.manager.get_instance(A)
         assert a_instance.b is not None
         assert a_instance.b.c is not None
         assert a_instance.b.c.d is not None
@@ -95,7 +94,7 @@ class TestComplexDependencyInjection:
         app.scan_components(M)
         app.initialize_components()
 
-        a_instance = ContainerManager.get_instance(A)
+        a_instance = app.manager.get_instance(A)
         # B와 C가 같은 D 인스턴스를 공유해야 함
         assert a_instance.b.d is a_instance.c.d
 
@@ -133,7 +132,7 @@ class TestComplexDependencyInjection:
         app.scan_components(M)
         app.initialize_components()
 
-        service = ContainerManager.get_instance(ComplexService)
+        service = app.manager.get_instance(ComplexService)
         assert service is not None
         assert isinstance(service.logger, Logger)
         assert isinstance(service.db, Database)
@@ -175,7 +174,7 @@ class TestComplexDependencyInjection:
         app.scan_components(M)
         app.initialize_components()
 
-        client = ContainerManager.get_instance(Client)
+        client = app.manager.get_instance(Client)
         assert client is not None
         assert isinstance(client.connection, Connection)
         assert isinstance(client.connection.config, Config)

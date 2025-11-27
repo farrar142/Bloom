@@ -1,106 +1,124 @@
 """ContainerManager 클래스"""
 
+from contextvars import ContextVar
 from typing import Any, Literal, overload, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .container import Container
 
 
+# 현재 활성 매니저를 저장하는 ContextVar
+_current_manager: ContextVar["ContainerManager | None"] = ContextVar(
+    "current_manager", default=None
+)
+
+
+def get_current_manager() -> "ContainerManager":
+    """현재 활성화된 ContainerManager 반환"""
+    if manager := _current_manager.get():
+        return manager
+    raise RuntimeError(
+        "No active ContainerManager. Ensure Application.scan() is called first."
+    )
+
+
+def set_current_manager(manager: "ContainerManager | None") -> None:
+    """현재 ContainerManager 설정"""
+    _current_manager.set(manager)
+
+
 class ContainerManager:
-    # app_name -> type -> qualifier -> Container
-    global_container_registry = dict[str, dict[type, dict[str, "Container"]]]()
-    # app_name -> type -> qualifier -> instance
-    global_instance_registry = dict[str, dict[type, dict[str, Any]]]()
-    app_name: str = ""
+    """
+    컨테이너와 인스턴스를 관리하는 매니저
+
+    Application마다 독립적인 ContainerManager 인스턴스를 가짐
+    """
+
+    def __init__(self, app_name: str):
+        self.app_name = app_name
+        # type -> qualifier -> Container
+        self.container_registry: dict[type, dict[str, "Container"]] = {}
+        # type -> qualifier -> instance
+        self.instance_registry: dict[type, dict[str, Any]] = {}
 
     @staticmethod
     def is_container(obj: Any) -> bool:
         """객체가 컨테이너를 가지고 있는지 확인"""
         return getattr(obj, "__container__", None) is not None
 
-    @classmethod
     def register_container(
-        cls, container: "Container", qualifier: str = "default"
+        self, container: "Container", qualifier: str = "default"
     ) -> None:
-        """현재 레지스트리에 컨테이너 등록"""
-        if cls.app_name not in cls.global_container_registry:
-            cls.global_container_registry[cls.app_name] = {}
-        if container.target not in cls.global_container_registry[cls.app_name]:
-            cls.global_container_registry[cls.app_name][container.target] = {}
-        cls.global_container_registry[cls.app_name][container.target][
-            qualifier
-        ] = container
+        """컨테이너 등록"""
+        if container.target not in self.container_registry:
+            self.container_registry[container.target] = {}
+        self.container_registry[container.target][qualifier] = container
+        # Container에 manager 참조 주입
+        container.manager = self
 
-    @classmethod
-    def scan_components(cls, module: object) -> None:
+    def scan_components(self, module: object) -> None:
+        """모듈에서 컴포넌트 스캔"""
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
-            if cls.is_container(attr):
+            if self.is_container(attr):
                 container = getattr(attr, "__container__")
                 qualifier = container.get_qual_name()
-                cls.register_container(container, qualifier)
+                self.register_container(container, qualifier)
             # Factory/Handler 메서드들도 스캔하고 owner_cls 주입
             if isinstance(attr, type):
                 for method_name in dir(attr):
                     method = getattr(attr, method_name, None)
-                    if method and cls.is_container(method):
+                    if method and self.is_container(method):
                         child_container = getattr(method, "__container__")
                         child_container.owner_cls = attr  # owner 클래스 주입
                         qualifier = child_container.get_qual_name()
-                        cls.register_container(child_container, qualifier)
+                        self.register_container(child_container, qualifier)
 
-    @classmethod
-    def get_all_containers(cls) -> dict[type, dict[str, "Container"]]:
-        return cls.global_container_registry.get(cls.app_name, {})
+    def get_all_containers(self) -> dict[type, dict[str, "Container"]]:
+        """모든 컨테이너 반환"""
+        return self.container_registry
 
-    @classmethod
-    def get_container(cls, target: type, qualifier: str = "default") -> "Container":
-        type_containers = cls.get_all_containers().get(target, {})
+    def get_container(
+        self, target: type, qualifier: str = "default"
+    ) -> "Container | None":
+        """특정 타입의 컨테이너 반환"""
+        type_containers = self.container_registry.get(target, {})
         if container := type_containers.get(qualifier, None):
             return container
         # qualifier가 없으면 첫 번째 컨테이너 반환
         if type_containers:
             return next(iter(type_containers.values()))
-        raise Exception(
-            f"Container for {target} with qualifier '{qualifier}' not found"
-        )
+        return None
 
-    @classmethod
-    def get_containers(cls, target: type) -> list["Container"]:
+    def get_containers(self, target: type) -> list["Container"]:
+        """특정 타입의 서브클래스 컨테이너들 반환"""
         containers = []
-        for kls, qual_containers in cls.get_all_containers().items():
+        for kls, qual_containers in self.container_registry.items():
             if issubclass(kls, target):
                 containers.extend(qual_containers.values())
         return containers
 
-    @classmethod
     def set_instance[T](
-        cls, target: type[T], instance: T, qualifier: str = "default"
+        self, target: type[T], instance: T, qualifier: str = "default"
     ) -> None:
-        if cls.app_name not in cls.global_instance_registry:
-            cls.global_instance_registry[cls.app_name] = {}
-        if target not in cls.global_instance_registry[cls.app_name]:
-            cls.global_instance_registry[cls.app_name][target] = {}
-        cls.global_instance_registry[cls.app_name][target][qualifier] = instance
+        """인스턴스 저장"""
+        if target not in self.instance_registry:
+            self.instance_registry[target] = {}
+        self.instance_registry[target][qualifier] = instance
 
     @overload
-    @classmethod
     def get_instance[T](
-        cls, target: type[T], raise_exception: Literal[False], qualifier: str = ...
+        self, target: type[T], raise_exception: Literal[False], qualifier: str = ...
     ) -> T | None: ...
     @overload
-    @classmethod
     def get_instance[T](
-        cls, target: type[T], raise_exception: Literal[True] = ..., qualifier: str = ...
+        self, target: type[T], raise_exception: Literal[True] = ..., qualifier: str = ...
     ) -> T: ...
-    @classmethod
     def get_instance[T](
-        cls, target: type[T], raise_exception: bool = True, qualifier: str = "default"
+        self, target: type[T], raise_exception: bool = True, qualifier: str = "default"
     ) -> T | None:
-        type_instances = cls.global_instance_registry.get(cls.app_name, {}).get(
-            target, {}
-        )
-        print("initialize", target, qualifier)
+        """인스턴스 조회"""
+        type_instances = self.instance_registry.get(target, {})
         if instance := type_instances.get(qualifier, None):
             return instance
         # qualifier가 없으면 첫 번째 인스턴스 반환
@@ -112,16 +130,19 @@ class ContainerManager:
             )
         return None
 
-    @classmethod
-    def get_sub_instances[T](cls, target: type[T]) -> list[T]:
+    def get_sub_instances[T](self, target: type[T]) -> list[T]:
+        """특정 타입의 서브클래스 인스턴스들 반환"""
         instances = []
-        for kls, qual_instances in cls.global_instance_registry.get(
-            cls.app_name, {}
-        ).items():
+        for kls, qual_instances in self.instance_registry.items():
             if issubclass(kls, target):
                 instances.extend(qual_instances.values())
         return instances
 
-    @classmethod
-    def get_all_instances(cls) -> dict[type, dict[str, Any]]:
-        return cls.global_instance_registry.get(cls.app_name, {})
+    def get_all_instances(self) -> dict[type, dict[str, Any]]:
+        """모든 인스턴스 반환"""
+        return self.instance_registry
+
+    def clear(self) -> None:
+        """레지스트리 초기화"""
+        self.container_registry.clear()
+        self.instance_registry.clear()

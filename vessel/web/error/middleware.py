@@ -34,7 +34,7 @@ import asyncio
 import traceback
 from typing import Any, Optional
 
-from vessel.core import ContainerManager
+from vessel.core.manager import get_current_manager
 
 from .container import ErrorHandlerContainer
 from ..http import HttpRequest, HttpResponse
@@ -86,7 +86,8 @@ class ErrorHandlerMiddleware(Middleware):
     def _get_error_handlers(self) -> list[ErrorHandlerContainer]:
         """ContainerManager에서 모든 ErrorHandlerContainer 수집"""
         handlers: list[ErrorHandlerContainer] = []
-        for qual_containers in ContainerManager.get_all_containers().values():
+        manager = get_current_manager()
+        for qual_containers in manager.get_all_containers().values():
             for container in qual_containers.values():
                 if isinstance(container, ErrorHandlerContainer):
                     handlers.append(container)
@@ -176,7 +177,8 @@ class ErrorHandlerMiddleware(Middleware):
             # 핸들러 인스턴스 가져오기
             owner_instance = None
             if handler.owner_cls:
-                owner_instance = ContainerManager.get_instance(
+                manager = get_current_manager()
+                owner_instance = manager.get_instance(
                     handler.owner_cls, raise_exception=False
                 )
 

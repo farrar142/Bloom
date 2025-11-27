@@ -3,10 +3,10 @@
 import pytest
 from vessel.core import (
     ComponentContainer,
-    ContainerManager,
     FactoryContainer,
     HandlerContainer,
 )
+from vessel.core.manager import ContainerManager
 
 from .conftest import (
     Configuration,
@@ -74,14 +74,16 @@ class TestHandler:
         assert container.handler_key is ValueError
 
     @pytest.mark.asyncio
-    async def test_handler_callable(self):
+    async def test_handler_callable(self, reset_container_manager):
         """HandlerContainer가 호출 가능 (비동기)"""
+        manager = reset_container_manager
+        
         # 컨테이너 등록
-        ContainerManager.register_container(getattr(Controller, "__container__"))
+        manager.register_container(getattr(Controller, "__container__"))
 
         # 인스턴스 생성
         instance = Controller()
-        ContainerManager.set_instance(Controller, instance)
+        manager.set_instance(Controller, instance)
 
         handler = Controller.do_something.__container__
         result = await handler()

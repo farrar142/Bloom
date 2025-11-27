@@ -423,7 +423,7 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_middleware_executes_before_handler(self):
         """미들웨어가 핸들러 전에 실행됨"""
-        from vessel.core import ContainerManager
+        from vessel.core.manager import get_current_manager
         from vessel.web.middleware import MiddlewareChain
         from vessel.web.router import Router
         from vessel.web.handler import HttpMethodHandler
@@ -449,11 +449,11 @@ class TestRouterMiddlewareIntegration:
 
         chain = MiddlewareChain()
         chain.default_group.add(TrackingMiddleware())
-        ContainerManager.set_instance(MiddlewareChain, chain)
-        ContainerManager.set_instance(TestController, TestController())
+        get_current_manager().set_instance(MiddlewareChain, chain)
+        get_current_manager().set_instance(TestController, TestController())
 
         controller_container = ControllerContainer(TestController)
-        ContainerManager.register_container(controller_container)
+        get_current_manager().register_container(controller_container)
 
         handler = HttpMethodHandler(
             handler_method=TestController.test_handler,
@@ -461,9 +461,9 @@ class TestRouterMiddlewareIntegration:
         handler.add_elements(MethodElement("GET"))
         handler.add_elements(PathElement("/test"))
         handler.owner_cls = TestController
-        ContainerManager.register_container(handler)
+        get_current_manager().register_container(handler)
 
-        router = Router()
+        router = Router(get_current_manager())
         router.collect_routes()
 
         request = HttpRequest(method="GET", path="/test")
@@ -479,7 +479,7 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_middleware_early_return_skips_handler(self):
         """미들웨어 early return 시 핸들러 실행 안됨"""
-        from vessel.core import ContainerManager
+        from vessel.core.manager import get_current_manager
         from vessel.web.middleware import MiddlewareChain
         from vessel.web.router import Router
         from vessel.web.handler import HttpMethodHandler
@@ -506,11 +506,11 @@ class TestRouterMiddlewareIntegration:
 
         chain = MiddlewareChain()
         chain.default_group.add(BlockingMiddleware())
-        ContainerManager.set_instance(MiddlewareChain, chain)
-        ContainerManager.set_instance(TestController, TestController())
+        get_current_manager().set_instance(MiddlewareChain, chain)
+        get_current_manager().set_instance(TestController, TestController())
 
         controller_container = ControllerContainer(TestController)
-        ContainerManager.register_container(controller_container)
+        get_current_manager().register_container(controller_container)
 
         handler = HttpMethodHandler(
             handler_method=TestController.test_handler,
@@ -518,9 +518,9 @@ class TestRouterMiddlewareIntegration:
         handler.add_elements(MethodElement("GET"))
         handler.add_elements(PathElement("/test"))
         handler.owner_cls = TestController
-        ContainerManager.register_container(handler)
+        get_current_manager().register_container(handler)
 
-        router = Router()
+        router = Router(get_current_manager())
         router.collect_routes()
 
         request = HttpRequest(method="GET", path="/test")
@@ -532,7 +532,7 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_cors_middleware_with_router(self):
         """CorsMiddleware가 Router와 함께 동작 - preflight 및 실제 요청"""
-        from vessel.core import ContainerManager
+        from vessel.core.manager import get_current_manager
         from vessel.web.middleware import MiddlewareChain
         from vessel.web.middleware.cors import CorsMiddleware
         from vessel.web.router import Router
@@ -553,11 +553,11 @@ class TestRouterMiddlewareIntegration:
             allow_credentials=True,
         )
         chain.default_group.add(custom_cors)
-        ContainerManager.set_instance(MiddlewareChain, chain)
-        ContainerManager.set_instance(TestController, TestController())
+        get_current_manager().set_instance(MiddlewareChain, chain)
+        get_current_manager().set_instance(TestController, TestController())
 
         controller_container = ControllerContainer(TestController)
-        ContainerManager.register_container(controller_container)
+        get_current_manager().register_container(controller_container)
 
         handler = HttpMethodHandler(
             handler_method=TestController.get_users,
@@ -565,9 +565,9 @@ class TestRouterMiddlewareIntegration:
         handler.add_elements(MethodElement("GET"))
         handler.add_elements(PathElement("/api/users"))
         handler.owner_cls = TestController
-        ContainerManager.register_container(handler)
+        get_current_manager().register_container(handler)
 
-        router = Router()
+        router = Router(get_current_manager())
         router.collect_routes()
 
         # Preflight (OPTIONS) 요청 - 핸들러 없어도 CORS 미들웨어가 처리
@@ -600,7 +600,7 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_multiple_middlewares_with_router(self):
         """여러 미들웨어가 순서대로 실행"""
-        from vessel.core import ContainerManager
+        from vessel.core.manager import get_current_manager
         from vessel.web.middleware import MiddlewareChain
         from vessel.web.router import Router
         from vessel.web.handler import HttpMethodHandler
@@ -616,20 +616,20 @@ class TestRouterMiddlewareIntegration:
 
         chain = MiddlewareChain()
         chain.default_group.add(m1, m2, m3)
-        ContainerManager.set_instance(MiddlewareChain, chain)
-        ContainerManager.set_instance(TestController, TestController())
+        get_current_manager().set_instance(MiddlewareChain, chain)
+        get_current_manager().set_instance(TestController, TestController())
 
         controller_container = ControllerContainer(TestController)
-        ContainerManager.register_container(controller_container)
+        get_current_manager().register_container(controller_container)
 
         handler = HttpMethodHandler(
             handler_method=TestController.get_data,
         )
         handler.add_elements(MethodElement("GET"), PathElement("/data"))
         handler.owner_cls = TestController
-        ContainerManager.register_container(handler)
+        get_current_manager().register_container(handler)
 
-        router = Router()
+        router = Router(get_current_manager())
         router.collect_routes()
 
         request = HttpRequest(method="GET", path="/data")
@@ -643,7 +643,7 @@ class TestRouterMiddlewareIntegration:
     @pytest.mark.asyncio
     async def test_auth_middleware_blocks_unauthorized(self):
         """AuthMiddleware가 인증 없는 요청 차단"""
-        from vessel.core import ContainerManager
+        from vessel.core.manager import get_current_manager
         from vessel.web.middleware import MiddlewareChain
         from vessel.web.router import Router
         from vessel.web.handler import HttpMethodHandler
@@ -659,11 +659,11 @@ class TestRouterMiddlewareIntegration:
 
         chain = MiddlewareChain()
         chain.default_group.add(AuthMiddleware())
-        ContainerManager.set_instance(MiddlewareChain, chain)
-        ContainerManager.set_instance(TestController, TestController())
+        get_current_manager().set_instance(MiddlewareChain, chain)
+        get_current_manager().set_instance(TestController, TestController())
 
         controller_container = ControllerContainer(TestController)
-        ContainerManager.register_container(controller_container)
+        get_current_manager().register_container(controller_container)
 
         handler = HttpMethodHandler(
             handler_method=TestController.protected_resource,
@@ -671,9 +671,9 @@ class TestRouterMiddlewareIntegration:
         handler.add_elements(MethodElement("GET"))
         handler.add_elements(PathElement("/protected"))
         handler.owner_cls = TestController
-        ContainerManager.register_container(handler)
+        get_current_manager().register_container(handler)
 
-        router = Router()
+        router = Router(get_current_manager())
         router.collect_routes()
 
         # 인증 없이 요청

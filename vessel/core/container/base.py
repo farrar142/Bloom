@@ -1,8 +1,11 @@
 """Container 베이스 클래스"""
 
-from typing import Any, Self, Optional, cast, overload
+from typing import Any, Self, Optional, cast, overload, TYPE_CHECKING
 
-from ..manager import ContainerManager
+if TYPE_CHECKING:
+    from ..manager import ContainerManager
+
+from ..manager import get_current_manager
 from .element import Element
 
 
@@ -22,6 +25,13 @@ class Container[T]:
         self.target = target
         self.elements = list[Element[T]]()
         self.owner_cls: type | None = None  # Factory/Handler의 부모 클래스
+        self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
+
+    def _get_manager(self) -> "ContainerManager":
+        """manager 반환 (없으면 현재 활성 매니저 반환)"""
+        if self.manager is not None:
+            return self.manager
+        return get_current_manager()
 
     def add_elements(self, *elements: Element[T]) -> None:
         self.elements.extend(elements)
@@ -38,15 +48,16 @@ class Container[T]:
 
     def _get_cached_instance(self) -> T | None:
         """캐시된 인스턴스가 있으면 반환"""
-        return ContainerManager.get_instance(self.target, raise_exception=False)
+        return self._get_manager().get_instance(self.target, raise_exception=False)
 
     def _inject_dependencies(self, annotations: dict[str, type]) -> dict[str, Any]:
         """어노테이션 기반으로 의존성을 주입하여 kwargs 반환"""
+        manager = self._get_manager()
         kwargs = {}
         for name, dep_type in annotations.items():
             if name == "return":
                 continue
-            if dep_container := ContainerManager.get_container(dep_type):
+            if dep_container := manager.get_container(dep_type):
                 kwargs[name] = dep_container.initialize_instance()
         return kwargs
 

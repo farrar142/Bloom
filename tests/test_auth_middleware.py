@@ -1609,8 +1609,8 @@ class TestAuthorizeDecorator:
         @Module(M)
         @Controller
         class ProtectedController:
-            @Authorize(Authentication, lambda auth: auth.is_authenticated())
             @Get("/protected")
+            @Authorize(Authentication, lambda auth: auth.is_authenticated())
             async def protected(self) -> str:
                 return "protected content"
 

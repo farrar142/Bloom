@@ -392,11 +392,11 @@ class TestASGI:
                 return "pong"
 
         app = Application("test_asgi")
-        app.scan_components(M)
-        app.initialize_components()
+        app.scan(M).ready()
+        
 
-        router = Router()
-        router.collect_routes()
+        router = app.router
+        
         asgi_app = ASGIApplication(router)
 
         # Mock ASGI scope, receive, send
@@ -440,11 +440,11 @@ class TestASGI:
                 return {"received": request.json}
 
         app = Application("test_asgi_post")
-        app.scan_components(M)
-        app.initialize_components()
+        app.scan(M).ready()
+        
 
-        router = Router()
-        router.collect_routes()
+        router = app.router
+        
         asgi_app = ASGIApplication(router)
 
         scope = {
@@ -493,11 +493,11 @@ class TestASGI:
                 return {"query": request.query_params.get("q", "")}
 
         app = Application("test_asgi_query")
-        app.scan_components(M)
-        app.initialize_components()
+        app.scan(M).ready()
+        
 
-        router = Router()
-        router.collect_routes()
+        router = app.router
+        
         asgi_app = ASGIApplication(router)
 
         scope = {
@@ -538,11 +538,11 @@ class TestASGI:
                 return {"async": True, "data": "async result"}
 
         app = Application("test_asgi_async")
-        app.scan_components(M)
-        app.initialize_components()
+        app.scan(M).ready()
+        
 
-        router = Router()
-        router.collect_routes()
+        router = app.router
+        
         asgi_app = ASGIApplication(router)
 
         scope = {
@@ -584,8 +584,8 @@ class TestASGI:
                 return "factory works"
 
         app = Application("test_factory")
-        app.scan_components(M)
-        app.initialize_components()
+        app.scan(M).ready()
+        
 
         # 팩토리로 생성
         asgi_app = create_asgi_app()
