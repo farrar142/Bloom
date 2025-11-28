@@ -16,6 +16,8 @@ from bloom.core.container import HandlerContainer, ComponentContainer
 from ..session import Message, StompFrame, StompCommand
 from ..session import SimpleBroker
 from ..session import WebSocketSession, WebSocketDisconnect, WebSocketSessionManager
+from ..auth import StompAuthentication, STOMP_ANONYMOUS
+from ..params import get_default_message_registry, MessageResolverContext
 from ..controller import is_message_controller, get_prefix
 
 
@@ -217,8 +219,23 @@ class StompProtocolHandler:
         if frame.command not in (StompCommand.CONNECT, StompCommand.STOMP):
             raise ValueError(f"Expected CONNECT, got {frame.command}")
 
-        # 인증 처리 (선택적)
-        # TODO: 인증 미들웨어와 통합
+        # 인증 처리
+        auth_result = self._session_manager.authenticate(session, frame)
+        if auth_result is not None:
+            # 인증 성공: 세션에 사용자 정보 및 인증 결과 설정
+            if auth_result.is_authenticated():
+                session.user = auth_result.user_id
+                session.authentication = auth_result
+            else:
+                # 인증 실패 (명시적 거부)
+                error_frame = StompFrame(
+                    command=StompCommand.ERROR,
+                    headers={"message": "Authentication failed"},
+                    body="Invalid credentials",
+                )
+                await session.send_frame(error_frame)
+                await session.close(code=4001, reason="Authentication failed")
+                raise ValueError("Authentication failed")
 
         # CONNECTED 응답
         connected_frame = StompFrame(
@@ -227,6 +244,7 @@ class StompProtocolHandler:
                 "version": "1.2",
                 "server": "bloom-stomp/1.0",
                 "heart-beat": "0,0",
+                "user-name": session.user or "",
             },
         )
         await session.send_frame(connected_frame)
@@ -410,36 +428,21 @@ class StompProtocolHandler:
         handler_container.manager = self._container_manager
         bound_method = handler_container.invoke
 
-        # 파라미터 추론 및 바인딩
+        # 파라미터 리졸버 레지스트리를 사용하여 파라미터 해석
         type_hints = handler_container.get_type_hints()
-        sig = inspect.signature(handler_container.handler_method)
-        kwargs: dict[str, Any] = {}
+        registry = get_default_message_registry()
 
-        for param_name, param in sig.parameters.items():
-            if param_name == "self":
-                continue
+        context = MessageResolverContext(
+            session=session,
+            message=message,
+            path_params=path_params,
+        )
 
-            param_type = type_hints.get(param_name)
-
-            # Message 타입
-            if param_type == Message or (message and param_name == "message"):
-                kwargs[param_name] = message
-
-            # path parameter
-            elif param_name in path_params:
-                kwargs[param_name] = path_params[param_name]
-
-            # 페이로드 (첫 번째 비-특수 파라미터)
-            elif message and message.payload is not None:
-                # Pydantic 모델이나 dataclass로 변환 시도
-                if hasattr(param_type, "model_validate"):
-                    kwargs[param_name] = param_type.model_validate(  # type:ignore
-                        message.payload
-                    )
-                elif hasattr(param_type, "__dataclass_fields__"):
-                    kwargs[param_name] = param_type(**message.payload)  # type:ignore
-                else:
-                    kwargs[param_name] = message.payload
+        kwargs = await registry.resolve_parameters(
+            handler_id=id(handler_container.handler_method),
+            type_hints=type_hints,
+            context=context,
+        )
 
         # 핸들러 호출
         result = bound_method(**kwargs)

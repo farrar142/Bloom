@@ -11,6 +11,12 @@ from bloom.web.messaging import (
     SendTo,
     SendToUser,
     Message,
+    StompFrame,
+    StompCommand,
+    WebSocketSession,
+    StompAuthenticator,
+    StompAuthentication,
+    STOMP_ANONYMOUS,
 )
 
 
@@ -147,6 +153,16 @@ class TestGameController:
     @SendTo("/topic/game")
     def handle_move(self, message: dict) -> dict:
         return {"action": "move", "data": message}
+
+
+@MessageController("/auth")
+class TestAuthController:
+    """테스트용 인증 컨트롤러"""
+
+    @MessageMapping("/login")
+    @SendToUser("/queue/reply")
+    def login(self, message: dict, authentication: StompAuthentication) -> dict:
+        return {"status": "success", "user": authentication.user_id}
 
 
 class TestMessageControllerIntegration:
@@ -336,3 +352,273 @@ class TestDestinationPatternMatching:
 
         result = handler._match_destination("/chat", "/other")
         assert result is None
+
+
+# ============================================================================
+# STOMP 인증 테스트
+# ============================================================================
+
+
+class TokenStompAuthenticator(StompAuthenticator):
+    """테스트용 토큰 기반 인증기"""
+
+    def __init__(self, valid_tokens: dict[str, str] | None = None):
+        """
+        Args:
+            valid_tokens: {token: user_id} 매핑
+        """
+        self.valid_tokens = valid_tokens or {"valid-token": "user123"}
+
+    def supports(self, session: WebSocketSession, frame: StompFrame) -> bool:
+        """Authorization 헤더가 있으면 지원"""
+        return "Authorization" in frame.headers
+
+    def authenticate(
+        self, session: WebSocketSession, frame: StompFrame
+    ) -> StompAuthentication | None:
+        """토큰 검증"""
+        auth_header = frame.headers.get("Authorization", "")
+        token = auth_header.replace("Bearer ", "")
+
+        if token in self.valid_tokens:
+            return StompAuthentication(
+                user_id=self.valid_tokens[token],
+                authenticated=True,
+                authorities=["ROLE_USER"],
+            )
+        # 토큰이 있지만 유효하지 않음 -> 인증 실패
+        return StompAuthentication(authenticated=False)
+
+
+class LoginStompAuthenticator(StompAuthenticator):
+    """테스트용 login/passcode 기반 인증기"""
+
+    def __init__(self, users: dict[str, str] | None = None):
+        """
+        Args:
+            users: {login: passcode} 매핑
+        """
+        self.users = users or {"admin": "admin123", "user": "user123"}
+
+    def supports(self, session: WebSocketSession, frame: StompFrame) -> bool:
+        """login 헤더가 있으면 지원"""
+        return "login" in frame.headers
+
+    def authenticate(
+        self, session: WebSocketSession, frame: StompFrame
+    ) -> StompAuthentication | None:
+        """login/passcode 검증"""
+        login = frame.headers.get("login", "")
+        passcode = frame.headers.get("passcode", "")
+
+        if login in self.users and self.users[login] == passcode:
+            return StompAuthentication(
+                user_id=login,
+                authenticated=True,
+                authorities=["ROLE_ADMIN"] if login == "admin" else ["ROLE_USER"],
+            )
+        # 로그인 시도했지만 실패
+        return StompAuthentication(authenticated=False)
+
+
+class TestStompAuthenticator:
+    """StompAuthenticator 기본 테스트"""
+
+    def test_stomp_authentication_default(self):
+        """StompAuthentication 기본값"""
+        auth = StompAuthentication()
+
+        assert auth.user_id is None
+        assert auth.authenticated is False
+        assert auth.authorities == []
+        assert auth.is_authenticated() is False
+
+    def test_stomp_authentication_authenticated(self):
+        """인증된 StompAuthentication"""
+        auth = StompAuthentication(
+            user_id="user123",
+            authenticated=True,
+            authorities=["ROLE_USER", "ROLE_ADMIN"],
+        )
+
+        assert auth.user_id == "user123"
+        assert auth.is_authenticated() is True
+        assert auth.has_authority("ROLE_USER") is True
+        assert auth.has_authority("ROLE_ADMIN") is True
+        assert auth.has_authority("ROLE_SUPER") is False
+
+    def test_stomp_authentication_with_attributes(self):
+        """속성이 있는 StompAuthentication"""
+        auth = StompAuthentication(
+            user_id="user123",
+            authenticated=True,
+            attributes={"tenant_id": "tenant-abc", "org_id": 123},
+        )
+
+        assert auth.get_attribute("tenant_id") == "tenant-abc"
+        assert auth.get_attribute("org_id") == 123
+        assert auth.get_attribute("missing") is None
+        assert auth.get_attribute("missing", "default") == "default"
+
+    def test_stomp_anonymous(self):
+        """STOMP_ANONYMOUS 상수"""
+        assert STOMP_ANONYMOUS.authenticated is False
+        assert STOMP_ANONYMOUS.user_id is None
+
+
+class TestWebSocketSessionManagerAuthentication:
+    """WebSocketSessionManager 인증 테스트"""
+
+    def test_add_authenticator(self):
+        """인증기 추가"""
+        manager = WebSocketSessionManager()
+        authenticator = TokenStompAuthenticator()
+
+        manager.add_authenticator(authenticator)
+
+        assert len(manager.authenticators) == 1
+        assert manager.authenticators[0] is authenticator
+
+    def test_set_authenticators(self):
+        """인증기 목록 설정"""
+        manager = WebSocketSessionManager()
+        auth1 = TokenStompAuthenticator()
+        auth2 = LoginStompAuthenticator()
+
+        manager.set_authenticators([auth1, auth2])
+
+        assert len(manager.authenticators) == 2
+
+    def test_authenticate_with_token(self):
+        """토큰 인증 성공"""
+        manager = WebSocketSessionManager()
+        manager.add_authenticator(TokenStompAuthenticator())
+
+        session = WebSocketSession(path="/ws")
+        frame = StompFrame(
+            command=StompCommand.CONNECT,
+            headers={"Authorization": "Bearer valid-token"},
+        )
+
+        result = manager.authenticate(session, frame)
+
+        assert result is not None
+        assert result.is_authenticated() is True
+        assert result.user_id == "user123"
+
+    def test_authenticate_with_invalid_token(self):
+        """토큰 인증 실패"""
+        manager = WebSocketSessionManager()
+        manager.add_authenticator(TokenStompAuthenticator())
+
+        session = WebSocketSession(path="/ws")
+        frame = StompFrame(
+            command=StompCommand.CONNECT,
+            headers={"Authorization": "Bearer invalid-token"},
+        )
+
+        result = manager.authenticate(session, frame)
+
+        assert result is not None
+        assert result.is_authenticated() is False
+
+    def test_authenticate_with_login(self):
+        """login/passcode 인증 성공"""
+        manager = WebSocketSessionManager()
+        manager.add_authenticator(LoginStompAuthenticator())
+
+        session = WebSocketSession(path="/ws")
+        frame = StompFrame(
+            command=StompCommand.CONNECT,
+            headers={"login": "admin", "passcode": "admin123"},
+        )
+
+        result = manager.authenticate(session, frame)
+
+        assert result is not None
+        assert result.is_authenticated() is True
+        assert result.user_id == "admin"
+        assert "ROLE_ADMIN" in result.authorities
+
+    def test_authenticate_with_wrong_password(self):
+        """login/passcode 인증 실패 (잘못된 비밀번호)"""
+        manager = WebSocketSessionManager()
+        manager.add_authenticator(LoginStompAuthenticator())
+
+        session = WebSocketSession(path="/ws")
+        frame = StompFrame(
+            command=StompCommand.CONNECT,
+            headers={"login": "admin", "passcode": "wrong"},
+        )
+
+        result = manager.authenticate(session, frame)
+
+        assert result is not None
+        assert result.is_authenticated() is False
+
+    def test_authenticate_no_authenticator(self):
+        """인증기 없음 - None 반환"""
+        manager = WebSocketSessionManager()
+
+        session = WebSocketSession(path="/ws")
+        frame = StompFrame(
+            command=StompCommand.CONNECT,
+            headers={"Authorization": "Bearer token"},
+        )
+
+        result = manager.authenticate(session, frame)
+
+        assert result is None
+
+    def test_authenticate_chain_first_match(self):
+        """인증기 체인 - 첫 번째 매칭 인증기 사용"""
+        manager = WebSocketSessionManager()
+        # 토큰 인증기를 먼저 등록
+        manager.add_authenticator(TokenStompAuthenticator())
+        manager.add_authenticator(LoginStompAuthenticator())
+
+        session = WebSocketSession(path="/ws")
+        # Authorization 헤더 있음 -> TokenStompAuthenticator 사용
+        frame = StompFrame(
+            command=StompCommand.CONNECT,
+            headers={"Authorization": "Bearer valid-token"},
+        )
+
+        result = manager.authenticate(session, frame)
+
+        assert result is not None
+        assert result.user_id == "user123"  # TokenStompAuthenticator의 결과
+
+    def test_authenticate_chain_fallback(self):
+        """인증기 체인 - 첫 번째가 지원하지 않으면 다음으로"""
+        manager = WebSocketSessionManager()
+        manager.add_authenticator(TokenStompAuthenticator())
+        manager.add_authenticator(LoginStompAuthenticator())
+
+        session = WebSocketSession(path="/ws")
+        # login 헤더만 있음 -> LoginStompAuthenticator 사용
+        frame = StompFrame(
+            command=StompCommand.CONNECT,
+            headers={"login": "user", "passcode": "user123"},
+        )
+
+        result = manager.authenticate(session, frame)
+
+        assert result is not None
+        assert result.user_id == "user"  # LoginStompAuthenticator의 결과
+
+    def test_authenticate_no_matching_authenticator(self):
+        """인증기 체인 - 지원하는 인증기 없음"""
+        manager = WebSocketSessionManager()
+        manager.add_authenticator(TokenStompAuthenticator())
+
+        session = WebSocketSession(path="/ws")
+        # 아무 인증 헤더도 없음
+        frame = StompFrame(
+            command=StompCommand.CONNECT,
+            headers={},
+        )
+
+        result = manager.authenticate(session, frame)
+
+        assert result is None  # 아무 인증기도 지원하지 않음

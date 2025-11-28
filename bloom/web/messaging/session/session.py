@@ -8,6 +8,7 @@ from typing import Any, Callable, Coroutine, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .message import Message, StompFrame
+    from ..auth import StompAuthenticator, StompAuthentication
 
 # ASGI 타입
 Receive = Callable[[], Coroutine[Any, Any, dict[str, Any]]]
@@ -37,6 +38,7 @@ class WebSocketSession:
         headers: HTTP 업그레이드 요청 헤더
         query_params: 쿼리 파라미터
         user: 인증된 사용자 (옵션)
+        authentication: STOMP 인증 결과 (옵션)
     """
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -44,6 +46,7 @@ class WebSocketSession:
     headers: dict[str, str] = field(default_factory=dict)
     query_params: dict[str, str] = field(default_factory=dict)
     user: str | None = None
+    authentication: "StompAuthentication | None" = None
     _receive: Receive | None = field(default=None, repr=False)
     _send: Send | None = field(default=None, repr=False)
     _accepted: bool = field(default=False, repr=False)
@@ -193,12 +196,14 @@ class WebSocketSessionManager:
     WebSocket 세션 관리자
 
     모든 활성 세션을 추적하고 관리.
+    인증기 등록 및 STOMP 연결 인증을 담당.
     """
 
     def __init__(self):
         self._sessions: dict[str, WebSocketSession] = {}
         self._app_destination_prefixes: list[str] = ["/app"]
         self._user_destination_prefix: str = "/user"
+        self._authenticators: list["StompAuthenticator"] = []
 
     def add(self, session: WebSocketSession) -> None:
         """세션 추가"""
@@ -242,3 +247,39 @@ class WebSocketSessionManager:
     def set_user_destination_prefix(self, prefix: str) -> None:
         """사용자 목적지 프리픽스 설정"""
         self._user_destination_prefix = prefix
+
+    @property
+    def authenticators(self) -> list["StompAuthenticator"]:
+        """등록된 인증기 목록"""
+        return self._authenticators
+
+    def add_authenticator(self, authenticator: "StompAuthenticator") -> None:
+        """인증기 추가"""
+        self._authenticators.append(authenticator)
+
+    def set_authenticators(self, authenticators: list["StompAuthenticator"]) -> None:
+        """인증기 목록 설정"""
+        self._authenticators = list(authenticators)
+
+    def authenticate(
+        self, session: WebSocketSession, frame: "StompFrame"
+    ) -> "StompAuthentication | None":
+        """
+        STOMP CONNECT 프레임으로 인증 수행
+
+        등록된 인증기들을 순회하며 첫 번째로 supports()가 True인
+        인증기의 authenticate()를 호출합니다.
+
+        Args:
+            session: WebSocket 세션
+            frame: STOMP CONNECT 프레임
+
+        Returns:
+            인증 성공 시 StompAuthentication, 실패 시 None
+        """
+        for authenticator in self._authenticators:
+            if authenticator.supports(session, frame):
+                result = authenticator.authenticate(session, frame)
+                if result is not None:
+                    return result
+        return None

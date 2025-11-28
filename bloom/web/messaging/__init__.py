@@ -49,6 +49,33 @@ from .session import (
 # 프로토콜 핸들러
 from .handler import StompProtocolHandler
 
+# 인증
+from .auth import (
+    StompAuthentication,
+    StompAuthenticator,
+    STOMP_ANONYMOUS,
+)
+
+# 파라미터 리졸버
+from .params import (
+    MessageParameterResolver,
+    MessageResolverContext,
+    MessageParameterResolverRegistry,
+    get_default_message_registry,
+    StompAuthenticationResolver,
+    MessageResolver,
+    PayloadResolver,
+    PathParamResolver,
+    WebSocketSessionResolver,
+    MessageBodyResolver,
+    ListPayloadResolver,
+    OptionalPayloadResolver,
+    MessageBody,
+    MessageBodyType,
+    is_optional,
+    unwrap_optional,
+)
+
 # Entry 클래스들
 from .entry import (
     StompEndpointEntry,
@@ -101,6 +128,28 @@ __all__ = [
     "SimpleBroker",
     "Subscription",
     "StompProtocolHandler",
+    # 인증
+    "StompAuthentication",
+    "StompAuthenticator",
+    "STOMP_ANONYMOUS",
+    # 파라미터 리졸버
+    "MessageParameterResolver",
+    "MessageResolverContext",
+    "MessageParameterResolverRegistry",
+    "get_default_message_registry",
+    "StompAuthenticationResolver",
+    "MessageResolver",
+    "PayloadResolver",
+    "PathParamResolver",
+    "WebSocketSessionResolver",
+    "MessageBodyResolver",
+    "ListPayloadResolver",
+    "OptionalPayloadResolver",
+    "MessageBody",
+    "MessageBodyType",
+    "is_optional",
+    "unwrap_optional",
+    # Entry
     "StompEndpointEntry",
     "MessageHandlerEntry",
     "SubscribeHandlerEntry",
