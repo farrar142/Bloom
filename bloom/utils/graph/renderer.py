@@ -98,14 +98,20 @@ def render_header(title: str, timestamp: str) -> list[str]:
 
 def render_summary(data: GraphData) -> list[str]:
     """요약 정보 렌더링"""
-    return [
+    lines = [
         "## Summary",
         "-" * 40,
         f"Total Containers: {data.total_containers}",
         f"Unique Types: {len(data.containers)}",
         f"Factory Chains: {len(data.factory_chains)}",
-        "",
     ]
+
+    # 순환 의존성 정보
+    if data.cycle_types:
+        lines.append(f"⚠️  Circular Dependencies: {len(data.cycle_types)} types involved")
+
+    lines.append("")
+    return lines
 
 
 def render_containers_by_type(data: GraphData) -> list[str]:
@@ -263,6 +269,102 @@ def render_lazy_dependencies(data: GraphData) -> list[str]:
             lines.append("")
 
     return lines
+
+
+def render_circular_dependencies(data: GraphData) -> list[str]:
+    """순환 의존성 시각화"""
+    if not data.cycle_types:
+        return []
+
+    lines = [
+        "",
+        "=" * 60,
+        "⚠️  CIRCULAR DEPENDENCY DETECTED",
+        "=" * 60,
+        "",
+        "The following components form a circular dependency chain:",
+        "",
+    ]
+
+    # 순환에 포함된 컴포넌트들의 의존성 표시
+    for type_name in sorted(data.cycle_types):
+        info = data.containers.get(type_name)
+        if info:
+            deps = info.dependencies
+            cycle_deps = [d for d in deps if d in data.cycle_types]
+            other_deps = [d for d in deps if d not in data.cycle_types]
+
+            lines.append(f"  🔄 {type_name}")
+            if cycle_deps:
+                lines.append(f"      └── Cycle deps: {', '.join(cycle_deps)}")
+            if other_deps:
+                lines.append(f"      └── Other deps: {', '.join(other_deps)}")
+            lines.append("")
+
+    # 순환 경로 시각화 시도
+    cycle_path = _find_cycle_path(data)
+    if cycle_path:
+        lines.append("  Cycle path:")
+        lines.append(f"    {' → '.join(cycle_path)} → (cycle back)")
+        lines.append("")
+
+    # 해결 방법 제안
+    lines.extend([
+        "-" * 60,
+        "💡 How to resolve:",
+        "",
+        "  1. Use @Lazy to break the cycle:",
+        "     ```python",
+        "     @Component",
+        "     class ServiceA:",
+        "         service_b: Lazy[ServiceB]  # Deferred loading",
+        "     ```",
+        "",
+        "  2. Extract common functionality to a third component",
+        "",
+        "  3. Reconsider the design - circular dependencies",
+        "     often indicate a design issue",
+        "",
+        "=" * 60,
+        "",
+    ])
+
+    return lines
+
+
+def _find_cycle_path(data: GraphData) -> list[str]:
+    """순환 경로 찾기 (DFS)"""
+    if not data.cycle_types:
+        return []
+
+    # 첫 번째 순환 타입에서 시작
+    start = sorted(data.cycle_types)[0]
+    visited: set[str] = set()
+    path: list[str] = []
+
+    def dfs(node: str) -> bool:
+        if node in visited:
+            if node in path:
+                # 순환 발견
+                cycle_start = path.index(node)
+                return True
+            return False
+
+        visited.add(node)
+        path.append(node)
+
+        info = data.containers.get(node)
+        if info:
+            for dep in info.dependencies:
+                if dep in data.cycle_types:
+                    if dfs(dep):
+                        return True
+
+        path.pop()
+        return False
+
+    dfs(start)
+    return path if len(path) > 1 else []
 
 
 def render_multi_level_chains(chains: list[list[str]]) -> list[str]:

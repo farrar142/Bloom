@@ -6,6 +6,8 @@ from typing import Protocol, TypeVar, TYPE_CHECKING
 if TYPE_CHECKING:
     from .container import Container, FactoryContainer
 
+from .exceptions import CircularDependencyError
+
 
 class DependencySortable(Protocol):
     """의존성 정렬이 가능한 객체를 위한 프로토콜"""
@@ -166,7 +168,11 @@ def topological_sort_with_order(items: list[T]) -> list[T]:
     # 사이클 감지
     if len(sorted_items) != len(items):
         unresolved = [item_ids[i] for i, deg in in_degree.items() if deg > 0]
-        raise Exception(f"Circular dependency detected among: {unresolved}")
+        raise CircularDependencyError(
+            f"Circular dependency detected among: {[c.target.__name__ for c in unresolved]}",
+            unresolved_containers=unresolved,
+            all_containers=items,
+        )
 
     return sorted_items
 
@@ -249,8 +255,13 @@ def group_by_dependency_level(items: list[T]) -> list[list[T]]:
 
     # 레벨이 결정되지 않은 타입이 있으면 순환 의존성
     if len(type_to_level) != len(all_types):
-        unresolved = all_types - set(type_to_level.keys())
-        raise Exception(f"Circular dependency detected among: {unresolved}")
+        unresolved_types = all_types - set(type_to_level.keys())
+        unresolved = [item for item in items if item.target in unresolved_types]
+        raise CircularDependencyError(
+            f"Circular dependency detected among: {[t.__name__ for t in unresolved_types]}",
+            unresolved_containers=unresolved,
+            all_containers=items,
+        )
 
     # 아이템들을 레벨별로 그룹화
     level_to_items: dict[int, list[T]] = defaultdict(list)

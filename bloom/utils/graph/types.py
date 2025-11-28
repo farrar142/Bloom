@@ -27,6 +27,8 @@ class ContainerInfo:
     lazy_dependencies: list[str] = field(default_factory=list)
     # Factory Chain인 경우
     factories: list[FactoryInfo] = field(default_factory=list)
+    # 순환 의존성에 포함된 컨테이너인지
+    in_cycle: bool = False
 
     @property
     def is_factory_chain(self) -> bool:
@@ -60,6 +62,9 @@ class GraphData:
 
     # Lazy 의존성 그래프: 타입 이름 -> Lazy로 의존하는 타입 이름들
     lazy_dep_graph: dict[str, set[str]] = field(default_factory=dict)
+
+    # 순환 의존성에 포함된 타입들
+    cycle_types: list[str] = field(default_factory=list)
 
     def add_container(self, info: ContainerInfo) -> None:
         """컨테이너 추가"""

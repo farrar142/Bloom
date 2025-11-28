@@ -58,11 +58,26 @@ class Container[T]:
 
     def get_dependencies(self) -> list[type]:
         """이 컨테이너가 의존하는 타입들을 반환 (Lazy 컴포넌트 제외)"""
+        from typing import get_type_hints
         from ..lazy import is_lazy_component
 
-        dependencies = []
+        dependencies: list[type] = []
         manager = try_get_current_manager()
-        for field_type in getattr(self.target, "__annotations__", {}).values():
+
+        # get_type_hints로 forward reference 해석
+        try:
+            hints = get_type_hints(self.target)
+        except Exception:
+            # 해석 실패 시 원본 어노테이션 사용
+            hints = getattr(self.target, "__annotations__", {})
+
+        for field_type in hints.values():
+            # 문자열(forward ref)이면 건너뜀 (해석 실패)
+            if isinstance(field_type, str):
+                continue
+            # 타입이 아니면 건너뜀
+            if not isinstance(field_type, type):
+                continue
             # Lazy 컴포넌트는 의존성에서 제외 (지연 로딩이므로 순환 가능)
             if manager:
                 if dep_container := manager.get_container(field_type):

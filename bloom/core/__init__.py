@@ -22,6 +22,11 @@ from .decorators import (
     PreDestroy,
     Order,
 )
+from .exceptions import (
+    BloomException,
+    CircularDependencyError,
+    AmbiguousProviderError,
+)
 from .lifecycle import LifecycleManager
 from .lazy import Lazy, LazyProxy, is_lazy_component
 from .abstract import (
@@ -47,6 +52,10 @@ __all__ = [
     "PostConstruct",
     "PreDestroy",
     "Order",
+    # Exceptions
+    "BloomException",
+    "CircularDependencyError",
+    "AmbiguousProviderError",
     "LifecycleManager",
     "Lazy",
     "LazyProxy",

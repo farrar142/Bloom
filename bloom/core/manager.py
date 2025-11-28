@@ -119,13 +119,21 @@ class ContainerManager:
         - 0개: 서브클래스 중 1개면 반환, 아니면 None
         - 2개 이상: 첫 번째 반환 (Factory Chain 등에서 사용)
         """
+        # forward reference (str) 체크
+        if not isinstance(target, type):
+            return None
+
         containers = self.container_registry.get(target, [])
         if containers:
             return containers[0]
         # 서브클래스 검색
         for kls, kls_containers in self.container_registry.items():
-            if kls != target and issubclass(kls, target) and kls_containers:
-                return kls_containers[0]
+            try:
+                if kls != target and issubclass(kls, target) and kls_containers:
+                    return kls_containers[0]
+            except TypeError:
+                # issubclass에 유효하지 않은 타입이 들어온 경우
+                continue
         return None
 
     def get_containers(

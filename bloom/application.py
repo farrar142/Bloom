@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .core.container import Container, FactoryContainer
     from .web.messaging.manager import WebSocketManager
 
+from .core.exceptions import CircularDependencyError
 from .core.manager import ContainerManager, set_current_manager, try_get_current_manager
 from .core.utils import topological_sort, group_by_dependency_level
 from .web.router import Router
@@ -199,6 +200,8 @@ class Application:
         1. 모든 컨테이너를 의존성 그래프로 토폴로지 정렬
         2. 같은 타입의 Factory가 여러 개면 @Order 또는 의존성으로 순서 결정
         3. 정렬된 순서대로 초기화 - Factory Chain은 자동으로 처리됨
+
+        순환 의존성이 감지되면 의존성 그래프를 파일로 저장합니다.
         """
         from bloom.core.lazy import is_lazy_component
 
@@ -212,7 +215,12 @@ class Application:
 
         # 모든 컨테이너를 토폴로지컬 정렬 (Factory Chain 포함)
         # topological_sort가 같은 타입 내에서 @Order로 정렬
-        sorted_containers = topological_sort(all_containers)
+        try:
+            sorted_containers = topological_sort(all_containers)
+        except CircularDependencyError as e:
+            # 순환 의존성 발생 시 그래프 저장
+            self._save_circular_dependency_graph(e)
+            raise
 
         # 정렬된 순서로 초기화 (초기화 순서 저장)
         self._initialized_containers = []
@@ -226,6 +234,40 @@ class Application:
             self.manager.set_instance(container.target, instance)
             self._initialized_containers.append(container)
 
+    def _save_circular_dependency_graph(
+        self, error: CircularDependencyError
+    ) -> None:
+        """순환 의존성 발생 시 의존성 그래프를 파일로 저장
+
+        Args:
+            error: CircularDependencyError 예외 객체
+        """
+        from datetime import datetime
+        from bloom.logging.graph import generate_dependency_graph
+
+        # 파일명 생성: circular-dependency-{timestamp}.txt
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"circular-dependency-{timestamp}.txt"
+
+        # 그래프 생성
+        graph_content = generate_dependency_graph(
+            self.manager, filename, include_cycle_info=True, cycle_error=error
+        )
+
+        # 파일 저장
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(graph_content)
+
+        # 예외에 저장 경로 기록
+        error.graph_saved_path = filename
+
+        print(f"\n{'=' * 60}")
+        print("⚠️  CIRCULAR DEPENDENCY DETECTED")
+        print("=" * 60)
+        print(f"\nDependency graph saved to: {filename}")
+        print("\n" + error.get_cycle_info())
+        print("=" * 60 + "\n")
+
     def _initialize_containers_parallel(self) -> None:
         """
         모든 컨테이너를 레벨별로 병렬 초기화
@@ -238,6 +280,8 @@ class Application:
         Note: Factory Chain의 경우 같은 타입의 Factory들이 순차적으로 실행됩니다.
               병렬 초기화에서는 Factory Chain이 올바르게 동작하지 않을 수 있습니다.
               복잡한 Factory Chain이 있는 경우 순차 초기화(parallel=False)를 권장합니다.
+
+        순환 의존성이 감지되면 의존성 그래프를 파일로 저장합니다.
         """
         from bloom.core.lazy import is_lazy_component
 
@@ -249,8 +293,12 @@ class Application:
         # Factory Chain 유효성 검증
         self._validate_factory_chains(all_containers)
 
-        # 레벨별로 그룹화
-        levels = group_by_dependency_level(all_containers)
+        # 레벨별로 그룹화 (순환 의존성 시 그래프 저장)
+        try:
+            levels = group_by_dependency_level(all_containers)
+        except CircularDependencyError as e:
+            self._save_circular_dependency_graph(e)
+            raise
 
         # 초기화 순서 저장 (PreDestroy용)
         self._initialized_containers = []

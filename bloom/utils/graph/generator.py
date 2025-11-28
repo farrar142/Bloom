@@ -17,6 +17,7 @@ from .renderer import (
     render_dependency_tree,
     render_factory_chains,
     render_lazy_dependencies,
+    render_circular_dependencies,
     render_multi_level_chains,
     render_diamond_patterns,
     render_initialization_order,
@@ -77,7 +78,10 @@ def generate_graph(
     # Lazy 의존성
     lines.extend(render_lazy_dependencies(data))
 
-    # 분석
+    # 순환 의존성 (발견된 경우)
+    lines.extend(render_circular_dependencies(data))
+
+    # 분석 (순환 의존성이 있으면 건너뜀)
     all_types = set(data.containers.keys())
     multi_level_chains = analyze_multi_level_dependencies(data.dep_graph, all_types)
     diamond_patterns = analyze_diamond_dependencies(data.dep_graph)
