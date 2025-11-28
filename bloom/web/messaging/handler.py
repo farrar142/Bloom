@@ -11,12 +11,12 @@ from typing import Any, Callable, TYPE_CHECKING
 if TYPE_CHECKING:
     from bloom.core.manager import ContainerManager
 
-from bloom.core.container import HandlerContainer
+from bloom.core.container import HandlerContainer, ComponentContainer
 
 from .message import Message, StompFrame, StompCommand
 from .broker import SimpleBroker
 from .session import WebSocketSession, WebSocketDisconnect, WebSocketSessionManager
-from .controller import MessageController
+from .controller import is_message_controller, get_prefix
 
 
 @dataclass
@@ -73,70 +73,81 @@ class StompProtocolHandler:
         """
         ContainerManager에서 메시지 핸들러 수집
 
-        @MessageController로 등록된 클래스들의 핸들러 메서드들을 수집.
+        @MessageController 또는 @Controller로 등록된 클래스들의 핸들러 메서드들을 수집.
+
+        주의: @Controller의 @RequestMapping path와 STOMP 메시징 path는 별개입니다.
+        @MessageMapping, @SendTo 등은 @RequestMapping prefix의 영향을 받지 않습니다.
         """
         self._container_manager = manager
 
-        for container in manager.get_all_containers():
-            target = container.target
+        # get_all_containers()는 dict[type, dict[str, Container]]를 반환
+        for target_type, qualifier_containers in manager.get_all_containers().items():
+            for qualifier, container in qualifier_containers.items():
+                target = container.target
 
-            # MessageController인지 확인
-            if not MessageController.is_message_controller(target):
-                continue
-
-            prefix = MessageController.get_prefix(target)
-
-            # 메서드들에서 핸들러 찾기
-            for name, method in inspect.getmembers(
-                target, predicate=inspect.isfunction
-            ):
-                handler_container = HandlerContainer.find(method)
-                if not handler_container:
+                # ComponentContainer 타입만 처리 (Component, Controller, MessageController 모두 포함)
+                if not isinstance(container, ComponentContainer):
                     continue
 
-                # @MessageMapping
-                message_dest = handler_container.get_metadata(
-                    "message_mapping", raise_exception=False
-                )
-                if message_dest is not None:
-                    full_dest = prefix + message_dest if prefix else message_dest
+                # prefix 결정: @MessageController만 prefix 사용
+                # @Controller의 @RequestMapping은 HTTP path이므로 STOMP path에 영향 없음
+                prefix = ""
+                if is_message_controller(target):
+                    prefix = get_prefix(target)
 
-                    send_to = handler_container.get_metadata(
-                        "send_to", raise_exception=False
-                    )
-                    send_to_user = handler_container.get_metadata(
-                        "send_to_user", raise_exception=False
-                    )
+                # 메서드들에서 핸들러 찾기
+                for name, method in inspect.getmembers(
+                    target, predicate=inspect.isfunction
+                ):
+                    handler_container = HandlerContainer.get_container(method)
+                    if not handler_container:
+                        continue
 
-                    self._message_handlers.append(
-                        MessageHandlerInfo(
-                            destination_pattern=full_dest,
-                            handler_container=handler_container,
-                            send_to=send_to,
-                            send_to_user=send_to_user,
+                    # @MessageMapping
+                    message_dest = handler_container.get_metadata(
+                        "message_mapping", raise_exception=False
+                    )
+                    if message_dest is not None:
+                        full_dest = prefix + message_dest if prefix else message_dest
+
+                        send_to = handler_container.get_metadata(
+                            "send_to", raise_exception=False
                         )
-                    )
-
-                # @SubscribeMapping
-                subscribe_dest = handler_container.get_metadata(
-                    "subscribe_mapping", raise_exception=False
-                )
-                if subscribe_dest is not None:
-                    full_dest = prefix + subscribe_dest if prefix else subscribe_dest
-
-                    self._subscribe_handlers.append(
-                        SubscribeHandlerInfo(
-                            destination_pattern=full_dest,
-                            handler_container=handler_container,
+                        send_to_user = handler_container.get_metadata(
+                            "send_to_user", raise_exception=False
                         )
-                    )
 
-                # @MessageExceptionHandler
-                exc_type = handler_container.get_metadata(
-                    "message_exception", raise_exception=False
-                )
-                if exc_type is not None:
-                    self._exception_handlers[exc_type] = handler_container
+                        self._message_handlers.append(
+                            MessageHandlerInfo(
+                                destination_pattern=full_dest,
+                                handler_container=handler_container,
+                                send_to=send_to,
+                                send_to_user=send_to_user,
+                            )
+                        )
+
+                    # @SubscribeMapping
+                    subscribe_dest = handler_container.get_metadata(
+                        "subscribe_mapping", raise_exception=False
+                    )
+                    if subscribe_dest is not None:
+                        full_dest = (
+                            prefix + subscribe_dest if prefix else subscribe_dest
+                        )
+
+                        self._subscribe_handlers.append(
+                            SubscribeHandlerInfo(
+                                destination_pattern=full_dest,
+                                handler_container=handler_container,
+                            )
+                        )
+
+                    # @MessageExceptionHandler
+                    exc_type = handler_container.get_metadata(
+                        "message_exception", raise_exception=False
+                    )
+                    if exc_type is not None:
+                        self._exception_handlers[exc_type] = handler_container
 
     async def handle_session(self, session: WebSocketSession) -> None:
         """

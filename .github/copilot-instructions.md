@@ -63,11 +63,130 @@ uvicorn main:app.asgi --reload  # app = Application("name").scan(...).ready()
 
 ## 코드 패턴 및 컨벤션
 
+### Container-Element 패턴 (중요!)
+
+**핵심 원칙: 메타데이터는 무조건 Container의 Element를 통해서만 저장/조회**
+
+클래스나 메서드에 직접 속성을 저장하지 말고, 반드시 Container의 Element를 통해 메타데이터를 관리해야 합니다.
+
+#### ❌ 잘못된 방법 (클래스에 직접 저장)
+
+```python
+def MyDecorator(cls):
+    # ❌ 클래스에 직접 메타데이터 저장 - 절대 금지!
+    setattr(cls, "_my_meta", {"key": "value"})
+    return cls
+
+def get_meta(cls):
+    # ❌ 클래스 속성 직접 조회 - 절대 금지!
+    return getattr(cls, "_my_meta", {})
+```
+
+#### ✅ 올바른 방법 (Container Element 사용)
+
+```python
+from bloom.core.container import ComponentContainer
+from bloom.core.container.element import Element
+
+# 1. Element 클래스 정의
+class MyDecoratorElement(Element):
+    """메타데이터를 담는 Element"""
+
+    def __init__(self, value: str):
+        super().__init__()
+        # metadata 딕셔너리에 저장
+        self.metadata["my_key"] = value
+
+    @property
+    def value(self) -> str:
+        return self.metadata.get("my_key", "")
+
+# 2. 데코레이터에서 Element를 Container에 추가
+def MyDecorator(value: str):
+    def wrapper(cls):
+        container = ComponentContainer.get_or_create(cls)
+        container.add_elements(MyDecoratorElement(value))
+        return cls
+    return wrapper
+
+# 3. 메타데이터 확인 - Element 존재 여부
+def has_my_decorator(cls: type) -> bool:
+    container = ComponentContainer.get_container(cls)
+    if container is None:
+        return False
+    # Element 타입으로 확인
+    return container.has_element(MyDecoratorElement)
+
+# 4. 메타데이터 조회 - get_metadatas API 사용
+def get_my_value(cls: type) -> str:
+    container = ComponentContainer.get_container(cls)
+    if container is None:
+        return ""
+    # 메타데이터 키로 조회
+    values = container.get_metadatas("my_key", default="")
+    return values[0] if values else ""
+```
+
+#### Container API
+
+```python
+# Container 생성/조회
+container = ComponentContainer.get_or_create(cls)  # 없으면 생성
+container = ComponentContainer.get_container(cls)   # 없으면 None
+
+# Element 추가
+container.add_elements(MyElement(value))
+
+# Element 존재 확인
+has_it = container.has_element(MyElement)  # Element 타입(클래스)으로 확인
+
+# 메타데이터 조회
+values = container.get_metadatas("key", default="")  # 키로 조회, 리스트 반환
+value = values[0] if values else ""
+```
+
+#### 실제 사례: MessageController
+
+```python
+class MessageControllerElement(Element):
+    key = "message_controller"
+
+    def __init__(self, prefix: str = ""):
+        super().__init__()
+        self.metadata["prefix"] = prefix  # ✅ metadata에 저장
+
+    @property
+    def value(self) -> str:
+        return self.metadata.get("prefix", "")
+
+def MessageController(cls_or_prefix):
+    def _apply(cls, prefix):
+        container = ComponentContainer.get_or_create(cls)
+        container.add_elements(MessageControllerElement(prefix))  # ✅ Element로 저장
+        return cls
+    # ... 오버로딩 로직
+
+def is_message_controller(cls: type) -> bool:
+    container = ComponentContainer.get_container(cls)
+    if container is None:
+        return False
+    return container.has_element(MessageControllerElement)  # ✅ Element로 확인
+
+def get_prefix(cls: type) -> str:
+    container = ComponentContainer.get_container(cls)
+    if container is None:
+        return ""
+    prefixes = container.get_metadatas("prefix", default="")  # ✅ 메타데이터로 조회
+    return prefixes[0] if prefixes else ""
+```
+
 ### Container 시스템 확장 시
 
 1. `bloom/core/container/element.py`의 `Element` 상속하여 메타데이터 정의
 2. `bloom/core/container/base.py`의 `Container` 상속하여 새 컨테이너 타입 구현
 3. 데코레이터에서 `XxxContainer.get_or_create(target)` 패턴 사용
+4. **메타데이터는 반드시 Element의 metadata 딕셔너리에 저장**
+5. **조회는 `has_element(ElementClass)` 및 `get_metadatas(key)` 사용**
 
 ### 파라미터 리졸버 추가 시
 
@@ -209,3 +328,5 @@ bloom/
 - `pydantic>=2.0` 필수 의존성 (BaseModel 파라미터 바인딩)
 - Python 3.12+ 문법 사용 (Generic `[T]` 문법, `type[T]`)
 - 비동기 핸들러 지원 (`async def` 메서드 자동 감지)
+- **⚠️ 메타데이터 저장 금지 사항**: 클래스나 메서드에 `setattr`로 직접 메타데이터를 저장하지 말 것! 반드시 Container의 Element를 통해서만 저장/조회
+- **⚠️ HTTP path vs WebSocket STOMP path**: `@Controller`의 `@RequestMapping` path는 HTTP 전용이며, `@MessageMapping` 등의 STOMP path와는 완전히 별개입니다. `@MessageController`만 STOMP prefix를 제공합니다.

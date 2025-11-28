@@ -50,8 +50,24 @@
 | `@Authorize` | ✅ | 권한 검사 데코레이터 |
 | `@ErrorHandler` | ✅ | 예외 핸들러 데코레이터 |
 
+#### WebSocket & Messaging
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| WebSocket ASGI 통합 | ✅ | ASGI 3.0 WebSocket 지원 |
+| STOMP 프로토콜 | ✅ | STOMP over WebSocket |
+| `@MessageController` | ✅ | 메시지 컨트롤러 등록 |
+| `@MessageMapping` | ✅ | 메시지 핸들러 매핑 |
+| `@SendTo` | ✅ | Topic 브로드캐스트 |
+| `@SendToUser` | ✅ | 사용자별 메시지 전송 |
+| `@SubscribeMapping` | ✅ | 구독 핸들러 |
+| `@MessageExceptionHandler` | ✅ | 메시지 예외 처리 |
+| `SimpleBroker` | ✅ | 인메모리 메시지 브로커 |
+| `SimpMessagingTemplate` | ✅ | 메시지 전송 템플릿 |
+| `WebSocketSession` | ✅ | WebSocket 세션 관리 |
+| @Controller 메시징 지원 | ✅ | HTTP와 WebSocket 통합 |
+
 #### 테스트
-- **229개 테스트** 작성 완료
+- **245개 테스트** 작성 완료
 - 모든 테스트 통과 ✅
 
 ---
@@ -89,7 +105,9 @@
 - [ ] 조건부 빈 등록 (`@ConditionalOnProperty`)
 
 #### 🌐 Web 확장
-- [ ] WebSocket 지원
+- [x] WebSocket 지원 ✅
+- [x] STOMP 프로토콜 ✅
+- [x] 메시징 데코레이터 (@MessageMapping, @SendTo, @SendToUser) ✅
 - [x] SSE (Server-Sent Events) 지원 ✅
 - [x] Response Streaming ✅
 - [x] 파일 다운로드 (`FileResponse`) ✅
@@ -187,9 +205,9 @@
 
 | 항목 | 수치 |
 |------|------|
-| Python 파일 | ~35개 |
-| 테스트 케이스 | 214개 |
-| 코드 라인 | ~4,000줄 (추정) |
+| Python 파일 | ~45개 |
+| 테스트 케이스 | 245개 |
+| 코드 라인 | ~5,500줄 (추정) |
 | 외부 의존성 | 2개 (pydantic, uvicorn) |
 
 ---

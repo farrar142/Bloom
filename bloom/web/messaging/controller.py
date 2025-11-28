@@ -1,9 +1,11 @@
 """메시지 컨트롤러"""
 
-from typing import Any
+from typing import Any, overload, Callable, TypeVar
 
 from bloom.core.container import ComponentContainer
 from bloom.core.container.element import Element
+
+T = TypeVar("T", bound=type)
 
 
 class MessageControllerElement(Element):
@@ -12,14 +14,42 @@ class MessageControllerElement(Element):
     key = "message_controller"
 
     def __init__(self, prefix: str = ""):
-        self.prefix = prefix
+        super().__init__()
+        self.metadata["message_controller"] = prefix
+        self.metadata["prefix"] = prefix
 
     @property
     def value(self) -> str:
-        return self.prefix
+        return self.metadata.get("prefix", "")
 
 
-def MessageController(cls_or_prefix: type | str = ""):
+@overload
+def MessageController(cls_or_prefix: T) -> T:
+    """
+    @MessageController 형태 (인자 없이 사용)
+
+    사용 예시:
+        @MessageController
+        class ChatController:
+            pass
+    """
+    ...
+
+
+@overload
+def MessageController(cls_or_prefix: str = "") -> Callable[[T], T]:
+    """
+    @MessageController("/v1") 형태 (prefix 지정)
+
+    사용 예시:
+        @MessageController("/v1")
+        class ChatV1Controller:
+            pass
+    """
+    ...
+
+
+def MessageController(cls_or_prefix: T | str = "") -> T | Callable[[T], T]:
     """
     메시지 핸들러 컨트롤러
 
@@ -45,41 +75,38 @@ def MessageController(cls_or_prefix: type | str = ""):
     # @MessageController 형태 (인자 없이 사용)
     if isinstance(cls_or_prefix, type):
         cls = cls_or_prefix
-        return _apply_message_controller(cls, "")
+        return _apply_message_controller(cls, "")  # type: ignore
 
     # @MessageController("/v1") 형태 (prefix 지정)
     prefix = cls_or_prefix
 
-    def decorator(cls: type) -> type:
-        return _apply_message_controller(cls, prefix)
+    def decorator(cls: T) -> T:
+        return _apply_message_controller(cls, prefix)  # type: ignore
 
     return decorator
 
 
-def _apply_message_controller(cls: type, prefix: str) -> type:
+def _apply_message_controller(cls: T, prefix: str) -> T:
     """MessageController 데코레이터 적용"""
-    # @Component로 등록
+    # @Component로 등록하고 Element에 메타데이터 저장
     container = ComponentContainer.get_or_create(cls)
     container.add_elements(MessageControllerElement(prefix))
-
-    # 클래스에 메타데이터 저장
-    setattr(
-        cls,
-        "_message_controller_meta",
-        {
-            "prefix": prefix,
-        },
-    )
-
     return cls
 
 
 def is_message_controller(cls: type) -> bool:
     """주어진 클래스가 MessageController인지 확인"""
-    return hasattr(cls, "_message_controller_meta")
+    container = ComponentContainer.get_container(cls)
+    if container is None:
+        return False
+    return container.has_element(MessageControllerElement)
 
 
 def get_prefix(cls: type) -> str:
     """MessageController의 prefix 반환"""
-    meta = getattr(cls, "_message_controller_meta", {})
-    return meta.get("prefix", "")
+    container = ComponentContainer.get_container(cls)
+    if container is None:
+        return ""
+    # MessageControllerElement의 "prefix" 메타데이터 조회
+    prefixes = container.get_metadatas("prefix", default="")
+    return prefixes[0] if prefixes else ""

@@ -53,11 +53,11 @@ class MessageExceptionElement(Element[T]):
 
 
 # ============================================================================
-# 데코레이터 클래스들
+# 데코레이터 함수들
 # ============================================================================
 
 
-class MessageMapping:
+def MessageMapping(destination: str) -> Callable[[Callable], Callable]:
     """
     메시지 수신 핸들러 등록
 
@@ -72,22 +72,20 @@ class MessageMapping:
                 return message
 
     클라이언트에서 destination: /app/chat.send 로 SEND 시 호출됨.
+
+    Args:
+        destination: 메시지 목적지 패턴 (예: "/chat.send", "/chat.{roomId}")
     """
 
-    def __init__(self, destination: str):
-        """
-        Args:
-            destination: 메시지 목적지 패턴 (예: "/chat.send", "/chat.{roomId}")
-        """
-        self.destination = destination
-
-    def __call__(self, method: Callable) -> Callable:
+    def decorator(method: Callable) -> Callable:
         container = HandlerContainer.get_or_create(method)
-        container.add_elements(MessageMappingElement(self.destination))
+        container.add_elements(MessageMappingElement(destination))
         return method
 
+    return decorator
 
-class SendTo:
+
+def SendTo(destination: str) -> Callable[[Callable], Callable]:
     """
     핸들러 반환값을 특정 목적지로 발행
 
@@ -105,22 +103,20 @@ class SendTo:
         @SendTo("/topic/chat.{room_id}")  # message.room_id로 치환
         def handle_chat(self, message: ChatMessage) -> ChatMessage:
             return message
+
+    Args:
+        destination: 발행 목적지 (예: "/topic/chat", "/topic/chat.{room_id}")
     """
 
-    def __init__(self, destination: str):
-        """
-        Args:
-            destination: 발행 목적지 (예: "/topic/chat", "/topic/chat.{room_id}")
-        """
-        self.destination = destination
-
-    def __call__(self, method: Callable) -> Callable:
+    def decorator(method: Callable) -> Callable:
         container = HandlerContainer.get_or_create(method)
-        container.add_elements(SendToElement(self.destination))
+        container.add_elements(SendToElement(destination))
         return method
 
+    return decorator
 
-class SendToUser:
+
+def SendToUser(destination: str) -> Callable[[Callable], Callable]:
     """
     핸들러 반환값을 특정 사용자에게 전송
 
@@ -134,22 +130,20 @@ class SendToUser:
             return message  # 발신자에게만 전송
 
     내부적으로 /user/{userId}/queue/private 형식으로 변환됨.
+
+    Args:
+        destination: 사용자별 목적지 (예: "/queue/private", "/queue/errors")
     """
 
-    def __init__(self, destination: str):
-        """
-        Args:
-            destination: 사용자별 목적지 (예: "/queue/private", "/queue/errors")
-        """
-        self.destination = destination
-
-    def __call__(self, method: Callable) -> Callable:
+    def decorator(method: Callable) -> Callable:
         container = HandlerContainer.get_or_create(method)
-        container.add_elements(SendToUserElement(self.destination))
+        container.add_elements(SendToUserElement(destination))
         return method
 
+    return decorator
 
-class SubscribeMapping:
+
+def SubscribeMapping(destination: str) -> Callable[[Callable], Callable]:
     """
     구독 시 초기 데이터 전송
 
@@ -164,22 +158,22 @@ class SubscribeMapping:
                 return self.get_recent_messages(room_id)
 
     클라이언트가 /topic/chat.room1을 SUBSCRIBE 시 최근 메시지 반환.
+
+    Args:
+        destination: 구독 목적지 패턴
     """
 
-    def __init__(self, destination: str):
-        """
-        Args:
-            destination: 구독 목적지 패턴
-        """
-        self.destination = destination
-
-    def __call__(self, method: Callable) -> Callable:
+    def decorator(method: Callable) -> Callable:
         container = HandlerContainer.get_or_create(method)
-        container.add_elements(SubscribeMappingElement(self.destination))
+        container.add_elements(SubscribeMappingElement(destination))
         return method
 
+    return decorator
 
-class MessageExceptionHandler:
+
+def MessageExceptionHandler(
+    exception_type: type[Exception],
+) -> Callable[[Callable], Callable]:
     """
     메시지 처리 중 예외 핸들러
 
@@ -191,16 +185,14 @@ class MessageExceptionHandler:
             @MessageExceptionHandler(ValueError)
             def handle_value_error(self, error: ValueError) -> ErrorMessage:
                 return ErrorMessage(message=str(error))
+
+    Args:
+        exception_type: 처리할 예외 타입
     """
 
-    def __init__(self, exception_type: type[Exception]):
-        """
-        Args:
-            exception_type: 처리할 예외 타입
-        """
-        self.exception_type = exception_type
-
-    def __call__(self, method: Callable) -> Callable:
+    def decorator(method: Callable) -> Callable:
         container = HandlerContainer.get_or_create(method)
-        container.add_elements(MessageExceptionElement(self.exception_type))
+        container.add_elements(MessageExceptionElement(exception_type))
         return method
+
+    return decorator

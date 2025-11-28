@@ -15,7 +15,12 @@ from .decorators import (
     SubscribeMappingElement,
     MessageExceptionElement,
 )
-from .controller import MessageController, MessageControllerElement, is_message_controller, get_prefix
+from .controller import (
+    MessageController,
+    MessageControllerElement,
+    is_message_controller,
+    get_prefix,
+)
 from .template import SimpMessagingTemplate
 from .session import WebSocketSession, WebSocketDisconnect, WebSocketSessionManager
 from .handler import StompProtocolHandler
