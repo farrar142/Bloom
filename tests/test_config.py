@@ -280,3 +280,184 @@ class TestConfigurationPropertiesHelper:
 
         assert get_prefix(DatabaseConfig) == "app.database"
         assert get_prefix(NoPrefix) == ""
+
+
+class TestConfigurationEnvVars:
+    """환경변수 참조 테스트"""
+
+    def test_env_var_in_yaml(self, tmp_path):
+        """YAML 파일에서 환경변수 참조"""
+        import os
+
+        # 환경변수 설정
+        os.environ["TEST_DB_HOST"] = "production.db.com"
+        os.environ["TEST_DB_PORT"] = "3306"
+        os.environ["TEST_DEBUG"] = "true"
+
+        # YAML 파일 생성
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            """
+app:
+  name: MyApp
+  debug: ${TEST_DEBUG}
+database:
+  host: ${TEST_DB_HOST}
+  port: ${TEST_DB_PORT}
+  username: admin
+"""
+        )
+
+        @ConfigurationProperties("database")
+        @dataclass
+        class DatabaseConfig:
+            host: str = "localhost"
+            port: int = 5432
+            username: str = ""
+
+        @ConfigurationProperties("app")
+        @dataclass
+        class AppConfig:
+            name: str = ""
+            debug: bool = False
+
+        app = Application("test")
+        app.load_config(str(config_file), source_type="yaml")
+        app.scan(__name__).ready()
+
+        db_config = app.manager.get_instance(DatabaseConfig)
+        app_config = app.manager.get_instance(AppConfig)
+
+        assert db_config.host == "production.db.com"
+        assert db_config.port == 3306  # 문자열 "3306"이 int로 자동 변환
+        assert db_config.username == "admin"
+        assert app_config.debug is True  # 문자열 "true"가 bool로 자동 변환
+
+        # 환경변수 정리
+        del os.environ["TEST_DB_HOST"]
+        del os.environ["TEST_DB_PORT"]
+        del os.environ["TEST_DEBUG"]
+
+    def test_env_var_with_default_value(self, tmp_path):
+        """환경변수가 없을 때 기본값 사용"""
+        import os
+
+        # 환경변수가 없는 상태에서 기본값 테스트
+        assert "TEST_MISSING_VAR" not in os.environ
+
+        # YAML 파일 생성 (기본값 포함)
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            """
+database:
+  host: ${MISSING_HOST:localhost}
+  port: ${MISSING_PORT:5432}
+  username: ${MISSING_USER:defaultuser}
+"""
+        )
+
+        @ConfigurationProperties("database")
+        @dataclass
+        class DatabaseConfig:
+            host: str = ""
+            port: int = 0
+            username: str = ""
+
+        app = Application("test")
+        app.load_config(str(config_file), source_type="yaml")
+        app.scan(__name__).ready()
+
+        config = app.manager.get_instance(DatabaseConfig)
+        assert config.host == "localhost"
+        assert config.port == 5432
+        assert config.username == "defaultuser"
+
+    def test_env_var_partial_substitution(self, tmp_path):
+        """문자열 일부만 환경변수로 치환"""
+        import os
+
+        os.environ["TEST_DOMAIN"] = "example.com"
+        os.environ["TEST_PORT"] = "8080"
+
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            """
+server:
+  url: https://${TEST_DOMAIN}:${TEST_PORT}/api
+  description: Server at ${TEST_DOMAIN}
+"""
+        )
+
+        @ConfigurationProperties("server")
+        @dataclass
+        class ServerConfig:
+            url: str = ""
+            description: str = ""
+
+        app = Application("test")
+        app.load_config(str(config_file), source_type="yaml")
+        app.scan(__name__).ready()
+
+        config = app.manager.get_instance(ServerConfig)
+        assert config.url == "https://example.com:8080/api"
+        assert config.description == "Server at example.com"
+
+        del os.environ["TEST_DOMAIN"]
+        del os.environ["TEST_PORT"]
+
+    def test_env_var_in_dict(self):
+        """딕셔너리에서도 환경변수 참조 가능"""
+        import os
+
+        os.environ["TEST_APP_NAME"] = "DictApp"
+
+        @ConfigurationProperties("app")
+        @dataclass
+        class AppConfig:
+            name: str = ""
+
+        app = Application("test")
+        app.load_config({"app": {"name": "${TEST_APP_NAME}"}}, source_type="dict")
+        app.scan(__name__).ready()
+
+        config = app.manager.get_instance(AppConfig)
+        assert config.name == "DictApp"
+
+        del os.environ["TEST_APP_NAME"]
+
+    def test_env_var_nested_dict(self, tmp_path):
+        """중첩된 딕셔너리에서 환경변수 참조"""
+        import os
+
+        os.environ["TEST_REDIS_HOST"] = "redis.local"
+        os.environ["TEST_REDIS_PORT"] = "6379"
+
+        config_file = tmp_path / "config.yml"
+        config_file.write_text(
+            """
+cache:
+  redis:
+    host: ${TEST_REDIS_HOST}
+    port: ${TEST_REDIS_PORT}
+    ttl: 3600
+"""
+        )
+
+        @ConfigurationProperties("cache.redis")
+        @dataclass
+        class RedisConfig:
+            host: str = ""
+            port: int = 0
+            ttl: int = 0
+
+        app = Application("test")
+        app.load_config(str(config_file), source_type="yaml")
+        app.scan(__name__).ready()
+
+        config = app.manager.get_instance(RedisConfig)
+        assert config.host == "redis.local"
+        assert config.port == 6379
+        assert config.ttl == 3600
+
+        del os.environ["TEST_REDIS_HOST"]
+        del os.environ["TEST_REDIS_PORT"]

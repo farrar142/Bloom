@@ -2,6 +2,7 @@
 
 import os
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,9 +12,21 @@ class ConfigurationLoader:
 
     def __init__(self):
         self._config: dict[str, Any] = {}
+        # 환경변수 참조 패턴: ${VAR_NAME} 또는 ${VAR_NAME:default_value}
+        self._env_pattern = re.compile(r"\$\{([^}:]+)(?::([^}]*))?\}")
 
-    def load_from_dict(self, config_dict: dict[str, Any]) -> "ConfigurationLoader":
-        """딕셔너리에서 설정 로드"""
+    def load_from_dict(
+        self, config_dict: dict[str, Any], resolve_env: bool = True
+    ) -> "ConfigurationLoader":
+        """
+        딕셔너리에서 설정 로드
+
+        Args:
+            config_dict: 설정 딕셔너리
+            resolve_env: 환경변수 참조를 해석할지 여부 (기본값: True)
+        """
+        if resolve_env:
+            config_dict = self._resolve_env_vars(config_dict)
         self._merge_config(config_dict)
         return self
 
@@ -28,8 +41,16 @@ class ConfigurationLoader:
             self._merge_config(config_dict)
         return self
 
-    def load_from_yaml(self, path: str | Path) -> "ConfigurationLoader":
-        """YAML 파일에서 설정 로드"""
+    def load_from_yaml(
+        self, path: str | Path, resolve_env: bool = True
+    ) -> "ConfigurationLoader":
+        """
+        YAML 파일에서 설정 로드
+
+        Args:
+            path: YAML 파일 경로
+            resolve_env: 환경변수 참조를 해석할지 여부 (기본값: True)
+        """
         try:
             import yaml
         except ImportError:
@@ -44,6 +65,8 @@ class ConfigurationLoader:
         with open(path, "r", encoding="utf-8") as f:
             config_dict = yaml.safe_load(f)
             if config_dict:
+                if resolve_env:
+                    config_dict = self._resolve_env_vars(config_dict)
                 self._merge_config(config_dict)
         return self
 
@@ -167,3 +190,45 @@ class ConfigurationLoader:
 
         # 문자열
         return value
+
+    def _resolve_env_vars(self, obj: Any) -> Any:
+        """
+        환경변수 참조를 재귀적으로 해석
+
+        지원 형식:
+            - ${ENV_VAR}: 환경변수 값으로 치환 (없으면 빈 문자열)
+            - ${ENV_VAR:default}: 환경변수 값으로 치환 (없으면 default 사용)
+
+        예:
+            "database.host: ${DB_HOST:localhost}" -> "database.host: localhost" (DB_HOST 없을 때)
+        """
+        if isinstance(obj, dict):
+            return {key: self._resolve_env_vars(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._resolve_env_vars(item) for item in obj]
+        elif isinstance(obj, str):
+            return self._resolve_env_var_string(obj)
+        else:
+            return obj
+
+    def _resolve_env_var_string(self, text: str) -> Any:
+        """
+        문자열 내 환경변수 참조 해석
+
+        Returns:
+            환경변수가 전체 문자열이면 타입 변환 시도, 부분이면 문자열 치환
+        """
+
+        def replace_match(match: re.Match) -> str:
+            var_name = match.group(1)
+            default_value = match.group(2) if match.group(2) is not None else ""
+            return os.environ.get(var_name, default_value)
+
+        # 전체가 하나의 환경변수 참조인 경우 (타입 변환 시도)
+        full_match = self._env_pattern.fullmatch(text)
+        if full_match:
+            resolved = replace_match(full_match)
+            return self._parse_value(resolved)
+
+        # 부분 치환 (문자열 유지)
+        return self._env_pattern.sub(replace_match, text)
