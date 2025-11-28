@@ -10,6 +10,7 @@ from .core import (
     PreDestroy,
     Lazy,
 )
+from .logging import logger, get_logger, configure_logging
 from .web import (
     HttpRequest,
     HttpResponse,
@@ -34,6 +35,10 @@ __all__ = [
     "PostConstruct",
     "PreDestroy",
     "Lazy",
+    # Logging
+    "logger",
+    "get_logger",
+    "configure_logging",
     # Web
     "HttpRequest",
     "HttpResponse",
