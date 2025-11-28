@@ -80,3 +80,7 @@ dmypy.json
 .uv/
 uv.lock
 .python-version
+
+# Generated files
+*.txt
+!requirements.txt
