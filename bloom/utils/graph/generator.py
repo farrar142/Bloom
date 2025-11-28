@@ -4,7 +4,12 @@ from datetime import datetime
 from pathlib import Path
 
 from .types import GraphData, DiamondPattern
-from .analyzer import analyze_multi_level_dependencies, analyze_diamond_dependencies
+from .analyzer import (
+    analyze_multi_level_dependencies,
+    analyze_diamond_dependencies,
+    analyze_initialization_order,
+    analyze_waiting_dependencies,
+)
 from .renderer import (
     render_header,
     render_summary,
@@ -14,6 +19,7 @@ from .renderer import (
     render_lazy_dependencies,
     render_multi_level_chains,
     render_diamond_patterns,
+    render_initialization_order,
     render_dependency_matrix,
     render_footer,
 )
@@ -75,12 +81,17 @@ def generate_graph(
     all_types = set(data.containers.keys())
     multi_level_chains = analyze_multi_level_dependencies(data.dep_graph, all_types)
     diamond_patterns = analyze_diamond_dependencies(data.dep_graph)
+    init_order = analyze_initialization_order(data.dep_graph, all_types)
+    waiting_deps = analyze_waiting_dependencies(data.dep_graph, all_types)
 
     # 다중레벨 의존성
     lines.extend(render_multi_level_chains(multi_level_chains))
 
     # 다이아몬드 의존성
     lines.extend(render_diamond_patterns(diamond_patterns))
+
+    # 초기화 순서 및 의존성 대기
+    lines.extend(render_initialization_order(init_order, waiting_deps))
 
     # 의존성 매트릭스
     lines.extend(render_dependency_matrix(data))

@@ -132,3 +132,97 @@ def analyze_diamond_dependencies(
                         )
 
     return diamonds
+
+
+def analyze_initialization_order(
+    dep_graph: dict[str, set[str]],
+    all_types: set[str],
+) -> list[tuple[int, list[str]]]:
+    """
+    토폴로지 정렬로 초기화 순서 분석 (순수 함수)
+    
+    같은 레벨의 컴포넌트들은 병렬 초기화 가능
+    
+    Args:
+        dep_graph: 의존성 그래프 (타입 이름 -> 의존 타입 이름들)
+        all_types: 모든 타입 이름 집합
+        
+    Returns:
+        list[tuple[int, list[str]]]: (레벨, 해당 레벨 타입들) 리스트
+        레벨 0이 먼저 초기화, 레벨 1은 레벨 0 이후 초기화 가능...
+    """
+    # 역방향 그래프 (누가 나에게 의존하는가)
+    reverse_graph: dict[str, set[str]] = {t: set() for t in all_types}
+    for t, deps in dep_graph.items():
+        for dep in deps:
+            if dep in reverse_graph:
+                reverse_graph[dep].add(t)
+    
+    # 진입 차수 계산 (내가 의존하는 타입 수)
+    in_degree: dict[str, int] = {}
+    for t in all_types:
+        in_degree[t] = len(dep_graph.get(t, set()) & all_types)
+    
+    # Kahn's algorithm으로 레벨별 정렬
+    levels: list[tuple[int, list[str]]] = []
+    remaining = set(all_types)
+    level = 0
+    
+    while remaining:
+        # 진입 차수가 0인 노드들 (의존성이 모두 해결된 노드)
+        ready = [t for t in remaining if in_degree.get(t, 0) == 0]
+        
+        if not ready:
+            # 순환 의존성 - 남은 것들은 마지막 레벨로
+            levels.append((level, sorted(remaining)))
+            break
+        
+        levels.append((level, sorted(ready)))
+        
+        # 처리된 노드 제거 및 진입 차수 업데이트
+        for t in ready:
+            remaining.discard(t)
+            # 나에게 의존하는 타입들의 진입 차수 감소
+            for dependent in reverse_graph.get(t, set()):
+                if dependent in in_degree:
+                    in_degree[dependent] -= 1
+        
+        level += 1
+    
+    return levels
+
+
+def analyze_waiting_dependencies(
+    dep_graph: dict[str, set[str]],
+    all_types: set[str],
+) -> dict[str, list[str]]:
+    """
+    각 타입이 초기화되기 위해 대기해야 하는 의존성 분석
+    
+    Args:
+        dep_graph: 의존성 그래프
+        all_types: 모든 타입 이름 집합
+        
+    Returns:
+        dict[str, list[str]]: 타입 -> 대기해야 하는 의존성 리스트 (초기화 순서대로)
+    """
+    # 초기화 순서 계산
+    levels = analyze_initialization_order(dep_graph, all_types)
+    
+    # 타입 -> 레벨 매핑
+    type_to_level: dict[str, int] = {}
+    for level, types in levels:
+        for t in types:
+            type_to_level[t] = level
+    
+    # 각 타입별로 대기해야 하는 의존성 (레벨 순서대로)
+    waiting: dict[str, list[str]] = {}
+    
+    for t in all_types:
+        deps = dep_graph.get(t, set()) & all_types
+        if deps:
+            # 의존성을 레벨 순으로 정렬 (먼저 초기화되어야 하는 순서)
+            sorted_deps = sorted(deps, key=lambda d: (type_to_level.get(d, 0), d))
+            waiting[t] = sorted_deps
+    
+    return waiting

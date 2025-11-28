@@ -331,6 +331,66 @@ def render_diamond_patterns(patterns: list[DiamondPattern]) -> list[str]:
     return lines
 
 
+def render_initialization_order(
+    levels: list[tuple[int, list[str]]],
+    waiting: dict[str, list[str]],
+) -> list[str]:
+    """초기화 순서 및 의존성 대기 관계 렌더링"""
+    if not levels:
+        return []
+
+    lines = [
+        "## Initialization Order (Dependency Resolution)",
+        "-" * 40,
+        "",
+        "Components grouped by initialization level:",
+        "(Level N waits for all Level N-1 components to be ready)",
+        "",
+    ]
+
+    # 레벨별 초기화 순서
+    for level, types in levels:
+        if level == 0:
+            lines.append(f"  Level {level} (No dependencies - initialize first):")
+        else:
+            lines.append(f"  Level {level} (Waiting for Level {level - 1}):")
+        
+        for t in types:
+            deps = waiting.get(t, [])
+            if deps:
+                dep_str = ", ".join(deps[:3])
+                if len(deps) > 3:
+                    dep_str += f", +{len(deps) - 3} more"
+                lines.append(f"    • {t}")
+                lines.append(f"      └─ waits for: {dep_str}")
+            else:
+                lines.append(f"    • {t}")
+        lines.append("")
+
+    # 시각적 타임라인
+    lines.append("  Initialization Timeline:")
+    lines.append("")
+    
+    max_level = max(level for level, _ in levels) if levels else 0
+    
+    for level, types in levels:
+        # 프로그레스 바 스타일
+        progress = "█" * (level + 1) + "░" * (max_level - level)
+        type_count = len(types)
+        sample_types = ", ".join(types[:3])
+        if len(types) > 3:
+            sample_types += f", ..."
+        
+        lines.append(f"  [{progress}] Level {level}: {type_count} component(s)")
+        lines.append(f"            {sample_types}")
+        
+        if level < max_level:
+            lines.append("            ↓")
+    
+    lines.append("")
+    return lines
+
+
 def render_dependency_matrix(data: GraphData) -> list[str]:
     """의존성 매트릭스 렌더링"""
     lines = [
