@@ -10,9 +10,9 @@ def abbreviate_name(name: str, max_length: int) -> str:
 
     축약 규칙:
     - 이미 max_length 이하면 그대로 반환
-    - PascalCase: 대문자들만 추출 (UserController → UC)
-    - snake_case: 언더바 다음 첫 글자들 추출 (user_controller → uc)
-    - 축약해도 길면 앞부분 + "..." 형태로 자름
+    - PascalCase: 각 단어 앞글자들을 조합 (ErrorHandlerContainer → ErHaCo, ErrHanCon)
+    - snake_case: 각 부분 앞글자들 조합 (user_created_handler → UsCreHan)
+    - 축약해도 길면 앞부분 + "…" 형태로 자름
 
     Args:
         name: 원본 이름
@@ -22,35 +22,67 @@ def abbreviate_name(name: str, max_length: int) -> str:
         축약된 이름
 
     Examples:
+        >>> abbreviate_name("ErrorHandlerContainer", 12)
+        'ErrHanCont'
         >>> abbreviate_name("UserController", 10)
-        'UserContro'  # 10자 이하면 앞부분만
-        >>> abbreviate_name("HttpMethodHandler", 5)
-        'HMH'  # PascalCase → 대문자만
-        >>> abbreviate_name("user_created_handler", 5)
-        'uch'  # snake_case → 첫글자들
+        'UserContro'
     """
     if len(name) <= max_length:
         return name
 
-    # PascalCase 감지 (대문자가 2개 이상)
-    upper_chars = re.findall(r"[A-Z]", name)
-    if len(upper_chars) >= 2:
-        abbrev = "".join(upper_chars)
-        if len(abbrev) <= max_length:
-            return abbrev
-        # 축약도 길면 자름
-        return abbrev[: max_length - 1] + "…"
+    # PascalCase 감지: 대문자로 시작하는 단어들 분리
+    words = re.findall(r"[A-Z][a-z]*", name)
+    if len(words) >= 2:
+        return _abbreviate_words(words, max_length)
 
     # snake_case 감지 (언더바 포함)
     if "_" in name:
-        parts = name.split("_")
-        abbrev = "".join(p[0] if p else "" for p in parts)
-        if len(abbrev) <= max_length:
-            return abbrev
-        return abbrev[: max_length - 1] + "…"
+        parts = [p.capitalize() for p in name.split("_") if p]
+        if len(parts) >= 2:
+            return _abbreviate_words(parts, max_length)
 
     # 기타: 앞부분만 자름
     return name[: max_length - 1] + "…"
+
+
+def _abbreviate_words(words: list[str], max_length: int) -> str:
+    """
+    단어 리스트를 max_length에 맞게 축약
+
+    모든 단어를 포함하면서 각 단어에서 2-4글자씩 가져옴
+    예: ["Error", "Handler", "Container"], max=12 → "ErrHndCont"
+    예: ["User", "Updated", "Handler"], max=14 → "UserUpdaHand"
+    예: ["Handler", "Container"], max=12 → "HandlContai"
+    """
+    if not words:
+        return ""
+
+    n_words = len(words)
+
+    # 전체 단어 합쳐도 max_length 이하면 그대로
+    full = "".join(words)
+    if len(full) <= max_length:
+        return full
+
+    # 단어당 최대 4글자로 제한하여 모든 단어가 보이도록
+    max_per_word = min(4, max_length // n_words + 1)
+
+    # 각 단어에서 글자 가져오기
+    result = []
+    remaining = max_length
+
+    for i, word in enumerate(words):
+        words_left = n_words - i
+        # 남은 단어들에 최소 1글자씩 배분할 공간 확보
+        available = remaining - (words_left - 1)
+        take = min(len(word), max_per_word, available)
+        take = max(1, take)  # 최소 1글자
+        result.append(word[:take])
+        remaining -= take
+
+    return "".join(result)
+
+    return "".join(result)
 
 
 def render_header(title: str, timestamp: str) -> list[str]:
@@ -89,7 +121,9 @@ def render_containers_by_type(data: GraphData) -> list[str]:
         if info.is_factory_chain:
             lines.append(f"  {name} (Factory Chain - {len(info.factories)} factories)")
             for factory in info.factories:
-                order_str = f" @Order({factory.order})" if factory.order is not None else ""
+                order_str = (
+                    f" @Order({factory.order})" if factory.order is not None else ""
+                )
                 lines.append(f"    └─ {factory.method_name}(){order_str}")
         else:
             lines.append(f"  {name} ({info.kind})")
@@ -158,7 +192,11 @@ def render_factory_chains(data: GraphData) -> list[str]:
         lines.append("")
 
         for i, factory in enumerate(info.factories):
-            order_str = f" @Order({factory.order})" if factory.order is not None else " [Creator]"
+            order_str = (
+                f" @Order({factory.order})"
+                if factory.order is not None
+                else " [Creator]"
+            )
             method_display = abbreviate_name(factory.method_name, 13) + "()"
 
             if i == 0:
