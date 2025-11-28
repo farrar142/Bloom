@@ -93,12 +93,6 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
         """HandlerContainer 자체를 인스턴스로 반환"""
         return self
 
-    def get_qual_name(self) -> str:
-        """handler_key 기반으로 고유 qualifier 생성"""
-        if self.handler_key is not None:
-            return f"handler:{self.handler_key}"
-        return f"handler:{self.handler_method.__name__}"
-
     async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """핸들러 메서드 호출 (비동기)
 
@@ -133,5 +127,5 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
             setattr(handler_method, "__container__", container)
             # 현재 활성 manager가 있으면 자동 등록
             if manager := try_get_current_manager():
-                manager.register_container(container, container.get_qual_name())
+                manager.register_container(container)
         return container

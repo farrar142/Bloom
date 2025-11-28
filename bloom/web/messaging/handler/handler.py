@@ -106,9 +106,9 @@ class StompProtocolHandler:
         """
         self._container_manager = manager
 
-        # get_all_containers()는 dict[type, dict[str, Container]]를 반환
-        for target_type, qualifier_containers in manager.get_all_containers().items():
-            for qualifier, container in qualifier_containers.items():
+        # get_all_containers()는 dict[type, list[Container]]를 반환
+        for containers in manager.get_all_containers().values():
+            for container in containers:
                 target = container.target
 
                 # ComponentContainer 타입만 처리 (Component, Controller, MessageController 모두 포함)

@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 
 from bloom import Application, Component
-from bloom.core.decorators import Factory, Qualifier
+from bloom.core.decorators import Factory
 from bloom.web import Controller, Get
 from bloom.web.static import StaticFiles, StaticFilesContainer, StaticFilesManager
 from bloom.web.http import HttpRequest
@@ -340,12 +340,10 @@ class TestStaticFilesContainer:
         @Component
         class BadStaticConfig:
             @Factory
-            @Qualifier("first")
             def first_container(self) -> StaticFilesContainer:
                 return StaticFilesContainer().add("/static", static_dir)
 
             @Factory
-            @Qualifier("second")
             def second_container(self) -> StaticFilesContainer:
                 return StaticFilesContainer().add("/assets", assets_dir)
 

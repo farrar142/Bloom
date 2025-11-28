@@ -11,7 +11,7 @@ from .properties import is_configuration_properties, get_prefix
 class ConfigManager:
     """
     설정 관리자
-    
+
     설정 로드, 바인딩, ConfigurationProperties 인스턴스 생성을 관리합니다.
     """
 
@@ -77,14 +77,14 @@ class ConfigManager:
     def bind_configuration_properties(self, container_manager) -> None:
         """
         ConfigurationProperties를 바인딩하여 인스턴스 생성
-        
+
         Args:
             container_manager: ContainerManager 인스턴스
         """
         config_dict = self._loader.get_config()
 
-        for qual_containers in container_manager.get_all_containers().values():
-            for qualifier, container in qual_containers.items():
+        for containers in container_manager.get_all_containers().values():
+            for container in containers:
                 target = container.target
 
                 # ConfigurationProperties인지 확인
@@ -98,18 +98,16 @@ class ConfigManager:
                 instance = self._binder.bind(config_dict, target, prefix)
 
                 # 인스턴스 등록
-                container_manager.set_instance(target, instance, qualifier=qualifier)
+                container_manager.set_instance(target, instance)
 
-    def bind(
-        self, target_class: type, prefix: str = ""
-    ) -> Any:
+    def bind(self, target_class: type, prefix: str = "") -> Any:
         """
         특정 클래스에 설정 바인딩
-        
+
         Args:
             target_class: 바인딩할 클래스
             prefix: 설정 prefix
-            
+
         Returns:
             바인딩된 인스턴스
         """

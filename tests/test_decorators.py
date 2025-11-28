@@ -1,4 +1,4 @@
-"""데코레이터 테스트 - Component, Qualifier, Factory, Handler"""
+"""데코레이터 테스트 - Component, Factory, Handler"""
 
 import pytest
 from bloom.core import (
@@ -30,15 +30,6 @@ class TestComponent:
         container = getattr(Service, "__container__")
         deps = container.get_dependencies()
         assert Repository in deps
-
-
-class TestQualifier:
-    """@Qualifier 데코레이터 테스트"""
-
-    def test_default_qualifier(self):
-        """기본 qualifier는 'default'"""
-        container = getattr(Repository, "__container__")
-        assert container.get_qual_name() == "default"
 
 
 class TestFactory:

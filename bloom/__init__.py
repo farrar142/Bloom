@@ -4,7 +4,6 @@ from .application import Application
 from .core import (
     ContainerManager,
     Component,
-    Qualifier,
     Factory,
     Handler,
     PostConstruct,
@@ -30,7 +29,6 @@ __all__ = [
     # Core
     "ContainerManager",
     "Component",
-    "Qualifier",
     "Factory",
     "Handler",
     "PostConstruct",

@@ -60,11 +60,6 @@ class ErrorHandlerContainer[**P, R](HandlerContainer[P, R]):
         """이 핸들러가 주어진 예외를 처리할 수 있는지 확인"""
         return isinstance(exception, self.exception_type)
 
-    def get_qual_name(self) -> str:
-        """exception_type 기반으로 고유 qualifier 생성"""
-        owner_name = self.owner_cls.__name__ if self.owner_cls else "global"
-        return f"error_handler:{owner_name}:{self.exception_type.__name__}"
-
 
 def ErrorHandler[T](
     exception_type: type[Exception],

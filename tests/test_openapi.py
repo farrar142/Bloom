@@ -527,6 +527,7 @@ class TestHttpResponseToBytes:
         # JSON 직렬화 시 개행문자가 이스케이프되어야 함
         assert b"\\n" in body_bytes
         import json
+
         assert json.loads(body_bytes) == data
 
     def test_plain_text_content(self):

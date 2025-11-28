@@ -82,8 +82,7 @@ class LifecycleManager:
             containers_order: 초기화 순서대로 정렬된 컨테이너 리스트 (역순으로 호출됨)
         """
         for container in reversed(containers_order):
-            instance = self.manager.get_instance(
-                container.target, raise_exception=False
-            )
+            # Container의 캐시된 인스턴스를 직접 가져옴
+            instance = container._get_cached_instance()
             if instance:
                 self.invoke_pre_destroy(container, instance)

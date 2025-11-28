@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from pathlib import Path
 
 if TYPE_CHECKING:
-    from .core.container import Container
+    from .core.container import Container, FactoryContainer
     from .web.messaging.manager import WebSocketManager
 
 from .core.manager import ContainerManager, set_current_manager, try_get_current_manager
@@ -44,6 +44,7 @@ class Application:
         self._is_ready = False
         self._config_manager = ConfigManager()
         self._websocket_manager: "WebSocketManager | None" = None
+        self._initialized_containers: list["Container"] = []
         # 생성 시점에 현재 매니저로 설정 (데코레이터 자동 등록 지원)
         set_current_manager(self.manager)
 
@@ -169,28 +170,52 @@ class Application:
         """WebSocket 초기화 (@EnableWebSocket 컴포넌트가 있는 경우)"""
         self.websocket_manager.initialize(self.manager)
 
+    def _validate_factory_chains(self, all_containers: list["Container"]) -> None:
+        """
+        Factory Chain 유효성 검증
+
+        Ambiguous Provider 패턴 감지 → 에러
+        """
+        from bloom.core.utils import detect_factory_chains, validate_factory_chains
+
+        # Factory Chain 감지
+        chains = detect_factory_chains(all_containers)
+
+        # Ambiguous Provider 검증 (에러 발생 가능)
+        validate_factory_chains(chains)
+
     def _initialize_containers(self) -> None:
-        """모든 컨테이너를 토폴로지컬 순서로 초기화 (순차적)"""
+        """모든 컨테이너를 토폴로지컬 순서로 초기화 (순차적)
+
+        1. 모든 컨테이너를 의존성 그래프로 토폴로지 정렬
+        2. 같은 타입의 Factory가 여러 개면 @Order 또는 의존성으로 순서 결정
+        3. 정렬된 순서대로 초기화 - Factory Chain은 자동으로 처리됨
+        """
         from bloom.core.lazy import is_lazy_component
 
-        # 모든 컨테이너를 (qualifier, container) 튜플 리스트로 변환
-        all_containers: list[tuple[str, "Container"]] = []
-        for qual_containers in self.manager.get_all_containers().values():
-            for qualifier, container in qual_containers.items():
-                all_containers.append((qualifier, container))
+        # 모든 컨테이너를 리스트로 변환
+        all_containers: list["Container"] = []
+        for containers in self.manager.get_all_containers().values():
+            all_containers.extend(containers)
 
-        # 토폴로지컬 정렬
+        # Factory Chain 유효성 검증 (Ambiguous Provider 감지)
+        self._validate_factory_chains(all_containers)
+
+        # 모든 컨테이너를 토폴로지컬 정렬 (Factory Chain 포함)
+        # topological_sort가 같은 타입 내에서 @Order로 정렬
         sorted_containers = topological_sort(all_containers)
 
         # 정렬된 순서로 초기화 (초기화 순서 저장)
-        self._initialized_containers = sorted_containers
+        self._initialized_containers = []
 
-        for qualifier, container in sorted_containers:
+        for container in sorted_containers:
             # @Lazy 컴포넌트는 즉시 초기화하지 않음 (접근 시 LazyProxy가 초기화)
             if is_lazy_component(container):
                 continue
+
             instance = container.initialize_instance()
-            self.manager.set_instance(container.target, instance, qualifier=qualifier)
+            self.manager.set_instance(container.target, instance)
+            self._initialized_containers.append(container)
 
     def _initialize_containers_parallel(self) -> None:
         """
@@ -200,14 +225,20 @@ class Application:
         - Level 0: 의존성 없는 컨테이너들 (동시 초기화)
         - Level 1: Level 0 완료 후, Level 0에만 의존하는 컨테이너들 (동시 초기화)
         - ...
+
+        Note: Factory Chain의 경우 같은 타입의 Factory들이 순차적으로 실행됩니다.
+              병렬 초기화에서는 Factory Chain이 올바르게 동작하지 않을 수 있습니다.
+              복잡한 Factory Chain이 있는 경우 순차 초기화(parallel=False)를 권장합니다.
         """
         from bloom.core.lazy import is_lazy_component
 
-        # 모든 컨테이너를 (qualifier, container) 튜플 리스트로 변환
-        all_containers: list[tuple[str, "Container"]] = []
-        for qual_containers in self.manager.get_all_containers().values():
-            for qualifier, container in qual_containers.items():
-                all_containers.append((qualifier, container))
+        # 모든 컨테이너를 리스트로 변환
+        all_containers: list["Container"] = []
+        for containers in self.manager.get_all_containers().values():
+            all_containers.extend(containers)
+
+        # Factory Chain 유효성 검증
+        self._validate_factory_chains(all_containers)
 
         # 레벨별로 그룹화
         levels = group_by_dependency_level(all_containers)
@@ -216,13 +247,13 @@ class Application:
         self._initialized_containers = []
 
         def init_container(
-            qualifier: str, container: "Container"
-        ) -> tuple[str, "Container", Any] | None:
+            container: "Container",
+        ) -> tuple["Container", Any] | None:
             """단일 컨테이너 초기화 (ThreadPool에서 실행)"""
             if is_lazy_component(container):
                 return None
             instance = container.initialize_instance()
-            return (qualifier, container, instance)
+            return (container, instance)
 
         # 레벨별로 병렬 초기화
         for level_containers in levels:
@@ -232,21 +263,16 @@ class Application:
             # ThreadPoolExecutor로 같은 레벨 컨테이너들 동시 초기화
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures = {
-                    executor.submit(init_container, qualifier, container): (
-                        qualifier,
-                        container,
-                    )
-                    for qualifier, container in level_containers
+                    executor.submit(init_container, container): container
+                    for container in level_containers
                 }
 
                 for future in concurrent.futures.as_completed(futures):
                     result = future.result()
                     if result:
-                        qualifier, container, instance = result
-                        self._initialized_containers.append((qualifier, container))
-                        self.manager.set_instance(
-                            container.target, instance, qualifier=qualifier
-                        )
+                        container, instance = result
+                        self._initialized_containers.append(container)
+                        self.manager.set_instance(container.target, instance)
 
     def shutdown(self) -> "Application":
         """
@@ -265,9 +291,8 @@ class Application:
         set_current_manager(self.manager)
 
         # LifecycleManager를 통해 역순으로 PreDestroy 호출
-        if hasattr(self, "_initialized_containers"):
-            containers = [container for _, container in self._initialized_containers]
-            self.manager.lifecycle.invoke_all_pre_destroy(containers)
+        if self._initialized_containers:
+            self.manager.lifecycle.invoke_all_pre_destroy(self._initialized_containers)
 
         self._is_ready = False
         return self

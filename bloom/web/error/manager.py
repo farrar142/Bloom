@@ -65,8 +65,8 @@ class ErrorHandlerManager(AbstractManager[ErrorHandlerRegistry]):
 
         container_manager = get_current_manager()
 
-        for qual_containers in container_manager.get_all_containers().values():
-            for container in qual_containers.values():
+        for containers in container_manager.get_all_containers().values():
+            for container in containers:
                 if not isinstance(container, ErrorHandlerContainer):
                     continue
 

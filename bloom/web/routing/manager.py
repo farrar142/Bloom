@@ -75,8 +75,8 @@ class RouteManager(AbstractManager[RouteRegistry]):
         self._registry = RouteRegistry()
 
         # 2. Controller prefix 수집
-        for qual_containers in container_manager.get_all_containers().values():
-            for container in qual_containers.values():
+        for containers in container_manager.get_all_containers().values():
+            for container in containers:
                 if isinstance(container, ControllerContainer):
                     prefixes = container.get_metadatas("request_mapping", default="")
                     self._controller_prefixes[container.target] = (
@@ -84,8 +84,8 @@ class RouteManager(AbstractManager[RouteRegistry]):
                     )
 
         # 3. HttpMethodHandler 수집 및 RouteEntry 생성
-        for qual_containers in container_manager.get_all_containers().values():
-            for container in qual_containers.values():
+        for containers in container_manager.get_all_containers().values():
+            for container in containers:
                 if isinstance(container, HttpMethodHandler):
                     # owner_cls의 RequestMapping prefix 가져오기
                     prefix = ""

@@ -1,5 +1,6 @@
 """Bloom Framework 예제 앱 - uvicorn 멀티워커 테스트용"""
 
+from typing import Annotated, Literal
 from bloom import Application, Component, Controller, Get, Post, RequestMapping
 from bloom.core.decorators import Factory
 from bloom.web.http import HttpResponse
@@ -69,13 +70,29 @@ class HealthController:
 
 
 @Component
-class OpenApiConfig:
+class OpenApiConfiguration:
     @Factory
     def openapi_config(self) -> OpenAPIConfig:
         return OpenAPIConfig(title="My API")
+
+
+class AvailableInitialize:
+    val = 1
+    pass
 
 
 # 애플리케이션 생성
 import example_app as module
 
 app = Application("example").scan(module).ready()
+
+
+class Qualifier[T, R]:
+    def __class_getitem__(cls, arg1: T, arg2: R = None):
+        if arg2 is None:
+            return Annotated[cls, arg1]
+        return Annotated[cls, arg2]
+
+
+def test(a: Qualifier[Literal[1], str]):
+    pass

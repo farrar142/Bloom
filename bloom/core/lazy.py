@@ -35,11 +35,10 @@ class LazyProxy:
     ContainerManager를 통해 인스턴스를 해결합니다.
     """
 
-    __slots__ = ("_lp_container", "_lp_qualifier", "_lp_instance")
+    __slots__ = ("_lp_container", "_lp_instance")
 
-    def __init__(self, container: Container, qualifier: str = "default"):
+    def __init__(self, container: Container):
         object.__setattr__(self, "_lp_container", container)
-        object.__setattr__(self, "_lp_qualifier", qualifier)
         object.__setattr__(self, "_lp_instance", None)
 
     def _resolve(self) -> Any:
@@ -49,7 +48,6 @@ class LazyProxy:
             return instance
 
         container: Container = object.__getattribute__(self, "_lp_container")
-        qualifier: str = object.__getattribute__(self, "_lp_qualifier")
 
         if not container.manager:
             raise RuntimeError("LazyProxy requires ContainerManager")
@@ -57,13 +55,11 @@ class LazyProxy:
         manager: "ContainerManager" = container.manager
 
         # 이미 생성된 인스턴스가 있는지 확인
-        instance = manager.get_instance(
-            container.target, raise_exception=False, qualifier=qualifier
-        )
+        instance = manager.get_instance(container.target, raise_exception=False)
         if instance is None:
             # 없으면 새로 생성하고 등록 (_create_instance가 의존성 주입도 처리함)
             instance = container._create_instance()
-            manager.set_instance(container.target, instance, qualifier)
+            manager.set_instance(container.target, instance)
             # 라이프사이클 호출
             manager.lifecycle.invoke_post_construct(container, instance)
 

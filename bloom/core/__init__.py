@@ -2,6 +2,7 @@
 
 from .manager import (
     ContainerManager,
+    AmbiguousInstanceError,
     get_current_manager,
     set_current_manager,
     try_get_current_manager,
@@ -15,11 +16,11 @@ from .container import (
 )
 from .decorators import (
     Component,
-    Qualifier,
     Factory,
     Handler,
     PostConstruct,
     PreDestroy,
+    Order,
 )
 from .lifecycle import LifecycleManager
 from .lazy import Lazy, LazyProxy, is_lazy_component
@@ -31,6 +32,7 @@ from .abstract import (
 
 __all__ = [
     "ContainerManager",
+    "AmbiguousInstanceError",
     "get_current_manager",
     "set_current_manager",
     "try_get_current_manager",
@@ -40,11 +42,11 @@ __all__ = [
     "FactoryContainer",
     "HandlerContainer",
     "Component",
-    "Qualifier",
     "Factory",
     "Handler",
     "PostConstruct",
     "PreDestroy",
+    "Order",
     "LifecycleManager",
     "Lazy",
     "LazyProxy",

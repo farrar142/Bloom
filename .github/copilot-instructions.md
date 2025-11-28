@@ -337,30 +337,47 @@ class MiddlewareConfig:
 
 실행 순서: 요청 → A → B → C → 핸들러 → C → B → A → 응답 (역순)
 
-### Qualifier 사용법
+### Factory Chain 패턴
 
-동일 타입의 여러 인스턴스를 구분할 때 사용:
+동일 타입을 반환하는 여러 `@Factory`가 체인으로 연결되어 순차 실행됩니다:
 
 ```python
-from bloom import Component, Qualifier
+from bloom import Component
+from bloom.core.decorators import Factory, Order
 
 @Component
-@Qualifier("mysql")
-class MySqlRepository(Repository):
-    pass
+class CounterConfig:
+    @Factory
+    def create(self) -> Counter:
+        """Creator: 최초 인스턴스 생성 (자기 타입 미의존)"""
+        return Counter(0)
 
-@Component
-@Qualifier("postgres")
-class PostgresRepository(Repository):
-    pass
+    @Factory
+    @Order(1)
+    def add_one(self, counter: Counter) -> Counter:
+        """Modifier: 기존 인스턴스 수정 (자기 타입 의존)"""
+        counter.value += 1
+        return counter
 
-@Component
-class Service:
-    # qualifier로 특정 인스턴스 주입
-    repo: Annotated[Repository, "mysql"]
+    @Factory
+    @Order(2)
+    def add_two(self, counter: Counter) -> Counter:
+        """Modifier: 추가 수정"""
+        counter.value += 2
+        return counter
 ```
 
-`ContainerManager.get_instance(Repository, qualifier="mysql")`로 특정 인스턴스 조회 가능.
+실행 순서: `create()` → `add_one()` → `add_two()` = Counter(3)
+
+**순서 결정 규칙:**
+1. `@Order` 데코레이터: 값이 낮을수록 먼저 실행
+2. 의존성 기반: Creator(자기 타입 미의존) → Modifier(자기 타입 의존)
+
+**Ambiguous Provider 에러:**
+- Creator가 2개 이상이고 Modifier가 있으면 에러 발생
+- 해결: Creator는 1개만, 나머지는 Modifier로 구성
+
+자세한 내용은 `docs/factory-chain-dependency-graph.md` 참조.
 
 ### ErrorHandler 패턴
 

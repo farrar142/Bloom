@@ -72,11 +72,12 @@ class Container[T]:
         return dependencies
 
     def _get_cached_instance(self) -> T | None:
-        """캐시된 인스턴스가 있으면 반환 (qualifier 고려)"""
-        qualifier = self.get_qual_name()
-        return self._get_manager().get_instance(
-            self.target, raise_exception=False, qualifier=qualifier
-        )
+        """캐시된 인스턴스가 있으면 반환"""
+        # 정확한 타입으로 등록된 인스턴스 찾기
+        instances = self._get_manager().instance_registry.get(self.target, [])
+        if instances:
+            return instances[0]
+        return None
 
     def _inject_dependencies(self, annotations: dict[str, type]) -> dict[str, Any]:
         """어노테이션 기반으로 의존성을 주입하여 kwargs 반환"""
@@ -121,12 +122,6 @@ class Container[T]:
         self._get_manager().lifecycle.invoke_post_construct(self, instance)
         return instance
 
-    def get_qual_name(self) -> str:
-        for element in self.elements:
-            if qual_name := element.metadata.get("qualifier", None):
-                return qual_name
-        return "default"
-
     @classmethod
     def get_or_create(cls, kls: type[T]) -> Self:
         """
@@ -140,7 +135,7 @@ class Container[T]:
             setattr(kls, "__container__", container)
             # 현재 활성 manager가 있으면 자동 등록
             if manager := try_get_current_manager():
-                manager.register_container(container, container.get_qual_name())
+                manager.register_container(container)
         return container
 
     def add_element(self, element: "Element[T]") -> None:
@@ -150,6 +145,13 @@ class Container[T]:
     def has_element(self, element_type: type["Element"]) -> bool:
         """특정 타입의 Element가 있는지 확인"""
         return any(isinstance(e, element_type) for e in self.elements)
+
+    def get_element[E: Element](self, element_type: type[E]) -> E | None:
+        """특정 타입의 Element 반환 (없으면 None)"""
+        for element in self.elements:
+            if isinstance(element, element_type):
+                return element
+        return None
 
     def get_metadatas[U](self, key: str, default: Optional[U] = None) -> list[U]:
         """

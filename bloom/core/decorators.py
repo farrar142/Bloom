@@ -8,6 +8,7 @@ from bloom.core.container import (
     FactoryContainer,
     HandlerContainer,
 )
+from bloom.core.container.element import OrderElement
 from bloom.core.manager import try_get_current_manager
 
 
@@ -49,9 +50,7 @@ def _scan_child_containers(cls: type) -> None:
                 child_container.owner_cls = cls
                 # manager가 있으면 등록
                 if manager:
-                    manager.register_container(
-                        child_container, child_container.get_qual_name()
-                    )
+                    manager.register_container(child_container)
 
 
 def Component[T](cls: type[T]) -> type[T]:
@@ -59,54 +58,6 @@ def Component[T](cls: type[T]) -> type[T]:
     # 클래스의 메서드에서 Factory/Handler 컨테이너 스캔
     _scan_child_containers(cls)
     return cls
-
-
-class QualifierElement[T](Element[T]):
-    def __init__(self, name: str):
-        super().__init__()
-        self.metadata["qualifier"] = name
-
-
-def Qualifier[T, **P, R](
-    name: str,
-) -> Callable[[type[T] | Callable[P, R]], type[T] | Callable[P, R]]:
-    """
-    Qualifier 데코레이터: 컴포넌트나 팩토리 메서드에 qualifier를 지정
-
-    동일한 타입의 여러 인스턴스를 구분할 때 사용합니다.
-
-    사용 예시 (클래스):
-        @Component
-        @Qualifier("mysql")
-        class MySqlRepository(Repository):
-            pass
-
-    사용 예시 (Factory 메서드):
-        @Component
-        class StaticConfig:
-            @Factory
-            @Qualifier("public")
-            def public_static(self) -> StaticFilesContainer:
-                return StaticFilesContainer().add("/static", "public")
-
-            @Factory
-            @Qualifier("assets")
-            def assets_static(self) -> StaticFilesContainer:
-                return StaticFilesContainer().add("/assets", "assets")
-    """
-
-    def wrapper(target: type[T] | Callable[P, R]) -> type[T] | Callable[P, R]:
-        if isinstance(target, type):
-            # 클래스인 경우 - ComponentContainer 사용
-            container = ComponentContainer.get_or_create(target)
-            container.add_element(QualifierElement(name))
-        else:
-            # 메서드인 경우 - FactoryContainer 사용
-            factory_container = FactoryContainer.get_or_create(target)
-            factory_container.add_element(QualifierElement(name))
-        return target
-
-    return wrapper
 
 
 def Factory[**P, R](method: Callable[P, R]) -> Callable[P, R]:
@@ -184,3 +135,60 @@ def PreDestroy[**P, R](method: Callable[P, R]) -> Callable[P, R]:
     container = HandlerContainer.get_or_create(method, "__pre_destroy__")
     container.add_element(PreDestroyElement())
     return method
+
+
+def Order(order: int):
+    """
+    Order 데코레이터: Factory/Handler의 실행 순서 지정
+
+    동일 타입을 반환하는 여러 Factory가 있을 때 (Factory Chain/Builder Chain),
+    실행 순서를 명시적으로 지정합니다. 숫자가 낮을수록 먼저 실행됩니다.
+
+    Order가 지정되지 않은 Factory는 의존성 그래프로 순서가 자동 결정됩니다.
+
+    사용 예시 (Factory Chain):
+        @Component
+        class Config:
+            @Factory
+            def create(self) -> MyType:  # Order 없음 = 의존성 없으므로 먼저
+                return MyType()
+
+            @Factory
+            @Order(1)
+            def modify1(self, val: MyType) -> MyType:
+                val.x += 1
+                return val
+
+            @Factory
+            @Order(2)
+            def modify2(self, val: MyType) -> MyType:  # 마지막 (최종값 저장)
+                val.x += 2
+                return val
+
+    사용 예시 (Builder Chain):
+        @Component
+        class MyType:
+            val = 0
+
+        @Component
+        class Config:
+            @Factory
+            @Order(1)
+            def enhance1(self, val: MyType) -> MyType:
+                val.val += 1
+                return val
+
+            @Factory
+            @Order(2)
+            def enhance2(self, val: MyType) -> MyType:  # 마지막 (최종값 저장)
+                val.val += 2
+                return val
+    """
+
+    def decorator[**P, R](method: Callable[P, R]) -> Callable[P, R]:
+        # Factory 메서드에 OrderElement 추가
+        factory_container = FactoryContainer.get_or_create(method)
+        factory_container.add_element(OrderElement(order))
+        return method
+
+    return decorator
