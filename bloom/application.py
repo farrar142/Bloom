@@ -10,9 +10,7 @@ from .core.manager import ContainerManager, set_current_manager, try_get_current
 from .core.utils import topological_sort
 from .web.router import Router
 from .web.asgi import ASGIApplication
-from .config.loader import ConfigurationLoader
-from .config.binder import ConfigurationBinder
-from .config.properties import is_configuration_properties, get_prefix
+from .config.manager import ConfigManager
 
 
 class Application:
@@ -41,8 +39,7 @@ class Application:
         self._router: Router | None = None
         self._asgi: ASGIApplication | None = None
         self._is_ready = False
-        self._config_loader = ConfigurationLoader()
-        self._config_binder = ConfigurationBinder()
+        self._config_manager = ConfigManager()
         # 생성 시점에 현재 매니저로 설정 (데코레이터 자동 등록 지원)
         set_current_manager(self.manager)
 
@@ -80,35 +77,7 @@ class Application:
             app.load_config({"app": {"name": "MyApp"}}, source_type="dict")
             app.load_config(source_type="env")  # 환경 변수만 로드
         """
-        if source is None:
-            # 환경 변수만 로드
-            self._config_loader.load_from_env()
-            return self
-
-        if isinstance(source, dict):
-            self._config_loader.load_from_dict(source)
-            return self
-
-        # 파일 경로
-        path = Path(source)
-
-        if source_type == "auto":
-            # 확장자로 타입 자동 감지
-            suffix = path.suffix.lower()
-            if suffix in (".yaml", ".yml"):
-                source_type = "yaml"
-            elif suffix == ".json":
-                source_type = "json"
-            elif suffix == ".env":
-                source_type = "env"
-
-        if source_type == "yaml":
-            self._config_loader.load_from_yaml(path)
-        elif source_type == "json":
-            self._config_loader.load_from_json(path)
-        elif source_type == "env":
-            self._config_loader.load_from_dotenv(path)
-
+        self._config_manager.load_config(source, source_type)
         return self
 
     def scan(self, *modules: object) -> "Application":
@@ -157,24 +126,7 @@ class Application:
 
     def _bind_configuration_properties(self) -> None:
         """ConfigurationProperties를 바인딩하여 인스턴스 생성"""
-        config_dict = self._config_loader.get_config()
-
-        for qual_containers in self.manager.get_all_containers().values():
-            for qualifier, container in qual_containers.items():
-                target = container.target
-
-                # ConfigurationProperties인지 확인
-                if not is_configuration_properties(target):
-                    continue
-
-                # prefix 추출
-                prefix = get_prefix(target)
-
-                # 설정 바인딩
-                instance = self._config_binder.bind(config_dict, target, prefix)
-
-                # 인스턴스 등록
-                self.manager.set_instance(target, instance, qualifier=qualifier)
+        self._config_manager.bind_configuration_properties(self.manager)
 
     def _initialize_containers(self) -> None:
         """모든 컨테이너를 토폴로지컬 순서로 초기화"""
