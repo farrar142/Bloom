@@ -42,6 +42,7 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
         self._resolved_hints: dict | None = None
         self.owner_cls: type | None = None  # scan_components 후 주입됨
         self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
+        self._is_coroutine: bool | None = None  # 캐싱된 코루틴 여부
         # target은 HandlerContainer 자신의 타입
         super().__init__(type(self))  # type: ignore
 
@@ -100,11 +101,15 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
         """핸들러 메서드 호출 (비동기)
 
         핸들러가 동기 함수인 경우에도 async로 래핑하여 호출
+        코루틴 여부를 캐싱하여 성능 최적화
         """
         bound_method = self._bind_method()
 
-        # 핸들러가 코루틴 함수인지 확인
-        if asyncio.iscoroutinefunction(bound_method):
+        # 코루틴 여부 캐싱 (최초 호출 시 한 번만 검사)
+        if self._is_coroutine is None:
+            self._is_coroutine = asyncio.iscoroutinefunction(bound_method)
+
+        if self._is_coroutine:
             return await bound_method(*args, **kwargs)
         else:
             # 동기 함수는 그대로 호출

@@ -133,6 +133,8 @@ class MiddlewareChain:
         self.groups.append(self.default_group)
         # 개별 비활성화된 미들웨어 인스턴스 id 저장
         self.disabled_middlewares: set[int] = set()
+        # 미들웨어 리스트 캐시 (성능 최적화)
+        self._middlewares_cache: list[Middleware] | None = None
 
         # CorsMiddleware를 기본 그룹에 추가
         self.default_group.add(CorsMiddleware())
@@ -195,6 +197,7 @@ class MiddlewareChain:
         """
         group = MiddlewareGroup(name)
         self.groups.append(group)
+        self._invalidate_cache()
         return group
 
     def add_group_before(
@@ -218,6 +221,7 @@ class MiddlewareChain:
         new_group = MiddlewareGroup(f"before_{target.name}")
         new_group.add(*middlewares)
         self.groups.insert(index, new_group)
+        self._invalidate_cache()
 
         return new_group
 
@@ -242,9 +246,9 @@ class MiddlewareChain:
         new_group = MiddlewareGroup(f"after_{target.name}")
         new_group.add(*middlewares)
         self.groups.insert(index, new_group)
+        self._invalidate_cache()
 
         return new_group
-
     def disable(self, *middlewares: Middleware) -> "MiddlewareChain":
         """
         특정 미들웨어 인스턴스 비활성화
@@ -266,6 +270,7 @@ class MiddlewareChain:
         """
         for middleware in middlewares:
             self.disabled_middlewares.add(id(middleware))
+        self._invalidate_cache()
         return self
 
     def enable(self, *middlewares: Middleware) -> "MiddlewareChain":
@@ -280,19 +285,28 @@ class MiddlewareChain:
         """
         for middleware in middlewares:
             self.disabled_middlewares.discard(id(middleware))
+        self._invalidate_cache()
         return self
 
     def is_disabled(self, middleware: Middleware) -> bool:
         """미들웨어가 개별적으로 비활성화되었는지 확인"""
         return id(middleware) in self.disabled_middlewares
 
+    def _invalidate_cache(self) -> None:
+        """미들웨어 리스트 캐시 무효화"""
+        self._middlewares_cache = None
+
     def get_all_middlewares(self) -> list[Middleware]:
         """
-        모든 활성화된 미들웨어를 순서대로 반환
+        모든 활성화된 미들웨어를 순서대로 반환 (캐싱됨)
 
         Returns:
             미들웨어 리스트
         """
+        # 캐시된 결과가 있으면 반환
+        if self._middlewares_cache is not None:
+            return self._middlewares_cache
+
         all_middlewares = []
 
         for group in self.groups:
@@ -304,8 +318,9 @@ class MiddlewareChain:
                 if not self.is_disabled(middleware):
                     all_middlewares.append(middleware)
 
+        # 캐시에 저장
+        self._middlewares_cache = all_middlewares
         return all_middlewares
-
     @asynccontextmanager
     async def process(
         self, request: HttpRequest, handler: HttpMethodHandler | None = None
