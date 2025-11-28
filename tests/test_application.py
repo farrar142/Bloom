@@ -67,6 +67,8 @@ class TestTopologicalSort:
         """의존성 순서대로 초기화"""
         init_order: list[str] = []
 
+        app = Application("test_app")
+
         @Component
         class A:
             def __init__(self):
@@ -86,14 +88,7 @@ class TestTopologicalSort:
             def __init__(self):
                 init_order.append("C")
 
-        class FakeModule:
-            pass
-
-        setattr(FakeModule, "A", A)
-        setattr(FakeModule, "B", B)
-        setattr(FakeModule, "C", C)
-
-        app = Application("test_app").scan(FakeModule).ready()
+        app.ready()
 
         # A -> B -> C 순서로 초기화되어야 함
         assert init_order == ["A", "B", "C"]

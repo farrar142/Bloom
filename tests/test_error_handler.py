@@ -6,8 +6,6 @@ from bloom.web import Get, RequestMapping
 from bloom.web.error import ErrorHandler
 from bloom.web.http import HttpRequest, HttpResponse
 
-from .conftest import Module
-
 
 class TestErrorHandlerBasic:
     """기본 ErrorHandler 테스트 - RuntimeError와 Exception 핸들링"""
@@ -15,25 +13,18 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_runtime_error_handler(self):
         """RuntimeError를 핸들링하는 글로벌 에러 핸들러 테스트"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(RuntimeError)
             def handle_runtime_error(self, error: RuntimeError) -> HttpResponse:
                 return HttpResponse.bad_request(f"RuntimeError: {error}")
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/error")
             async def raise_error(self) -> str:
                 raise RuntimeError("Something went wrong")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -44,25 +35,18 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_exception_handler(self):
         """일반 Exception을 핸들링하는 글로벌 에러 핸들러 테스트"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(Exception)
             def handle_exception(self, error: Exception) -> HttpResponse:
                 return HttpResponse.internal_error(f"Caught: {error}")
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/error")
             async def raise_error(self) -> str:
                 raise ValueError("value error")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -73,11 +57,6 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_specific_exception_takes_priority_over_base(self):
         """더 구체적인 예외 타입이 기본 Exception보다 우선 처리됨"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(RuntimeError)
@@ -87,8 +66,6 @@ class TestErrorHandlerBasic:
             @ErrorHandler(Exception)
             def handle_exception(self, error: Exception) -> HttpResponse:
                 return HttpResponse.internal_error("Exception handled")
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/runtime")
@@ -99,7 +76,7 @@ class TestErrorHandlerBasic:
             async def raise_value(self) -> str:
                 raise ValueError("value error")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # RuntimeError는 RuntimeError 핸들러가 처리
         request1 = HttpRequest(method="GET", path="/runtime")
@@ -116,18 +93,13 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_no_handler_returns_default_error(self):
         """핸들러가 없으면 기본 500 에러 응답 반환"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/error")
             async def raise_error(self) -> str:
                 raise RuntimeError("unhandled error")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -144,25 +116,18 @@ class TestErrorHandlerBasic:
 
         class CustomChildError(CustomBaseError):
             pass
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(CustomBaseError)
             def handle_custom_base(self, error: CustomBaseError) -> HttpResponse:
                 return HttpResponse.bad_request("CustomBaseError handled")
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/child")
             async def raise_child(self) -> str:
                 raise CustomChildError("child error")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # CustomChildError는 CustomBaseError 핸들러가 처리 (상속 관계)
         request = HttpRequest(method="GET", path="/child")
@@ -173,26 +138,19 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_async_error_handler(self):
         """비동기 에러 핸들러 테스트"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(RuntimeError)
             async def handle_runtime(self, error: RuntimeError) -> HttpResponse:
                 # 비동기 처리 시뮬레이션
                 return HttpResponse.bad_request(f"Async handled: {error}")
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/error")
             async def raise_error(self) -> str:
                 raise RuntimeError("async test")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -203,25 +161,18 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_error_handler_returns_dict(self):
         """에러 핸들러가 dict를 반환하면 HttpResponse.ok로 변환"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(RuntimeError)
             def handle_runtime(self, error: RuntimeError) -> dict:
                 return {"error": str(error), "type": "RuntimeError"}
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/error")
             async def raise_error(self) -> str:
                 raise RuntimeError("dict response")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -246,11 +197,6 @@ class TestCustomExceptionCases:
 
         class Level3Error(Level2Error):
             pass
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(Level1Error)
@@ -264,8 +210,6 @@ class TestCustomExceptionCases:
             @ErrorHandler(Level3Error)
             def handle_level3(self, error: Level3Error) -> HttpResponse:
                 return HttpResponse(status_code=402, body="Level3")
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/level1")
@@ -280,7 +224,7 @@ class TestCustomExceptionCases:
             async def raise_level3(self) -> str:
                 raise Level3Error("level3")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # 각 레벨에 맞는 핸들러가 선택되어야 함
         r1 = await app.router.dispatch(HttpRequest(method="GET", path="/level1"))
@@ -307,11 +251,6 @@ class TestCustomExceptionCases:
 
         class ForbiddenError(Exception):
             pass
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(NotFoundError)
@@ -325,8 +264,6 @@ class TestCustomExceptionCases:
             @ErrorHandler(ForbiddenError)
             def handle_forbidden(self, error: ForbiddenError) -> HttpResponse:
                 return HttpResponse(status_code=403, body=str(error))
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/not-found")
@@ -341,7 +278,7 @@ class TestCustomExceptionCases:
             async def raise_forbidden(self) -> str:
                 raise ForbiddenError("Access denied")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         r1 = await app.router.dispatch(HttpRequest(method="GET", path="/not-found"))
         assert r1.status_code == 404
@@ -364,11 +301,6 @@ class TestCustomExceptionCases:
                 self.field = field
                 self.message = message
                 super().__init__(f"{field}: {message}")
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(ValidationError)
@@ -377,15 +309,13 @@ class TestCustomExceptionCases:
                     status_code=400,
                     body={"field": error.field, "message": error.message},
                 )
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/validate")
             async def validate(self) -> str:
                 raise ValidationError("email", "Invalid email format")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         response = await app.router.dispatch(
             HttpRequest(method="GET", path="/validate")
@@ -400,11 +330,6 @@ class TestCustomExceptionCases:
 
         class ApiError(Exception):
             pass
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(ApiError)
@@ -419,15 +344,13 @@ class TestCustomExceptionCases:
                         "method": request.method,
                     },
                 )
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/api/test")
             async def api_test(self) -> str:
                 raise ApiError("API failed")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         response = await app.router.dispatch(
             HttpRequest(method="GET", path="/api/test")
@@ -440,11 +363,6 @@ class TestCustomExceptionCases:
     @pytest.mark.asyncio
     async def test_builtin_exceptions(self):
         """내장 예외 타입들 핸들링"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(ValueError)
@@ -458,8 +376,6 @@ class TestCustomExceptionCases:
             @ErrorHandler(KeyError)
             def handle_key_error(self, error: KeyError) -> HttpResponse:
                 return HttpResponse.not_found(f"KeyError: {error}")
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/value-error")
@@ -474,7 +390,7 @@ class TestCustomExceptionCases:
             async def raise_key_error(self) -> str:
                 raise KeyError("missing_key")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         r1 = await app.router.dispatch(HttpRequest(method="GET", path="/value-error"))
         assert r1.status_code == 400
@@ -494,26 +410,19 @@ class TestCustomExceptionCases:
 
         class CustomError(Exception):
             pass
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(CustomError)
             def handle_custom(self, error: CustomError) -> HttpResponse:
                 # 핸들러에서 또 다른 예외 발생
                 raise RuntimeError("Handler failed!")
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/error")
             async def raise_error(self) -> str:
                 raise CustomError("original error")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         response = await app.router.dispatch(HttpRequest(method="GET", path="/error"))
         # 핸들러 실패 시 기본 500 에러
@@ -531,11 +440,6 @@ class TestCustomExceptionCases:
 
         class NetworkTimeoutError(NetworkError, TimeoutError):
             pass
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(NetworkError)
@@ -545,15 +449,13 @@ class TestCustomExceptionCases:
             @ErrorHandler(TimeoutError)
             def handle_timeout(self, error: TimeoutError) -> HttpResponse:
                 return HttpResponse(status_code=504, body="TimeoutError")
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/network-timeout")
             async def raise_network_timeout(self) -> str:
                 raise NetworkTimeoutError("connection timed out")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         response = await app.router.dispatch(
             HttpRequest(method="GET", path="/network-timeout")
@@ -567,25 +469,18 @@ class TestCustomExceptionCases:
 
         class SimpleError(Exception):
             pass
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(SimpleError)
             def handle_simple(self, error: SimpleError) -> str:
                 return f"Error occurred: {error}"
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/error")
             async def raise_error(self) -> str:
                 raise SimpleError("simple message")
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         response = await app.router.dispatch(HttpRequest(method="GET", path="/error"))
         assert response.status_code == 200
@@ -599,25 +494,18 @@ class TestCustomExceptionCases:
             def __init__(self, errors: list[str]):
                 self.errors = errors
                 super().__init__(str(errors))
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(MultiError)
             def handle_multi(self, error: MultiError) -> list:
                 return [{"error": e} for e in error.errors]
-
-        @Module(M)
         @Controller
         class TestController:
             @Get("/error")
             async def raise_error(self) -> str:
                 raise MultiError(["error1", "error2", "error3"])
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         response = await app.router.dispatch(HttpRequest(method="GET", path="/error"))
         assert response.status_code == 200

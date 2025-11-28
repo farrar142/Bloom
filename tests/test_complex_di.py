@@ -7,8 +7,6 @@ from bloom.core import (
     Handler,
 )
 
-from .conftest import Module
-
 
 class TestComplexDependencyInjection:
     """복잡한 의존성 체인 테스트"""
@@ -17,16 +15,13 @@ class TestComplexDependencyInjection:
         """깊은 의존성 체인 (A → B → C → D)"""
         init_order: list[str] = []
 
-        class M:
-            pass
+        app = Application("test_deep_chain")
 
-        @Module(M)
         @Component
         class D:
             def __init__(self):
                 init_order.append("D")
 
-        @Module(M)
         @Component
         class C:
             d: D
@@ -34,7 +29,6 @@ class TestComplexDependencyInjection:
             def __init__(self):
                 init_order.append("C")
 
-        @Module(M)
         @Component
         class B:
             c: C
@@ -42,7 +36,6 @@ class TestComplexDependencyInjection:
             def __init__(self):
                 init_order.append("B")
 
-        @Module(M)
         @Component
         class A:
             b: B
@@ -50,9 +43,7 @@ class TestComplexDependencyInjection:
             def __init__(self):
                 init_order.append("A")
 
-        app = Application("test_deep_chain")
-        app.scan_components(M)
-        app.initialize_components()
+        app.ready()
 
         # D → C → B → A 순서로 초기화되어야 함
         assert init_order == ["D", "C", "B", "A"]
@@ -66,33 +57,26 @@ class TestComplexDependencyInjection:
     def test_diamond_dependency(self):
         """다이아몬드 의존성 (A → B, C → D)"""
 
-        class M:
-            pass
+        app = Application("test_diamond")
 
-        @Module(M)
         @Component
         class D:
             pass
 
-        @Module(M)
         @Component
         class B:
             d: D
 
-        @Module(M)
         @Component
         class C:
             d: D
 
-        @Module(M)
         @Component
         class A:
             b: B
             c: C
 
-        app = Application("test_diamond")
-        app.scan_components(M)
-        app.initialize_components()
+        app.ready()
 
         a_instance = app.manager.get_instance(A)
         # B와 C가 같은 D 인스턴스를 공유해야 함
@@ -101,15 +85,12 @@ class TestComplexDependencyInjection:
     def test_factory_with_multiple_dependencies(self):
         """여러 의존성을 가진 Factory"""
 
-        class M:
-            pass
+        app = Application("test_factory_multi_deps")
 
-        @Module(M)
         @Component
         class Logger:
             pass
 
-        @Module(M)
         @Component
         class Database:
             pass
@@ -119,7 +100,6 @@ class TestComplexDependencyInjection:
                 self.logger = logger
                 self.db = db
 
-        @Module(M)
         @Component
         class ServiceFactory:
             @Factory
@@ -128,9 +108,7 @@ class TestComplexDependencyInjection:
             ) -> ComplexService:
                 return ComplexService(logger, db)
 
-        app = Application("test_factory_multi_deps")
-        app.scan_components(M)
-        app.initialize_components()
+        app.ready()
 
         service = app.manager.get_instance(ComplexService)
         assert service is not None
@@ -140,10 +118,8 @@ class TestComplexDependencyInjection:
     def test_factory_depending_on_another_factory(self):
         """Factory가 다른 Factory의 결과물에 의존"""
 
-        class M:
-            pass
+        app = Application("test_factory_chain")
 
-        @Module(M)
         @Component
         class Config:
             pass
@@ -156,23 +132,19 @@ class TestComplexDependencyInjection:
             def __init__(self, connection: Connection):
                 self.connection = connection
 
-        @Module(M)
         @Component
         class ConnectionFactory:
             @Factory
             def create_connection(self, config: Config) -> Connection:
                 return Connection(config)
 
-        @Module(M)
         @Component
         class ClientFactory:
             @Factory
             def create_client(self, conn: Connection) -> Client:
                 return Client(conn)
 
-        app = Application("test_factory_chain")
-        app.scan_components(M)
-        app.initialize_components()
+        app.ready()
 
         client = app.manager.get_instance(Client)
         assert client is not None
@@ -187,16 +159,13 @@ class TestHandlerIntegration:
     async def test_handler_with_injected_service(self):
         """Handler가 주입된 서비스를 사용 (비동기)"""
 
-        class M:
-            pass
+        app = Application("test_handler_service")
 
-        @Module(M)
         @Component
         class UserRepository:
             def get_all(self) -> list[str]:
                 return ["user1", "user2", "user3"]
 
-        @Module(M)
         @Component
         class UserController:
             repo: UserRepository
@@ -205,9 +174,7 @@ class TestHandlerIntegration:
             def list_users(self) -> list[str]:
                 return self.repo.get_all()
 
-        app = Application("test_handler_service")
-        app.scan_components(M)
-        app.initialize_components()
+        app.ready()
 
         handler = UserController.list_users.__container__
         result = await handler()
@@ -217,10 +184,8 @@ class TestHandlerIntegration:
     async def test_multiple_handlers_same_controller(self):
         """같은 Controller에 여러 Handler (비동기)"""
 
-        class M:
-            pass
+        app = Application("test_multi_handlers")
 
-        @Module(M)
         @Component
         class MultiController:
             @Handler(("GET", "/a"))
@@ -235,9 +200,7 @@ class TestHandlerIntegration:
             def handle_c(self) -> str:
                 return "C"
 
-        app = Application("test_multi_handlers")
-        app.scan_components(M)
-        app.initialize_components()
+        app.ready()
 
         assert await MultiController.handle_a.__container__() == "A"
         assert await MultiController.handle_b.__container__() == "B"
@@ -250,15 +213,12 @@ class TestCircularDependencyDetection:
     def test_circular_dependency_raises(self):
         """순환 의존성이 있으면 예외 발생"""
 
-        class M:
-            pass
+        app = Application("test_circular")
 
-        @Module(M)
         @Component
         class Circular1:
             pass
 
-        @Module(M)
         @Component
         class Circular2:
             c1: Circular1
@@ -267,8 +227,5 @@ class TestCircularDependencyDetection:
         Circular1.__annotations__ = {"c2": Circular2}
         getattr(Circular1, "__container__")._target = Circular1
 
-        app = Application("test_circular")
-        app.scan_components(M)
-
         with pytest.raises(Exception, match="Circular dependency"):
-            app.initialize_components()
+            app.ready()

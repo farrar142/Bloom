@@ -5,7 +5,7 @@ from typing import Any, Self, Optional, cast, overload, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..manager import ContainerManager
 
-from ..manager import get_current_manager
+from ..manager import get_current_manager, try_get_current_manager
 from .element import Element
 
 
@@ -83,10 +83,18 @@ class Container[T]:
 
     @classmethod
     def get_or_create(cls, kls: type[T]) -> Self:
-        """최초 파일 로딩시에 컨테이너 어노테이션이 붙은 클래스에 컨테이너 생성"""
+        """
+        컨테이너 어노테이션이 붙은 클래스에 컨테이너 생성
+        
+        현재 활성 manager가 있으면 자동으로 등록됨.
+        없으면 나중에 scan() 시점에 등록됨.
+        """
         if not (container := getattr(kls, "__container__", None)):
             container = cls(kls)
             setattr(kls, "__container__", container)
+            # 현재 활성 manager가 있으면 자동 등록
+            if manager := try_get_current_manager():
+                manager.register_container(container, container.get_qual_name())
         return container
 
     def add_element(self, element: "Element[T]") -> None:

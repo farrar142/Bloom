@@ -1,6 +1,6 @@
 """bloom.core 패키지"""
 
-from .manager import ContainerManager, get_current_manager, set_current_manager
+from .manager import ContainerManager, get_current_manager, set_current_manager, try_get_current_manager
 from .container import (
     Element,
     Container,
@@ -14,6 +14,7 @@ __all__ = [
     "ContainerManager",
     "get_current_manager",
     "set_current_manager",
+    "try_get_current_manager",
     "Element",
     "Container",
     "ComponentContainer",

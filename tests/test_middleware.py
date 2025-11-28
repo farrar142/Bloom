@@ -22,7 +22,6 @@ from bloom.web import (
     create_asgi_app,
 )
 
-from .conftest import Module
 
 from bloom.web.middleware import Middleware, MiddlewareChain
 
@@ -34,17 +33,10 @@ class TestMiddleware:
     async def test_middleware_execution_order(self):
         """미들웨어가 올바른 순서로 실행되는지 테스트"""
         execution_order: list[str] = []
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class LoggingService:
             def log(self, message: str):
                 execution_order.append(message)
-
-        @Module(M)
         @Component
         class MiddlewareA(Middleware):
             loggingService: LoggingService
@@ -60,8 +52,6 @@ class TestMiddleware:
             ) -> HttpResponse:
                 self.loggingService.log("A - after")
                 return response
-
-        @Module(M)
         @Component
         class MiddlewareB(Middleware):
             loggingService: LoggingService
@@ -77,8 +67,6 @@ class TestMiddleware:
             ) -> HttpResponse:
                 self.loggingService.log("B - after")
                 return response
-
-        @Module(M)
         @Component
         class MiddlewareC(Middleware):
             loggingService: LoggingService
@@ -94,8 +82,6 @@ class TestMiddleware:
             ) -> HttpResponse:
                 self.loggingService.log("C - after")
                 return response
-
-        @Module(M)
         @Component
         class MiddlewareConfiguration:
             @Factory
@@ -103,8 +89,6 @@ class TestMiddleware:
                 chain = MiddlewareChain()
                 chain.add_group_after(*middlewares)
                 return chain
-
-        @Module(M)
         @Controller
         @RequestMapping("/api")
         class TestController:
@@ -112,7 +96,7 @@ class TestMiddleware:
             async def test_handler(self):
                 return "Test Response"
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
         request = HttpRequest(method="GET", path="/api/test")
         response = await app.router.dispatch(request)
         assert response.status_code == 200

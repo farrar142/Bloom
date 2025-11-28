@@ -19,8 +19,6 @@ from bloom.web import (
     create_asgi_app,
 )
 
-from .conftest import Module
-
 
 class TestHttpModels:
     """HTTP 요청/응답 모델 테스트"""
@@ -60,11 +58,6 @@ class TestHttpMethodHandler:
 
     def test_get_decorator(self):
         """@Get 데코레이터"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class TestController:
             @Get("/items")
@@ -79,11 +72,6 @@ class TestHttpMethodHandler:
 
     def test_post_decorator(self):
         """@Post 데코레이터"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class TestController:
             @Post("/items")
@@ -97,18 +85,13 @@ class TestHttpMethodHandler:
     @pytest.mark.asyncio
     async def test_handler_invocation(self):
         """핸들러 호출 (비동기)"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class TestController:
             @Get("/hello")
             def say_hello(self) -> str:
                 return "hello"
 
-        app = Application("test_handler").scan(M).ready()
+        app = Application("test_handler").ready()
 
         handler = TestController.say_hello.__container__
         result = await handler()
@@ -117,18 +100,13 @@ class TestHttpMethodHandler:
     @pytest.mark.asyncio
     async def test_async_handler_invocation(self):
         """비동기 핸들러 호출"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class AsyncController:
             @Get("/async")
             async def async_hello(self) -> str:
                 return "async hello"
 
-        app = Application("test_async_handler").scan(M).ready()
+        app = Application("test_async_handler").ready()
 
         handler = AsyncController.async_hello.__container__
         result = await handler()
@@ -140,11 +118,6 @@ class TestRouter:
 
     def test_router_collect_routes(self):
         """라우터가 핸들러들을 수집"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class ApiController:
             @Get("/api/users")
@@ -155,7 +128,7 @@ class TestRouter:
             def create_user(self) -> dict:
                 return {"id": 1}
 
-        app = Application("test_router").scan(M).ready()
+        app = Application("test_router").ready()
 
         routes = app.router.get_routes()
         assert ("GET", "/api/users", "list_users") in routes
@@ -164,18 +137,13 @@ class TestRouter:
     @pytest.mark.asyncio
     async def test_router_dispatch_simple(self):
         """단순 경로 디스패치 (비동기)"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class SimpleController:
             @Get("/ping")
             def ping(self, **kwargs) -> str:
                 return "pong"
 
-        app = Application("test_dispatch").scan(M).ready()
+        app = Application("test_dispatch").ready()
 
         request = HttpRequest(method="GET", path="/ping")
         response = await app.router.dispatch(request)
@@ -186,11 +154,6 @@ class TestRouter:
     @pytest.mark.asyncio
     async def test_router_dispatch_with_path_params(self):
         """경로 파라미터가 있는 디스패치 (비동기)"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class UserController:
             @Get("/users/{user_id}")
@@ -201,7 +164,7 @@ class TestRouter:
             def delete_post(self, user_id: str, post_id: str, **kwargs) -> dict:
                 return {"user_id": user_id, "post_id": post_id}
 
-        app = Application("test_path_params").scan(M).ready()
+        app = Application("test_path_params").ready()
 
         # 단일 파라미터
         request = HttpRequest(method="GET", path="/users/123")
@@ -216,16 +179,11 @@ class TestRouter:
     @pytest.mark.asyncio
     async def test_router_not_found(self):
         """존재하지 않는 경로 (비동기)"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class EmptyController:
             pass
 
-        app = Application("test_not_found").scan(M).ready()
+        app = Application("test_not_found").ready()
 
         request = HttpRequest(method="GET", path="/nonexistent")
         response = await app.router.dispatch(request)
@@ -235,18 +193,13 @@ class TestRouter:
     @pytest.mark.asyncio
     async def test_router_returns_http_response(self):
         """핸들러가 HttpResponse를 직접 반환 (비동기)"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class ResponseController:
             @Post
             def create(self, **kwargs) -> HttpResponse:
                 return HttpResponse.created({"id": 1})
 
-        app = Application("test_response").scan(M).ready()
+        app = Application("test_response").ready()
 
         # @Post만 사용하면 path는 /함수명
         request = HttpRequest(method="POST", path="/create")
@@ -258,18 +211,13 @@ class TestRouter:
     @pytest.mark.asyncio
     async def test_router_dispatch_async_handler(self):
         """비동기 핸들러 디스패치"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class AsyncController:
             @Get("/async-data")
             async def get_async_data(self, **kwargs) -> dict:
                 return {"async": True}
 
-        app = Application("test_async_dispatch").scan(M).ready()
+        app = Application("test_async_dispatch").ready()
 
         request = HttpRequest(method="GET", path="/async-data")
         response = await app.router.dispatch(request)
@@ -283,11 +231,6 @@ class TestController:
 
     def test_controller_creates_container(self):
         """@Controller가 ControllerContainer를 생성"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class TestController:
             pass
@@ -299,11 +242,6 @@ class TestController:
 
     def test_request_mapping_sets_path(self):
         """@RequestMapping이 경로를 설정"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         @RequestMapping("/api/v1")
         class ApiController:
@@ -316,11 +254,6 @@ class TestController:
     @pytest.mark.asyncio
     async def test_controller_with_request_mapping_routes(self):
         """Controller + RequestMapping + Handler 조합 라우팅 (비동기)"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         @RequestMapping("/api")
         class UserController:
@@ -336,7 +269,7 @@ class TestController:
             def get_user(self, id: str, **kwargs) -> dict:
                 return {"id": id}
 
-        app = Application("test_controller").scan(M).ready()
+        app = Application("test_controller").ready()
 
         routes = app.router.get_routes()
         # RequestMapping prefix가 적용됨
@@ -356,18 +289,13 @@ class TestController:
     @pytest.mark.asyncio
     async def test_controller_without_request_mapping(self):
         """RequestMapping 없는 Controller (비동기)"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class SimpleController:
             @Get("/health")
             def health(self, **kwargs) -> str:
                 return "ok"
 
-        app = Application("test_simple_controller").scan(M).ready()
+        app = Application("test_simple_controller").ready()
 
         request = HttpRequest(method="GET", path="/health")
         response = await app.router.dispatch(request)
@@ -380,11 +308,6 @@ class TestASGI:
     @pytest.mark.asyncio
     async def test_asgi_basic_request(self):
         """기본 ASGI 요청 처리"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class PingController:
             @Get("/ping")
@@ -392,7 +315,7 @@ class TestASGI:
                 return "pong"
 
         app = Application("test_asgi")
-        app.scan(M).ready()
+        app.ready()
 
         router = app.router
 
@@ -427,11 +350,6 @@ class TestASGI:
     @pytest.mark.asyncio
     async def test_asgi_post_with_body(self):
         """POST 요청 바디 처리"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class EchoController:
             @Post("/echo")
@@ -439,7 +357,7 @@ class TestASGI:
                 return {"received": request.json}
 
         app = Application("test_asgi_post")
-        app.scan(M).ready()
+        app.ready()
 
         router = app.router
 
@@ -479,11 +397,6 @@ class TestASGI:
     @pytest.mark.asyncio
     async def test_asgi_with_query_params(self):
         """쿼리 파라미터 처리"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class SearchController:
             @Get("/search")
@@ -491,7 +404,7 @@ class TestASGI:
                 return {"query": request.query_params.get("q", "")}
 
         app = Application("test_asgi_query")
-        app.scan(M).ready()
+        app.ready()
 
         router = app.router
 
@@ -523,11 +436,6 @@ class TestASGI:
     @pytest.mark.asyncio
     async def test_asgi_async_handler(self):
         """비동기 핸들러 ASGI 테스트"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class AsyncController:
             @Get("/async-data")
@@ -535,7 +443,7 @@ class TestASGI:
                 return {"async": True, "data": "async result"}
 
         app = Application("test_asgi_async")
-        app.scan(M).ready()
+        app.ready()
 
         router = app.router
 
@@ -568,11 +476,6 @@ class TestASGI:
     @pytest.mark.asyncio
     async def test_create_asgi_app_factory(self):
         """create_asgi_app 팩토리 함수"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class FactoryController:
             @Get("/factory")
@@ -580,7 +483,7 @@ class TestASGI:
                 return "factory works"
 
         app = Application("test_factory")
-        app.scan(M).ready()
+        app.ready()
 
         # 팩토리로 생성
         asgi_app = create_asgi_app()
@@ -617,18 +520,13 @@ class TestResponseTypeConversion:
         class UserOutput(BaseModel):
             id: int
             name: str
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class UserController:
             @Get("/user", response=UserOutput)
             def get_user(self) -> dict:
                 return {"id": 1, "name": "홍길동"}
 
-        app = Application("test_pydantic_response").scan(M).ready()
+        app = Application("test_pydantic_response").ready()
         request = HttpRequest(method="GET", path="/user")
         response = await app.router.dispatch(request)
 
@@ -647,18 +545,13 @@ class TestResponseTypeConversion:
             id: int
             name: str
             price: float
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class ProductController:
             @Post("/product", response=ProductOutput)
             def create_product(self) -> dict:
                 return {"id": 1, "name": "상품", "price": 1000.0}
 
-        app = Application("test_dataclass_response").scan(M).ready()
+        app = Application("test_dataclass_response").ready()
         request = HttpRequest(method="POST", path="/product", body=b"{}")
         response = await app.router.dispatch(request)
 
@@ -675,18 +568,13 @@ class TestResponseTypeConversion:
 
         class ItemOutput(BaseModel):
             id: int
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class ItemController:
             @Get("/item", response=ItemOutput)
             def get_item(self) -> ItemOutput:
                 return ItemOutput(id=42)
 
-        app = Application("test_already_correct_type").scan(M).ready()
+        app = Application("test_already_correct_type").ready()
         request = HttpRequest(method="GET", path="/item")
         response = await app.router.dispatch(request)
 
@@ -697,18 +585,13 @@ class TestResponseTypeConversion:
     @pytest.mark.asyncio
     async def test_response_without_conversion(self):
         """response 없으면 변환 안 함"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class RawController:
             @Get("/raw")
             def get_raw(self) -> dict:
                 return {"data": "raw"}
 
-        app = Application("test_no_response").scan(M).ready()
+        app = Application("test_no_response").ready()
         request = HttpRequest(method="GET", path="/raw")
         response = await app.router.dispatch(request)
 
@@ -721,11 +604,6 @@ class TestResponseTypeConversion:
 
         class Output(BaseModel):
             value: str
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class TestController:
             @Get("/test", response=Output)
@@ -737,11 +615,6 @@ class TestResponseTypeConversion:
 
     def test_handler_repr_without_response_type(self):
         """response_type 없으면 __repr__에 미포함"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Component
         class TestController:
             @Get("/test")

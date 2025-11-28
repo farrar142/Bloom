@@ -8,14 +8,37 @@ from bloom.core.container import (
     FactoryContainer,
     HandlerContainer,
 )
+from bloom.core.manager import try_get_current_manager
 
 
 class ComponentElement[T](Element[T]):
     pass
 
 
+def _scan_child_containers(cls: type) -> None:
+    """클래스의 메서드에서 Factory/Handler 컨테이너를 찾아 owner_cls 설정"""
+    manager = try_get_current_manager()
+    
+    for attr_name in dir(cls):
+        try:
+            attr = getattr(cls, attr_name, None)
+        except Exception:
+            continue
+            
+        if attr and hasattr(attr, "__container__"):
+            child_container = getattr(attr, "__container__")
+            # Factory 또는 Handler 컨테이너인 경우
+            if isinstance(child_container, (FactoryContainer, HandlerContainer)):
+                child_container.owner_cls = cls
+                # manager가 있으면 등록
+                if manager:
+                    manager.register_container(child_container, child_container.get_qual_name())
+
+
 def Component[T](cls: type[T]) -> type[T]:
-    ComponentContainer.get_or_create(cls)
+    container = ComponentContainer.get_or_create(cls)
+    # 클래스의 메서드에서 Factory/Handler 컨테이너 스캔
+    _scan_child_containers(cls)
     return cls
 
 

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import pytest
 
-from tests.conftest import Module, reset_container_manager
 
 from bloom import (
     Application,
@@ -31,18 +30,13 @@ class TestRequestBodyResolver:
         class UserData:
             name: str
             age: int
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Post("/users")
             async def create_user(self, data: RequestBody[UserData]) -> dict:
                 return {"name": data.name, "age": data.age}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="POST",
@@ -66,18 +60,13 @@ class TestRequestBodyResolver:
         class CreateUserRequest(BaseModel):
             username: str
             email: str
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Post("/users")
             async def create_user(self, body: RequestBody[CreateUserRequest]) -> dict:
                 return {"username": body.username, "email": body.email}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="POST",
@@ -102,18 +91,13 @@ class TestModelParamResolver:
         class UserData:
             name: str
             age: int
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Post("/users")
             async def create_user(self, data: UserData) -> dict:
                 return {"name": data.name, "age": data.age}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # body["data"]에서 UserData 생성
         request = HttpRequest(
@@ -138,18 +122,13 @@ class TestModelParamResolver:
         class Profile(BaseModel):
             nickname: str
             bio: str
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class ProfileController:
             @Post("/profile")
             async def update(self, profile: Profile) -> dict:
                 return {"nickname": profile.nickname, "bio": profile.bio}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # body["profile"]에서 Profile 생성
         request = HttpRequest(
@@ -174,18 +153,13 @@ class TestModelParamResolver:
         @dataclass
         class Book:
             title: str
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class BookController:
             @Post("/books")
             async def create(self, author: Author, book: Book) -> dict:
                 return {"author": author.name, "title": book.title}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # body["author"]와 body["book"]에서 각각 추출
         request = HttpRequest(
@@ -211,18 +185,13 @@ class TestListBodyResolver:
         class Address:
             city: str
             country: str
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class AddressController:
             @Post("/addresses")
             async def bulk_create(self, addresses: list[Address]) -> dict:
                 return {"count": len(addresses), "cities": [a.city for a in addresses]}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="POST",
@@ -247,11 +216,6 @@ class TestListBodyResolver:
         class Item(BaseModel):
             name: str
             price: float
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class ItemController:
             @Post("/items/bulk")
@@ -259,7 +223,7 @@ class TestListBodyResolver:
                 total = sum(i.price for i in items)
                 return {"count": len(items), "total": total}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="POST",
@@ -280,18 +244,13 @@ class TestPathParamResolver:
     @pytest.mark.asyncio
     async def test_single_path_param(self, reset_container_manager):
         """단일 경로 파라미터"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Get("/users/{id}")
             async def get_user(self, id: str) -> dict:
                 return {"id": id}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(method="GET", path="/users/123")
         response = await app.router.dispatch(request)
@@ -302,18 +261,13 @@ class TestPathParamResolver:
     @pytest.mark.asyncio
     async def test_multiple_path_params(self, reset_container_manager):
         """여러 경로 파라미터"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class ResourceController:
             @Get("/users/{user_id}/posts/{post_id}")
             async def get_post(self, user_id: str, post_id: str) -> dict:
                 return {"user_id": user_id, "post_id": post_id}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(method="GET", path="/users/42/posts/99")
         response = await app.router.dispatch(request)
@@ -324,18 +278,13 @@ class TestPathParamResolver:
     @pytest.mark.asyncio
     async def test_path_param_with_int_type(self, reset_container_manager):
         """int 타입 경로 파라미터"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Get("/users/{id}")
             async def get_user(self, id: int) -> dict:
                 return {"id": id, "id_type": type(id).__name__}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(method="GET", path="/users/123")
         response = await app.router.dispatch(request)
@@ -350,18 +299,13 @@ class TestQueryParamResolver:
     @pytest.mark.asyncio
     async def test_query_params(self, reset_container_manager):
         """쿼리 파라미터 추출"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class SearchController:
             @Get("/search")
             async def search(self, q: str, limit: int) -> dict:
                 return {"query": q, "limit": limit}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="GET",
@@ -376,18 +320,13 @@ class TestQueryParamResolver:
     @pytest.mark.asyncio
     async def test_primitive_params_from_body(self, reset_container_manager):
         """body에서 기본 타입 파라미터 추출"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Post("/users")
             async def create_user(self, name: str, age: int) -> dict:
                 return {"name": name, "age": age}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="POST",
@@ -403,18 +342,13 @@ class TestQueryParamResolver:
     @pytest.mark.asyncio
     async def test_mixed_query_and_body_params(self, reset_container_manager):
         """query와 body 혼합 - query 우선"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class MixedController:
             @Post("/items")
             async def create(self, name: str, quantity: int) -> dict:
                 return {"name": name, "quantity": quantity}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # name은 query에서, quantity는 body에서
         request = HttpRequest(
@@ -436,11 +370,6 @@ class TestHttpRequestResolver:
     @pytest.mark.asyncio
     async def test_http_request_injection(self, reset_container_manager):
         """HttpRequest 주입"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class InfoController:
             @Get("/info")
@@ -451,7 +380,7 @@ class TestHttpRequestResolver:
                     "headers": dict(request.headers),
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="GET",
@@ -476,18 +405,13 @@ class TestMixedParameters:
         @dataclass
         class UpdateData:
             name: str
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Post("/users/{id}")
             async def update_user(self, id: str, data: RequestBody[UpdateData]) -> dict:
                 return {"id": id, "name": data.name}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="POST",
@@ -503,11 +427,6 @@ class TestMixedParameters:
     @pytest.mark.asyncio
     async def test_path_query_and_request(self, reset_container_manager):
         """경로 + 쿼리 + HttpRequest 혼합"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class MixedController:
             @Get("/resources/{id}")
@@ -520,7 +439,7 @@ class TestMixedParameters:
                     "user_agent": request.headers.get("user-agent", "unknown"),
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="GET",
@@ -544,11 +463,6 @@ class TestHttpHeaderResolver:
     @pytest.mark.asyncio
     async def test_header_by_param_name(self, reset_container_manager):
         """파라미터 이름으로 헤더 키 추론 (user_agent -> user-agent)"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class HeaderController:
             @Get("/info")
@@ -558,7 +472,7 @@ class TestHttpHeaderResolver:
                     "value": user_agent.value,
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="GET",
@@ -573,18 +487,13 @@ class TestHttpHeaderResolver:
     @pytest.mark.asyncio
     async def test_header_with_explicit_key(self, reset_container_manager):
         """정확한 헤더 키 지정"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class HeaderController:
             @Get("/info")
             async def info(self, ua: HttpHeader["User-Agent"]) -> dict:
                 return {"key": ua.key, "value": ua.value}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="GET",
@@ -599,11 +508,6 @@ class TestHttpHeaderResolver:
     @pytest.mark.asyncio
     async def test_multiple_headers(self, reset_container_manager):
         """여러 헤더 추출"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class HeaderController:
             @Get("/info")
@@ -617,7 +521,7 @@ class TestHttpHeaderResolver:
                     "accept": accept.value,
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="GET",
@@ -639,18 +543,13 @@ class TestHttpCookieResolver:
     @pytest.mark.asyncio
     async def test_cookie_by_param_name(self, reset_container_manager):
         """파라미터 이름으로 쿠키 키 추론"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class CookieController:
             @Get("/session")
             async def session(self, session_id: HttpCookie) -> dict:
                 return {"key": session_id.key, "value": session_id.value}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="GET",
@@ -665,18 +564,13 @@ class TestHttpCookieResolver:
     @pytest.mark.asyncio
     async def test_cookie_with_explicit_key(self, reset_container_manager):
         """정확한 쿠키 키 지정 - KeyValue 반환"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class CookieController:
             @Get("/token")
             async def token(self, t: HttpCookie["auth_token"]) -> dict:
                 return {"key": t.key, "value": t.value}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="GET",
@@ -691,11 +585,6 @@ class TestHttpCookieResolver:
     @pytest.mark.asyncio
     async def test_multiple_cookies(self, reset_container_manager):
         """여러 쿠키 추출 - KeyValue 반환"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class CookieController:
             @Get("/auth")
@@ -711,7 +600,7 @@ class TestHttpCookieResolver:
                     "token_value": token.value,
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         request = HttpRequest(
             method="GET",
@@ -735,11 +624,6 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_single_file_by_param_name(self, reset_container_manager):
         """파라미터 이름으로 단일 파일 추출"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UploadController:
             @Post("/upload")
@@ -750,7 +634,7 @@ class TestUploadedFileResolver:
                     "size": file.size,
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         uploaded = UploadedFile(
             filename="test.txt",
@@ -774,18 +658,13 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_single_file_with_explicit_field(self, reset_container_manager):
         """지정된 필드명으로 단일 파일 추출"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UploadController:
             @Post("/avatar")
             async def upload_avatar(self, image: UploadedFile["avatar"]) -> dict:
                 return {"filename": image.filename}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         uploaded = UploadedFile(
             filename="profile.png",
@@ -805,11 +684,6 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_multiple_files_by_param_name(self, reset_container_manager):
         """파라미터 이름으로 여러 파일 추출"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UploadController:
             @Post("/upload-multiple")
@@ -819,7 +693,7 @@ class TestUploadedFileResolver:
                     "filenames": [f.filename for f in files],
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         file1 = UploadedFile(
             filename="doc1.pdf",
@@ -847,18 +721,13 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_multiple_files_with_explicit_field(self, reset_container_manager):
         """지정된 필드명으로 여러 파일 추출"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UploadController:
             @Post("/gallery")
             async def upload_images(self, photos: list[UploadedFile["images"]]) -> dict:
                 return {"count": len(photos)}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         img1 = UploadedFile(
             filename="photo1.jpg",
@@ -883,18 +752,13 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_file_content_access(self, reset_container_manager):
         """파일 내용 접근"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UploadController:
             @Post("/read")
             async def read_file(self, file: UploadedFile) -> dict:
                 return {"content": file.content.decode("utf-8")}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         uploaded = UploadedFile(
             filename="message.txt",
@@ -918,18 +782,13 @@ class TestOptionalParameters:
     @pytest.mark.asyncio
     async def test_optional_query_param(self, reset_container_manager):
         """Optional 쿼리 파라미터"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class SearchController:
             @Get("/search")
             async def search(self, q: str, limit: int | None = None) -> dict:
                 return {"q": q, "limit": limit}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # limit 없이 요청
         request = HttpRequest(
@@ -956,11 +815,6 @@ class TestOptionalParameters:
     @pytest.mark.asyncio
     async def test_optional_header(self, reset_container_manager):
         """Optional 헤더"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class HeaderController:
             @Get("/info")
@@ -969,7 +823,7 @@ class TestOptionalParameters:
                     return {"auth": None}
                 return {"auth": authorization.value}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # 헤더 없이
         request = HttpRequest(method="GET", path="/info")
@@ -992,11 +846,6 @@ class TestOptionalParameters:
     @pytest.mark.asyncio
     async def test_optional_cookie(self, reset_container_manager):
         """Optional 쿠키"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class CookieController:
             @Get("/session")
@@ -1005,7 +854,7 @@ class TestOptionalParameters:
                     return {"session": None}
                 return {"session": session_id.value}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # 쿠키 없이
         request = HttpRequest(method="GET", path="/session")
@@ -1025,11 +874,6 @@ class TestOptionalParameters:
         @dataclass
         class Data:
             value: str
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class DataController:
             @Post("/data")
@@ -1040,7 +884,7 @@ class TestOptionalParameters:
                     return {"data": data.value, "metadata": None}
                 return {"data": data.value, "metadata": metadata.key}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # metadata 없이
         request = HttpRequest(
@@ -1057,11 +901,6 @@ class TestOptionalParameters:
     @pytest.mark.asyncio
     async def test_optional_uploaded_file(self, reset_container_manager):
         """Optional UploadedFile"""
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UploadController:
             @Post("/upload")
@@ -1070,7 +909,7 @@ class TestOptionalParameters:
                     return {"uploaded": False}
                 return {"uploaded": True, "filename": file.filename}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # 파일 없이
         request = HttpRequest(method="POST", path="/upload")
@@ -1087,11 +926,6 @@ class TestAuthenticationResolver:
     async def test_authentication_injection(self, reset_container_manager):
         """Authentication 주입"""
         from bloom.web.auth import Authentication
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Get("/me")
@@ -1101,7 +935,7 @@ class TestAuthenticationResolver:
                     "authenticated": auth.authenticated,
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # auth가 설정된 request
         auth = Authentication(user_id="user123", authenticated=True)
@@ -1116,11 +950,6 @@ class TestAuthenticationResolver:
     async def test_authentication_none_when_not_set(self, reset_container_manager):
         """Authentication이 설정되지 않으면 None"""
         from bloom.web.auth import Authentication
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Get("/me")
@@ -1129,7 +958,7 @@ class TestAuthenticationResolver:
                     return {"authenticated": False}
                 return {"authenticated": auth.authenticated}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # auth 없이
         request = HttpRequest(method="GET", path="/me")
@@ -1142,11 +971,6 @@ class TestAuthenticationResolver:
     async def test_optional_authentication(self, reset_container_manager):
         """Optional[Authentication] 주입"""
         from bloom.web.auth import Authentication
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class UserController:
             @Get("/me")
@@ -1155,7 +979,7 @@ class TestAuthenticationResolver:
                     return {"guest": True}
                 return {"user_id": auth.user_id}
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         # auth 없이
         request = HttpRequest(method="GET", path="/me")
@@ -1176,11 +1000,6 @@ class TestAuthenticationResolver:
     async def test_authentication_with_authorities(self, reset_container_manager):
         """authorities 포함한 Authentication 주입"""
         from bloom.web.auth import Authentication
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class AdminController:
             @Get("/admin")
@@ -1191,7 +1010,7 @@ class TestAuthenticationResolver:
                     "authorities": auth.authorities,
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         auth = Authentication(
             user_id="admin1",
@@ -1212,11 +1031,6 @@ class TestAuthenticationResolver:
     ):
         """Authentication + HttpRequest + path param 조합"""
         from bloom.web.auth import Authentication
-
-        class M:
-            pass
-
-        @Module(M)
         @Controller
         class PostController:
             @Get("/posts/{id}")
@@ -1229,7 +1043,7 @@ class TestAuthenticationResolver:
                     "method": request.method,
                 }
 
-        app = Application("test").scan(M).ready()
+        app = Application("test").ready()
 
         auth = Authentication(user_id="viewer1", authenticated=True)
         request = HttpRequest(method="GET", path="/posts/123", auth=auth)

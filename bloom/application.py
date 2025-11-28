@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .core.container import Container
 
-from .core.manager import ContainerManager, set_current_manager
+from .core.manager import ContainerManager, set_current_manager, try_get_current_manager
 from .core.utils import topological_sort
 from .web.router import Router
 from .web.asgi import ASGIApplication
@@ -24,12 +24,21 @@ class Application:
         # uvicorn main:app.asgi
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, manager: "ContainerManager | None" = None):
         self.name = name
-        self.manager = ContainerManager(name)  # 인스턴스 소유
+        # 외부에서 manager를 전달받거나, 현재 활성 manager 사용, 또는 새로 생성
+        if manager is not None:
+            self.manager = manager
+        elif existing := try_get_current_manager():
+            self.manager = existing
+            self.manager.app_name = name  # 이름 업데이트
+        else:
+            self.manager = ContainerManager(name)
         self._router: Router | None = None
         self._asgi: ASGIApplication | None = None
         self._is_ready = False
+        # 생성 시점에 현재 매니저로 설정 (데코레이터 자동 등록 지원)
+        set_current_manager(self.manager)
 
     @property
     def router(self) -> Router:

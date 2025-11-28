@@ -1,47 +1,8 @@
 """테스트 공통 fixture 및 컴포넌트"""
 
-from typing import Callable, TypeVar
-
 import pytest
 from bloom.core import Component, Factory, Handler
 from bloom.core.manager import ContainerManager, set_current_manager
-
-T = TypeVar("T", bound=type)
-
-
-class FakeModule:
-    """테스트용 가짜 모듈"""
-
-    pass
-
-
-def Module(module: type) -> Callable[[T], T]:
-    """
-    테스트용 모듈 데코레이터.
-    클래스를 지정된 모듈에 자동으로 등록합니다.
-
-    사용 예시:
-        class MyModule:
-            pass
-
-        @Module(MyModule)
-        @Component
-        class ServiceA:
-            pass
-
-        @Module(MyModule)
-        @Component
-        class ServiceB:
-            a: ServiceA
-
-        app.scan_components(MyModule)
-    """
-
-    def decorator(cls: T) -> T:
-        setattr(module, cls.__name__, cls)
-        return cls
-
-    return decorator
 
 
 # === 공통 테스트용 컴포넌트 (모듈 레벨에서 정의) ===

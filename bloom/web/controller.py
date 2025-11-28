@@ -3,6 +3,7 @@
 from typing import Callable, TypeVar
 
 from bloom.core.container import ComponentContainer, Element
+from bloom.core.decorators import _scan_child_containers
 
 T = TypeVar("T")
 
@@ -51,6 +52,8 @@ def Controller[T](cls: type[T]) -> type[T]:
                 return []
     """
     ControllerContainer.get_or_create(cls)
+    # 클래스의 메서드에서 Factory/Handler 컨테이너 스캔
+    _scan_child_containers(cls)
     return cls
 
 

@@ -7,6 +7,7 @@ from typing import Any, Callable, Self, get_type_hints, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..manager import ContainerManager
 
+from ..manager import try_get_current_manager
 from .base import Container
 
 
@@ -123,4 +124,7 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
         if not (container := getattr(handler_method, "__container__", None)):
             container = cls(handler_method, handler_key)
             setattr(handler_method, "__container__", container)
+            # 현재 활성 manager가 있으면 자동 등록
+            if manager := try_get_current_manager():
+                manager.register_container(container, container.get_qual_name())
         return container

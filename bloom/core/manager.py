@@ -22,6 +22,11 @@ def get_current_manager() -> "ContainerManager":
     )
 
 
+def try_get_current_manager() -> "ContainerManager | None":
+    """현재 활성화된 ContainerManager 반환 (없으면 None)"""
+    return _current_manager.get()
+
+
 def set_current_manager(manager: "ContainerManager | None") -> None:
     """현재 ContainerManager 설정"""
     _current_manager.set(manager)
