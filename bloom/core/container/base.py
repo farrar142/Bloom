@@ -1,6 +1,6 @@
 """Container 베이스 클래스"""
 
-from typing import Any, Self, Optional, cast, overload, TYPE_CHECKING
+from typing import Any, Self, Optional, cast, overload, TYPE_CHECKING, get_type_hints
 
 if TYPE_CHECKING:
     from ..manager import ContainerManager
@@ -56,9 +56,17 @@ class Container[T]:
         return None
 
     def get_dependencies(self) -> list[type]:
-        """이 컨테이너가 의존하는 타입들을 반환"""
+        """이 컨테이너가 의존하는 타입들을 반환 (Lazy 컴포넌트 제외)"""
+        from ..lazy import LazyProxy, is_lazy_component
+
         dependencies = []
+        manager = try_get_current_manager()
         for field_type in getattr(self.target, "__annotations__", {}).values():
+            # Lazy 컴포넌트는 의존성에서 제외 (지연 로딩이므로 순환 가능)
+            if manager:
+                if dep_container := manager.get_container(field_type):
+                    if is_lazy_component(dep_container):
+                        continue
             dependencies.append(field_type)
         return dependencies
 
@@ -68,18 +76,29 @@ class Container[T]:
 
     def _inject_dependencies(self, annotations: dict[str, type]) -> dict[str, Any]:
         """어노테이션 기반으로 의존성을 주입하여 kwargs 반환"""
+        from ..lazy import LazyProxy, is_lazy_component
+
         manager = self._get_manager()
         kwargs = {}
         for name, dep_type in annotations.items():
             if name == "return":
                 continue
             if dep_container := manager.get_container(dep_type):
-                kwargs[name] = dep_container.initialize_instance()
+                # @Lazy 컴포넌트는 LazyProxy로 주입
+                if is_lazy_component(dep_container):
+                    kwargs[name] = LazyProxy(dep_container)
+                else:
+                    kwargs[name] = dep_container.initialize_instance()
         return kwargs
 
     def _create_instance(self) -> T:
         """실제 인스턴스 생성 로직"""
-        annotations = getattr(self.target, "__annotations__", {})
+        # get_type_hints를 사용하여 forward reference 해결
+        try:
+            annotations = get_type_hints(self.target)
+        except Exception:
+            # 타입 힌트 해결 실패 시 __annotations__ 사용
+            annotations = getattr(self.target, "__annotations__", {})
         kwargs = self._inject_dependencies(annotations)
         instance = self.target()
         instance.__dict__.update(kwargs)
@@ -123,6 +142,10 @@ class Container[T]:
     def add_element(self, element: "Element[T]") -> None:
         """컨테이너에 엘리먼트 추가"""
         self.elements.append(element)
+
+    def has_element(self, element_type: type["Element"]) -> bool:
+        """특정 타입의 Element가 있는지 확인"""
+        return any(isinstance(e, element_type) for e in self.elements)
 
     def get_metadatas[U](self, key: str, default: Optional[U] = None) -> list[U]:
         """

@@ -9,6 +9,7 @@ from .core import (
     Handler,
     PostConstruct,
     PreDestroy,
+    Lazy,
 )
 from .web import (
     HttpRequest,
@@ -34,6 +35,7 @@ __all__ = [
     "Handler",
     "PostConstruct",
     "PreDestroy",
+    "Lazy",
     # Web
     "HttpRequest",
     "HttpResponse",

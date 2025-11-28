@@ -97,6 +97,8 @@ class Application:
 
     def _initialize_containers(self) -> None:
         """모든 컨테이너를 토폴로지컬 순서로 초기화"""
+        from bloom.core.lazy import is_lazy_component
+
         # 모든 컨테이너를 (qualifier, container) 튜플 리스트로 변환
         all_containers: list[tuple[str, "Container"]] = []
         for qual_containers in self.manager.get_all_containers().values():
@@ -110,6 +112,9 @@ class Application:
         self._initialized_containers = sorted_containers
 
         for qualifier, container in sorted_containers:
+            # @Lazy 컴포넌트는 즉시 초기화하지 않음 (접근 시 LazyProxy가 초기화)
+            if is_lazy_component(container):
+                continue
             instance = container.initialize_instance()
             self.manager.set_instance(container.target, instance, qualifier=qualifier)
 

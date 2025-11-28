@@ -22,6 +22,7 @@ from .decorators import (
     PreDestroy,
 )
 from .lifecycle import LifecycleManager
+from .lazy import Lazy, LazyProxy, is_lazy_component
 
 __all__ = [
     "ContainerManager",
@@ -40,4 +41,7 @@ __all__ = [
     "PostConstruct",
     "PreDestroy",
     "LifecycleManager",
+    "Lazy",
+    "LazyProxy",
+    "is_lazy_component",
 ]
