@@ -13,6 +13,7 @@ from .controller import (
 )
 from .asgi import ASGIApplication, create_asgi_app
 from .static import StaticFiles, StaticFilesContainer, StaticFilesManager
+from .routing import RouteEntry, RouteRegistry, RouteManager
 
 __all__ = [
     "Authenticator",
@@ -43,4 +44,7 @@ __all__ = [
     "StaticFiles",
     "StaticFilesContainer",
     "StaticFilesManager",
+    "RouteEntry",
+    "RouteRegistry",
+    "RouteManager",
 ]
