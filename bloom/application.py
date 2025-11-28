@@ -234,9 +234,7 @@ class Application:
             self.manager.set_instance(container.target, instance)
             self._initialized_containers.append(container)
 
-    def _save_circular_dependency_graph(
-        self, error: CircularDependencyError
-    ) -> None:
+    def _save_circular_dependency_graph(self, error: CircularDependencyError) -> None:
         """순환 의존성 발생 시 의존성 그래프를 파일로 저장
 
         Args:

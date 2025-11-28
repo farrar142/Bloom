@@ -108,7 +108,9 @@ def render_summary(data: GraphData) -> list[str]:
 
     # 순환 의존성 정보
     if data.cycle_types:
-        lines.append(f"⚠️  Circular Dependencies: {len(data.cycle_types)} types involved")
+        lines.append(
+            f"⚠️  Circular Dependencies: {len(data.cycle_types)} types involved"
+        )
 
     lines.append("")
     return lines
@@ -309,25 +311,27 @@ def render_circular_dependencies(data: GraphData) -> list[str]:
         lines.append("")
 
     # 해결 방법 제안
-    lines.extend([
-        "-" * 60,
-        "💡 How to resolve:",
-        "",
-        "  1. Use @Lazy to break the cycle:",
-        "     ```python",
-        "     @Component",
-        "     class ServiceA:",
-        "         service_b: Lazy[ServiceB]  # Deferred loading",
-        "     ```",
-        "",
-        "  2. Extract common functionality to a third component",
-        "",
-        "  3. Reconsider the design - circular dependencies",
-        "     often indicate a design issue",
-        "",
-        "=" * 60,
-        "",
-    ])
+    lines.extend(
+        [
+            "-" * 60,
+            "💡 How to resolve:",
+            "",
+            "  1. Use @Lazy to break the cycle:",
+            "     ```python",
+            "     @Component",
+            "     class ServiceA:",
+            "         service_b: Lazy[ServiceB]  # Deferred loading",
+            "     ```",
+            "",
+            "  2. Extract common functionality to a third component",
+            "",
+            "  3. Reconsider the design - circular dependencies",
+            "     often indicate a design issue",
+            "",
+            "=" * 60,
+            "",
+        ]
+    )
 
     return lines
 
