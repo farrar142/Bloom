@@ -68,13 +68,18 @@
 실행 순서:
     요청: Middleware A → B → C → 핸들러
     응답: 핸들러 → C → B → A (역순)
+
+GroupRegistry 패턴:
+    - EntryGroup[T]: 항목들을 그룹화
+    - GroupRegistry[T]: EntryGroup들을 관리
+    - MiddlewareGroup: EntryGroup[Middleware] 상속
+    - MiddlewareChain: GroupRegistry[Middleware] 상속
 """
 
 from .base import Middleware
-from .chain import MiddlewareChain
-from .cors import CorsMiddleware
-from ..error import ErrorHandlerMiddleware
+from ..builtin.middleware import CorsMiddleware, ErrorHandlerMiddleware
 from .group import MiddlewareGroup
+from .registry import MiddlewareChain
 
 __all__ = [
     "Middleware",

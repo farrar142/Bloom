@@ -3,7 +3,7 @@
 import pytest
 
 from bloom.web.http import HttpRequest, HttpResponse
-from bloom.web.middleware.cors import CorsMiddleware
+from bloom.web.middleware import CorsMiddleware
 
 
 class TestCorsMiddleware:

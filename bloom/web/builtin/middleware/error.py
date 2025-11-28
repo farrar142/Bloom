@@ -36,9 +36,9 @@ from typing import Any, Optional
 
 from bloom.core.manager import get_current_manager
 
-from .container import ErrorHandlerContainer
-from ..http import HttpRequest, HttpResponse
-from ..middleware.base import Middleware
+from ...error.container import ErrorHandlerContainer
+from ...http import HttpRequest, HttpResponse
+from ...middleware.base import Middleware
 
 
 class ErrorHandlerMiddleware(Middleware):

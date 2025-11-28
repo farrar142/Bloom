@@ -101,7 +101,7 @@ class TestMiddlewareChain:
 
     def test_default_chain_has_cors(self):
         """기본 체인에 CorsMiddleware 포함"""
-        from bloom.web.middleware.cors import CorsMiddleware
+        from bloom.web.middleware import CorsMiddleware
 
         chain = MiddlewareChain()
         assert len(chain.groups) == 1  # default group
@@ -111,7 +111,7 @@ class TestMiddlewareChain:
 
     def test_get_middleware(self):
         """get_middleware로 특정 타입 미들웨어 조회"""
-        from bloom.web.middleware.cors import CorsMiddleware
+        from bloom.web.middleware import CorsMiddleware
 
         chain = MiddlewareChain()
         cors = chain.get_middleware(CorsMiddleware)
@@ -533,8 +533,7 @@ class TestRouterMiddlewareIntegration:
     async def test_cors_middleware_with_router(self):
         """CorsMiddleware가 Router와 함께 동작 - preflight 및 실제 요청"""
         from bloom.core.manager import get_current_manager
-        from bloom.web.middleware import MiddlewareChain
-        from bloom.web.middleware.cors import CorsMiddleware
+        from bloom.web.middleware import MiddlewareChain, CorsMiddleware
         from bloom.web.router import Router
         from bloom.web.handler import HttpMethodHandler
         from bloom.web.controller import ControllerContainer

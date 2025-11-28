@@ -1,8 +1,7 @@
 """
-미들웨어 체인 (Registry)
+미들웨어 체인 (GroupRegistry)
 
-AbstractRegistry를 상속하여 MiddlewareEntry들을 관리합니다.
-여러 미들웨어를 그룹화하고 실행 순서를 제어합니다.
+GroupRegistry[Middleware]를 상속하여 미들웨어들을 그룹 단위로 관리합니다.
 Router에서 자동으로 수집되어 요청/응답 처리 시 실행됩니다.
 
 설정 방법:
@@ -50,17 +49,15 @@ Router에서 자동으로 수집되어 요청/응답 처리 시 실행됩니다.
     ```
 """
 
-from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Optional, overload
 
-from bloom.core.abstract import AbstractRegistry
+from bloom.core.abstract import EntryGroup, GroupRegistry
 from bloom.web.handler import HttpMethodHandler
 
 from ..http import HttpRequest, HttpResponse
 
 from .base import Middleware
-from .entry import MiddlewareEntry
 from .group import MiddlewareGroup
 
 
@@ -158,11 +155,11 @@ class MiddlewareProcessContext:
         return False  # 예외를 다시 raise
 
 
-class MiddlewareChain(AbstractRegistry[MiddlewareEntry]):
+class MiddlewareChain(GroupRegistry[Middleware]):
     """
-    미들웨어 체인 (Registry)
+    미들웨어 체인 (GroupRegistry)
 
-    AbstractRegistry[MiddlewareEntry]를 상속하여 Entry 기반 관리.
+    GroupRegistry[Middleware]를 상속하여 그룹 기반 관리.
     여러 미들웨어 그룹을 관리하고 실행 순서를 제어합니다.
     Router.dispatch()에서 자동으로 실행됩니다.
 
@@ -202,70 +199,33 @@ class MiddlewareChain(AbstractRegistry[MiddlewareEntry]):
         ```
     """
 
+    # MiddlewareGroup을 그룹 타입으로 사용
+    group_type = MiddlewareGroup
+
     def __init__(self):
-        super().__init__()  # AbstractRegistry 초기화
-        from .cors import CorsMiddleware
-        from ..error import ErrorHandlerMiddleware
+        super().__init__()
+        from ..builtin.middleware import CorsMiddleware, ErrorHandlerMiddleware
 
-        self.groups: list[MiddlewareGroup] = []
-        self.default_group = MiddlewareGroup("default")
-        self.groups.append(self.default_group)
-        # 미들웨어 리스트 캐시 (성능 최적화)
-        self._middlewares_cache: list[Middleware] | None = None
-
-        # CorsMiddleware를 기본 그룹에 추가
+        # 기본 그룹에 필수 미들웨어 추가
         self.default_group.add(CorsMiddleware())
         self.default_group.add(ErrorHandlerMiddleware())
 
     # ========================================
-    # Registry Interface (Entry 기반)
+    # 하위 호환성 속성
     # ========================================
 
-    def register(self, entry: MiddlewareEntry) -> None:
-        """
-        MiddlewareEntry 등록 (Registry 인터페이스)
+    @property
+    def groups(self) -> list[MiddlewareGroup]:
+        """그룹 리스트 (하위 호환성)"""
+        return self._groups  # type: ignore
 
-        기본 그룹에 미들웨어를 추가합니다.
-
-        Args:
-            entry: 등록할 MiddlewareEntry
-        """
-        super().register(entry)
-        # 그룹에도 추가
-        self.default_group.add(entry.middleware)
-        self._invalidate_cache()
-
-    def register_middleware(self, middleware: Middleware) -> MiddlewareEntry:
-        """
-        Middleware를 Entry로 래핑하여 등록
-
-        Args:
-            middleware: 등록할 Middleware
-
-        Returns:
-            생성된 MiddlewareEntry
-        """
-        entry = MiddlewareEntry(middleware)
-        self.register(entry)
-        return entry
-
-    def get_entry(self, middleware: Middleware) -> MiddlewareEntry | None:
-        """
-        Middleware에 해당하는 Entry 찾기
-
-        Args:
-            middleware: 찾을 Middleware
-
-        Returns:
-            MiddlewareEntry 또는 None
-        """
-        for entry in self._entries:
-            if entry.middleware is middleware:
-                return entry
-        return None
+    @property
+    def default_group(self) -> MiddlewareGroup:
+        """기본 그룹 (하위 호환성)"""
+        return self._default_group  # type: ignore
 
     # ========================================
-    # 기존 API (하위 호환성)
+    # 미들웨어 전용 API
     # ========================================
 
     @overload
@@ -300,151 +260,14 @@ class MiddlewareChain(AbstractRegistry[MiddlewareEntry]):
             chain.disable(cors)
             ```
         """
-        for group in self.groups:
-            for middleware in group.middlewares:
+        for group in self._groups:
+            for middleware in group.items:
                 if isinstance(middleware, middleware_type):
                     return middleware
 
         if raise_exception:
             raise ValueError(f"Middleware {middleware_type.__name__} not found")
         return None
-
-    def get_default_group(self) -> MiddlewareGroup:
-        """기본 그룹 반환"""
-        return self.default_group
-
-    def add_group(self, name: str) -> MiddlewareGroup:
-        """
-        새 그룹 추가 (마지막에)
-
-        Args:
-            name: 그룹 이름
-
-        Returns:
-            생성된 그룹
-        """
-        group = MiddlewareGroup(name)
-        self.groups.append(group)
-        self._invalidate_cache()
-        return group
-
-    def add_group_before(
-        self,
-        *middlewares: Middleware,
-        target_group: Optional[MiddlewareGroup] = None,
-    ) -> MiddlewareGroup:
-        """
-        특정 그룹 앞에 새 그룹 추가
-
-        Args:
-            *middlewares: 추가할 미들웨어들
-            target_group: 대상 그룹 (None이면 default 그룹 앞)
-
-        Returns:
-            생성된 그룹
-        """
-        target = target_group or self.default_group
-        index = self.groups.index(target)
-
-        new_group = MiddlewareGroup(f"before_{target.name}")
-        new_group.add(*middlewares)
-        self.groups.insert(index, new_group)
-        self._invalidate_cache()
-
-        return new_group
-
-    def add_group_after(
-        self,
-        *middlewares: Middleware,
-        target_group: Optional[MiddlewareGroup] = None,
-    ) -> MiddlewareGroup:
-        """
-        특정 그룹 뒤에 새 그룹 추가
-
-        Args:
-            *middlewares: 추가할 미들웨어들
-            target_group: 대상 그룹 (None이면 default 그룹 뒤)
-
-        Returns:
-            생성된 그룹
-        """
-        target = target_group or self.default_group
-        index = self.groups.index(target) + 1
-
-        new_group = MiddlewareGroup(f"after_{target.name}")
-        new_group.add(*middlewares)
-        self.groups.insert(index, new_group)
-        self._invalidate_cache()
-
-        return new_group
-
-    def disable(self, *middlewares: Middleware) -> "MiddlewareChain":
-        """
-        특정 미들웨어 인스턴스 비활성화
-
-        Entry 기반으로 개별 미들웨어를 비활성화합니다.
-        그룹 비활성화와 별개로 동작합니다.
-
-        Args:
-            *middlewares: 비활성화할 미들웨어 인스턴스들
-
-        Returns:
-            self (메서드 체이닝용)
-
-        사용 예시:
-            ```python
-            cors = chain.get_middleware(CorsMiddleware)
-            chain.disable(cors)
-            ```
-        """
-        for middleware in middlewares:
-            entry = self._get_or_create_entry(middleware)
-            entry.disable()
-        self._invalidate_cache()
-        return self
-
-    def enable(self, *middlewares: Middleware) -> "MiddlewareChain":
-        """
-        특정 미들웨어 인스턴스 활성화
-
-        Args:
-            *middlewares: 활성화할 미들웨어 인스턴스들
-
-        Returns:
-            self (메서드 체이닝용)
-        """
-        for middleware in middlewares:
-            entry = self._get_or_create_entry(middleware)
-            entry.enable()
-        self._invalidate_cache()
-        return self
-
-    def _get_or_create_entry(self, middleware: Middleware) -> MiddlewareEntry:
-        """
-        미들웨어에 해당하는 Entry를 가져오거나 생성
-
-        기존 API 호환성을 위해 Entry가 없으면 자동 생성합니다.
-
-        Args:
-            middleware: 찾을 Middleware
-
-        Returns:
-            MiddlewareEntry (기존 또는 새로 생성)
-        """
-        entry = self.get_entry(middleware)
-        if entry is None:
-            entry = MiddlewareEntry(middleware)
-            super().register(entry)  # _entries에만 추가 (그룹에는 이미 있음)
-        return entry
-
-    def is_disabled(self, middleware: Middleware) -> bool:
-        """미들웨어가 개별적으로 비활성화되었는지 확인"""
-        entry = self.get_entry(middleware)
-        return entry is not None and not entry.enabled
-
-    def _invalidate_cache(self) -> None:
-        """미들웨어 리스트 캐시 무효화"""
-        self._middlewares_cache = None
 
     def get_all_middlewares(self) -> list[Middleware]:
         """
@@ -453,24 +276,11 @@ class MiddlewareChain(AbstractRegistry[MiddlewareEntry]):
         Returns:
             미들웨어 리스트
         """
-        # 캐시된 결과가 있으면 반환
-        if self._middlewares_cache is not None:
-            return self._middlewares_cache
+        return self.get_all_items()
 
-        all_middlewares = []
-
-        for group in self.groups:
-            if not group.enabled:
-                continue
-
-            for middleware in group.middlewares:
-                # Entry 기반 비활성화 체크
-                if not self.is_disabled(middleware):
-                    all_middlewares.append(middleware)
-
-        # 캐시에 저장
-        self._middlewares_cache = all_middlewares
-        return all_middlewares
+    # ========================================
+    # 미들웨어 체인 실행 로직
+    # ========================================
 
     def process(
         self, request: HttpRequest, handler: HttpMethodHandler | None = None
@@ -588,4 +398,4 @@ class MiddlewareChain(AbstractRegistry[MiddlewareEntry]):
 
     def __repr__(self) -> str:
         active_count = len(self.get_all_middlewares())
-        return f"MiddlewareChain(groups={len(self.groups)}, active_middlewares={active_count})"
+        return f"MiddlewareChain(groups={len(self._groups)}, active_middlewares={active_count})"

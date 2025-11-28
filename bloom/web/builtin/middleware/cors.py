@@ -48,8 +48,8 @@ Preflight 요청:
 
 from typing import Any, Optional
 
-from ..http import HttpRequest, HttpResponse
-from .base import Middleware
+from ...http import HttpRequest, HttpResponse
+from ...middleware.base import Middleware
 
 
 class CorsMiddleware(Middleware):
