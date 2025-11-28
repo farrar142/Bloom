@@ -54,12 +54,12 @@ class ASGIApplication:
         self.stomp_handler = stomp_handler
         self.websocket_path = websocket_path
         self.application = application
-        
+
         # 멀티워커 지원을 위한 상태
         self._active_requests = 0
         self._shutdown_event: asyncio.Event | None = None
         self._is_shutting_down = False
-        
+
         # 라이프사이클 콜백
         self._on_startup: list[Callable[[], Coroutine[Any, Any, None] | None]] = []
         self._on_shutdown: list[Callable[[], Coroutine[Any, Any, None] | None]] = []
@@ -188,7 +188,7 @@ class ASGIApplication:
         """
         while True:
             message = await receive()
-            
+
             if message["type"] == "lifespan.startup":
                 try:
                     await self._startup()
@@ -196,7 +196,7 @@ class ASGIApplication:
                 except Exception as e:
                     await send({"type": "lifespan.startup.failed", "message": str(e)})
                     return
-                    
+
             elif message["type"] == "lifespan.shutdown":
                 await self._shutdown()
                 await send({"type": "lifespan.shutdown.complete"})
@@ -207,7 +207,7 @@ class ASGIApplication:
         # Application이 있으면 ready() 호출 (멀티워커 환경 지원)
         if self.application and not self.application._is_ready:
             self.application.ready()
-        
+
         # 등록된 startup 콜백 실행
         for callback in self._on_startup:
             result = callback()
@@ -225,7 +225,7 @@ class ASGIApplication:
         """
         # 새 요청 거부 시작
         self._is_shutting_down = True
-        
+
         # 진행 중인 요청이 있으면 대기
         if self._active_requests > 0:
             self._shutdown_event = asyncio.Event()
@@ -233,11 +233,11 @@ class ASGIApplication:
                 await asyncio.wait_for(self._shutdown_event.wait(), timeout=timeout)
             except asyncio.TimeoutError:
                 pass  # 타임아웃 시 강제 종료
-        
+
         # Application shutdown 호출
         if self.application:
             self.application.shutdown()
-        
+
         # 등록된 shutdown 콜백 실행
         for callback in self._on_shutdown:
             result = callback()
@@ -246,18 +246,22 @@ class ASGIApplication:
 
     async def _send_service_unavailable(self, send: Send) -> None:
         """503 Service Unavailable 응답 전송 (Graceful Shutdown 중)"""
-        await send({
-            "type": "http.response.start",
-            "status": 503,
-            "headers": [
-                (b"content-type", b"application/json"),
-                (b"retry-after", b"5"),
-            ],
-        })
-        await send({
-            "type": "http.response.body",
-            "body": b'{"error": "Service is shutting down"}',
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 503,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"retry-after", b"5"),
+                ],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b'{"error": "Service is shutting down"}',
+            }
+        )
 
     def _build_request(self, scope: Scope, body: bytes) -> HttpRequest:
         """ASGI scope로부터 HttpRequest 생성"""

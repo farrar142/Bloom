@@ -75,3 +75,8 @@ dmypy.json
 
 # Ruff
 .ruff_cache/
+
+# uv
+.uv/
+uv.lock
+.python-version

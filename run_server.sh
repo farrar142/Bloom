@@ -1,0 +1,1 @@
+uv run python -m uvicorn example_app:app.asgi --host 0.0.0.0 --port 8000 --workers 4

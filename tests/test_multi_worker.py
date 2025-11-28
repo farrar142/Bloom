@@ -16,7 +16,7 @@ class TestLifespanEvents:
         """startup 이벤트가 Application.ready()를 호출하는지 확인"""
         # 매니저 리셋
         set_current_manager(None)
-        
+
         app = Application("lifespan_test")
         asgi = app.asgi
 
@@ -33,13 +33,13 @@ class TestLifespanEvents:
     async def test_lifespan_full_cycle(self):
         """전체 lifespan 사이클 테스트"""
         set_current_manager(None)
-        
+
         app = Application("lifespan_cycle_test")
         asgi = app.asgi
 
         # lifespan 시뮬레이션
         call_count = 0
-        
+
         async def receive():
             nonlocal call_count
             call_count += 1
@@ -211,19 +211,19 @@ class TestWorkerSafety:
     async def test_each_worker_simulates_independent_state(self):
         """
         각 워커가 독립적인 상태를 가지는지 확인
-        
+
         실제 멀티워커 환경에서는 각 워커가 별도 프로세스이므로
         ContainerManager가 완전히 독립적입니다.
         여기서는 수동으로 새 매니저를 생성하여 테스트합니다.
         """
         from bloom.core.manager import ContainerManager, set_current_manager
-        
+
         # 워커1 시뮬레이션
         set_current_manager(None)
         manager1 = ContainerManager("worker1")
         set_current_manager(manager1)
         app1 = Application("worker1", manager=manager1)
-        
+
         # 워커2 시뮬레이션 (새 매니저로)
         manager2 = ContainerManager("worker2")
         app2 = Application("worker2", manager=manager2)
