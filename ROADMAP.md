@@ -17,6 +17,14 @@
 | `LifecycleManager` | ✅ | 컨테이너 라이프사이클 관리 |
 | ContextVar 기반 매니저 | ✅ | 스레드 안전한 컨테이너 관리 |
 
+#### Configuration
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| `@ConfigurationProperties` | ✅ | 설정 바인딩 데코레이터 |
+| YAML/JSON 설정 로드 | ✅ | 다중 포맷 지원 |
+| 환경 변수 치환 | ✅ | `${VAR:default}` 문법 |
+| dataclass/Pydantic 지원 | ✅ | 타입 안전 설정 모델 |
+
 #### Web Layer
 | 기능 | 상태 | 설명 |
 |------|------|------|
@@ -28,6 +36,7 @@
 | Request Body | ✅ | JSON → dataclass/pydantic 변환 |
 | `HttpRequest` / `HttpResponse` | ✅ | 요청/응답 모델 |
 | ASGI Application | ✅ | uvicorn 호환 |
+| Radix Tree Router | ✅ | O(log n) 최적화된 라우트 매칭 |
 
 #### Parameter Resolvers
 | 기능 | 상태 | 설명 |
@@ -67,7 +76,7 @@
 | @Controller 메시징 지원 | ✅ | HTTP와 WebSocket 통합 |
 
 #### 테스트
-- **245개 테스트** 작성 완료
+- **299개 테스트** 작성 완료
 - 모든 테스트 통과 ✅
 
 ---
@@ -156,15 +165,16 @@
 ### Phase 4: 성능 및 프로덕션 (v1.0.0)
 
 #### ⚡ 성능 최적화
-- [ ] 라우터 매칭 최적화 (Trie 구조)
+- [x] 라우터 매칭 최적화 (Radix Tree 구조) ✅
 - [ ] 파라미터 리졸버 캐싱
 - [ ] 컨테이너 초기화 병렬화
-- [ ] 벤치마크 테스트 작성
+- [x] 벤치마크 테스트 작성 ✅
 
 #### 🏭 프로덕션 준비
 - [ ] Graceful Shutdown
 - [ ] 멀티 워커 지원
-- [ ] 설정 관리 시스템 (`@ConfigurationProperties`)
+- [x] 설정 관리 시스템 (`@ConfigurationProperties`) ✅
+- [x] 환경 변수 치환 (`${VAR:default}`) ✅
 - [ ] 환경별 프로필 (`@Profile`)
 
 #### 🌍 국제화
@@ -205,10 +215,10 @@
 
 | 항목 | 수치 |
 |------|------|
-| Python 파일 | ~45개 |
-| 테스트 케이스 | 245개 |
-| 코드 라인 | ~5,500줄 (추정) |
-| 외부 의존성 | 2개 (pydantic, uvicorn) |
+| Python 파일 | ~50개 |
+| 테스트 케이스 | 299개 |
+| 코드 라인 | ~6,000줄 (추정) |
+| 외부 의존성 | 3개 (pydantic, uvicorn, pyyaml) |
 
 ---
 
