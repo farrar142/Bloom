@@ -23,6 +23,11 @@ from .decorators import (
 )
 from .lifecycle import LifecycleManager
 from .lazy import Lazy, LazyProxy, is_lazy_component
+from .abstract import (
+    Entry,
+    AbstractRegistry,
+    AbstractManager,
+)
 
 __all__ = [
     "ContainerManager",
@@ -44,4 +49,8 @@ __all__ = [
     "Lazy",
     "LazyProxy",
     "is_lazy_component",
+    # Abstract patterns
+    "Entry",
+    "AbstractRegistry",
+    "AbstractManager",
 ]
