@@ -1,5 +1,7 @@
 """bloom Application"""
 
+import asyncio
+import concurrent.futures
 from typing import TYPE_CHECKING, Any
 from pathlib import Path
 
@@ -7,7 +9,7 @@ if TYPE_CHECKING:
     from .core.container import Container
 
 from .core.manager import ContainerManager, set_current_manager, try_get_current_manager
-from .core.utils import topological_sort
+from .core.utils import topological_sort, group_by_dependency_level
 from .web.router import Router
 from .web.asgi import ASGIApplication
 from .config.manager import ConfigManager
@@ -96,12 +98,16 @@ class Application:
             self.manager.scan_components(module)
         return self
 
-    def ready(self) -> "Application":
+    def ready(self, parallel: bool = False) -> "Application":
         """
         애플리케이션 초기화 완료
 
         1. 컴포넌트 의존성 정렬 및 초기화
         2. 라우터에 핸들러 등록
+
+        Args:
+            parallel: True면 의존성 레벨별로 병렬 초기화 수행
+                     같은 레벨의 컨테이너들을 동시에 초기화하여 시작 시간 단축
 
         Returns:
             self (메서드 체이닝 지원)
@@ -116,7 +122,10 @@ class Application:
         self._bind_configuration_properties()
 
         # 2. 컨테이너 초기화
-        self._initialize_containers()
+        if parallel:
+            self._initialize_containers_parallel()
+        else:
+            self._initialize_containers()
 
         # 3. 라우터 초기화
         self.router.collect_routes()
@@ -129,7 +138,7 @@ class Application:
         self._config_manager.bind_configuration_properties(self.manager)
 
     def _initialize_containers(self) -> None:
-        """모든 컨테이너를 토폴로지컬 순서로 초기화"""
+        """모든 컨테이너를 토폴로지컬 순서로 초기화 (순차적)"""
         from bloom.core.lazy import is_lazy_component
 
         # 모든 컨테이너를 (qualifier, container) 튜플 리스트로 변환
@@ -150,6 +159,62 @@ class Application:
                 continue
             instance = container.initialize_instance()
             self.manager.set_instance(container.target, instance, qualifier=qualifier)
+
+    def _initialize_containers_parallel(self) -> None:
+        """
+        모든 컨테이너를 레벨별로 병렬 초기화
+
+        의존성 레벨이 같은 컨테이너들을 ThreadPoolExecutor로 동시 초기화합니다.
+        - Level 0: 의존성 없는 컨테이너들 (동시 초기화)
+        - Level 1: Level 0 완료 후, Level 0에만 의존하는 컨테이너들 (동시 초기화)
+        - ...
+        """
+        from bloom.core.lazy import is_lazy_component
+
+        # 모든 컨테이너를 (qualifier, container) 튜플 리스트로 변환
+        all_containers: list[tuple[str, "Container"]] = []
+        for qual_containers in self.manager.get_all_containers().values():
+            for qualifier, container in qual_containers.items():
+                all_containers.append((qualifier, container))
+
+        # 레벨별로 그룹화
+        levels = group_by_dependency_level(all_containers)
+
+        # 초기화 순서 저장 (PreDestroy용)
+        self._initialized_containers = []
+
+        def init_container(
+            qualifier: str, container: "Container"
+        ) -> tuple[str, "Container", Any] | None:
+            """단일 컨테이너 초기화 (ThreadPool에서 실행)"""
+            if is_lazy_component(container):
+                return None
+            instance = container.initialize_instance()
+            return (qualifier, container, instance)
+
+        # 레벨별로 병렬 초기화
+        for level_containers in levels:
+            if not level_containers:
+                continue
+
+            # ThreadPoolExecutor로 같은 레벨 컨테이너들 동시 초기화
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = {
+                    executor.submit(init_container, qualifier, container): (
+                        qualifier,
+                        container,
+                    )
+                    for qualifier, container in level_containers
+                }
+
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    if result:
+                        qualifier, container, instance = result
+                        self._initialized_containers.append((qualifier, container))
+                        self.manager.set_instance(
+                            container.target, instance, qualifier=qualifier
+                        )
 
     def shutdown(self) -> "Application":
         """

@@ -167,7 +167,11 @@ class ConfigurationLoader:
     def _deep_merge(self, target: dict, source: dict) -> None:
         """딕셔너리 깊은 병합"""
         for key, value in source.items():
-            if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+            if (
+                key in target
+                and isinstance(target[key], dict)
+                and isinstance(value, dict)
+            ):
                 self._deep_merge(target[key], value)
             else:
                 target[key] = value
