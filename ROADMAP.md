@@ -13,6 +13,8 @@
 | `@Qualifier` | ✅ | 동일 타입 다중 인스턴스 구분 |
 | 필드 주입 | ✅ | 타입 어노테이션 기반 DI |
 | 토폴로지컬 정렬 | ✅ | 순환 의존성 감지 |
+| `@PostConstruct` / `@PreDestroy` | ✅ | 라이프사이클 훅 |
+| `LifecycleManager` | ✅ | 컨테이너 라이프사이클 관리 |
 | ContextVar 기반 매니저 | ✅ | 스레드 안전한 컨테이너 관리 |
 
 #### Web Layer
@@ -49,7 +51,7 @@
 | `@ErrorHandler` | ✅ | 예외 핸들러 데코레이터 |
 
 #### 테스트
-- **181개 테스트** 작성 완료
+- **192개 테스트** 작성 완료
 - 모든 테스트 통과 ✅
 
 ---
@@ -83,7 +85,7 @@
 #### 🔧 DI 확장
 - [ ] `@Scope("prototype")` - 호출마다 새 인스턴스
 - [ ] `@Lazy` - 지연 초기화
-- [ ] `@PostConstruct` / `@PreDestroy` - 라이프사이클 훅
+- [x] `@PostConstruct` / `@PreDestroy` - 라이프사이클 훅 ✅
 - [ ] 조건부 빈 등록 (`@ConditionalOnProperty`)
 
 #### 🌐 Web 확장

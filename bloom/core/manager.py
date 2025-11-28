@@ -5,6 +5,7 @@ from typing import Any, Literal, overload, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .container import Container
+    from .lifecycle import LifecycleManager
 
 
 # 현재 활성 매니저를 저장하는 ContextVar
@@ -45,6 +46,17 @@ class ContainerManager:
         self.container_registry: dict[type, dict[str, "Container"]] = {}
         # type -> qualifier -> instance
         self.instance_registry: dict[type, dict[str, Any]] = {}
+        # 라이프사이클 관리자 (lazy initialization)
+        self._lifecycle: "LifecycleManager | None" = None
+
+    @property
+    def lifecycle(self) -> "LifecycleManager":
+        """라이프사이클 매니저 반환 (lazy initialization)"""
+        if self._lifecycle is None:
+            from .lifecycle import LifecycleManager
+
+            self._lifecycle = LifecycleManager(self)
+        return self._lifecycle
 
     def register_container(
         self, container: "Container", qualifier: str = "default"

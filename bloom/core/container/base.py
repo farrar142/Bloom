@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 
 from ..manager import get_current_manager, try_get_current_manager
 from .element import Element
-from .lifecycle import LifecycleManager
 
 
 class Container[T]:
@@ -27,7 +26,6 @@ class Container[T]:
         self.elements = list[Element[T]]()
         self.owner_cls: type | None = None  # Factory/Handler의 부모 클래스
         self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
-        self.lifecycle: LifecycleManager[T] = LifecycleManager(self)
 
     def _get_manager(self) -> "ContainerManager":
         """manager 반환 (없으면 현재 활성 매니저 반환)"""
@@ -88,8 +86,8 @@ class Container[T]:
         return instance
 
     def invoke_pre_destroy(self, instance: T) -> None:
-        """@PreDestroy 메서드들 호출 (LifecycleManager에 위임)"""
-        self.lifecycle.invoke_pre_destroy(instance)
+        """@PreDestroy 메서드들 호출 (ContainerManager.lifecycle에 위임)"""
+        self._get_manager().lifecycle.invoke_pre_destroy(self, instance)
 
     def initialize_instance(self) -> T:
         """인스턴스 초기화 (캐시 확인 후 생성)"""
@@ -97,7 +95,7 @@ class Container[T]:
             return instance
         instance = self._create_instance()
         # PostConstruct 호출
-        self.lifecycle.invoke_post_construct(instance)
+        self._get_manager().lifecycle.invoke_post_construct(self, instance)
         return instance
 
     def get_qual_name(self) -> str:

@@ -129,14 +129,10 @@ class Application:
         # 현재 매니저 설정
         set_current_manager(self.manager)
 
-        # 초기화 역순으로 PreDestroy 호출
+        # LifecycleManager를 통해 역순으로 PreDestroy 호출
         if hasattr(self, "_initialized_containers"):
-            for qualifier, container in reversed(self._initialized_containers):
-                instance = self.manager.get_instance(
-                    container.target, raise_exception=False, qualifier=qualifier
-                )
-                if instance is not None:
-                    container.invoke_pre_destroy(instance)
+            containers = [container for _, container in self._initialized_containers]
+            self.manager.lifecycle.invoke_all_pre_destroy(containers)
 
         self._is_ready = False
         return self

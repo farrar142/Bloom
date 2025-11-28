@@ -21,6 +21,7 @@ from .decorators import (
     PostConstruct,
     PreDestroy,
 )
+from .lifecycle import LifecycleManager
 
 __all__ = [
     "ContainerManager",
@@ -38,4 +39,5 @@ __all__ = [
     "Handler",
     "PostConstruct",
     "PreDestroy",
+    "LifecycleManager",
 ]
