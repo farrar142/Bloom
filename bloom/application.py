@@ -167,7 +167,7 @@ class Application:
 
     def _initialize_websocket(self) -> None:
         """WebSocket 초기화 (@EnableWebSocket 컴포넌트가 있는 경우)"""
-        self.websocket_manager.initialize()
+        self.websocket_manager.initialize(self.manager)
 
     def _initialize_containers(self) -> None:
         """모든 컨테이너를 토폴로지컬 순서로 초기화 (순차적)"""

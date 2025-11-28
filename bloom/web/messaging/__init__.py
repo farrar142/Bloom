@@ -34,7 +34,22 @@ from .manager import (
     EnableWebSocket,
     EnableWebSocketElement,
     is_websocket_enabled,
+    get_websocket_configurer,
     WebSocketManager,
+)
+
+# Manager-Registry-Entry 패턴 클래스들
+from .entry import (
+    StompEndpointEntry,
+    MessageHandlerEntry,
+    SubscribeHandlerEntry,
+    MessageExceptionHandlerEntry,
+)
+from .registry import (
+    StompEndpointRegistry as NewStompEndpointRegistry,
+    MessageHandlerRegistry,
+    SubscribeHandlerRegistry,
+    MessageExceptionHandlerRegistry,
 )
 
 __all__ = [
@@ -70,7 +85,7 @@ __all__ = [
     "WebSocketSessionManager",
     # 핸들러 (내부 사용)
     "StompProtocolHandler",
-    # 설정 레지스트리 (개발자용)
+    # 설정 레지스트리 (개발자용 - 기존 configurer.py)
     "StompEndpointRegistry",
     "StompEndpoint",
     "MessageBrokerRegistry",
@@ -79,5 +94,15 @@ __all__ = [
     "EnableWebSocket",
     "EnableWebSocketElement",
     "is_websocket_enabled",
+    "get_websocket_configurer",
     "WebSocketManager",
+    # Manager-Registry-Entry 패턴 클래스들 (내부/고급 사용)
+    "StompEndpointEntry",
+    "MessageHandlerEntry",
+    "SubscribeHandlerEntry",
+    "MessageExceptionHandlerEntry",
+    "NewStompEndpointRegistry",
+    "MessageHandlerRegistry",
+    "SubscribeHandlerRegistry",
+    "MessageExceptionHandlerRegistry",
 ]
