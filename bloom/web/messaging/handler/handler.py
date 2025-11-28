@@ -10,14 +10,13 @@ from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from bloom.core.manager import ContainerManager
-    from .configurer import MessageBrokerConfig, StompEndpoint
 
 from bloom.core.container import HandlerContainer, ComponentContainer
 
-from .message import Message, StompFrame, StompCommand
-from .broker import SimpleBroker
-from .session import WebSocketSession, WebSocketDisconnect, WebSocketSessionManager
-from .controller import is_message_controller, get_prefix
+from ..session import Message, StompFrame, StompCommand
+from ..session import SimpleBroker
+from ..session import WebSocketSession, WebSocketDisconnect, WebSocketSessionManager
+from ..controller import is_message_controller, get_prefix
 
 
 @dataclass
@@ -51,14 +50,9 @@ class StompProtocolHandler:
         - SEND → @MessageMapping 라우팅
         - 핸들러 반환값 → @SendTo/@SendToUser 발행
 
-    WebSocketConfigurer를 통한 설정:
-        @Component
-        class MyWebSocketConfig(WebSocketConfigurer):
-            def configure_message_broker(self, registry):
-                registry.set_application_destination_prefixes("/app", "/api")
     """
 
-    # 기본 애플리케이션 목적지 프리픽스 (WebSocketConfigurer로 변경 가능)
+    # 기본 애플리케이션 목적지 프리픽스
     APP_DESTINATION_PREFIX = "/app"
 
     def __init__(
@@ -76,32 +70,15 @@ class StompProtocolHandler:
         self._subscribe_handlers: list[SubscribeHandlerInfo] = []
         self._exception_handlers: dict[type[Exception], HandlerContainer] = {}
 
-        # WebSocketConfigurer 설정 (apply_config로 설정됨)
-        self._app_destination_prefixes: list[str] = ["/app"]
-        self._user_destination_prefix: str = "/user"
-        self._endpoints: list["StompEndpoint"] = []
+    @property
+    def _app_destination_prefixes(self) -> list[str]:
+        """WebSocketSessionManager에서 app destination prefixes 조회"""
+        return self._session_manager.app_destination_prefixes
 
-    def apply_config(
-        self,
-        broker_config: "MessageBrokerConfig",
-        endpoints: list["StompEndpoint"],
-    ) -> None:
-        """
-        WebSocketConfigurer에서 추출한 설정 적용
-
-        Args:
-            broker_config: 메시지 브로커 설정
-            endpoints: STOMP 엔드포인트 목록
-        """
-        self._app_destination_prefixes = broker_config.application_destination_prefixes
-        self._user_destination_prefix = broker_config.user_destination_prefix
-        self._endpoints = endpoints
-
-        # 첫 번째 프리픽스를 기본값으로 설정 (하위 호환성)
-        if self._app_destination_prefixes:
-            StompProtocolHandler.APP_DESTINATION_PREFIX = (
-                self._app_destination_prefixes[0]
-            )
+    @property
+    def _user_destination_prefix(self) -> str:
+        """WebSocketSessionManager에서 user destination prefix 조회"""
+        return self._session_manager.user_destination_prefix
 
     def is_app_destination(self, destination: str) -> bool:
         """목적지가 애플리케이션 목적지인지 확인"""
@@ -456,9 +433,11 @@ class StompProtocolHandler:
             elif message and message.payload is not None:
                 # Pydantic 모델이나 dataclass로 변환 시도
                 if hasattr(param_type, "model_validate"):
-                    kwargs[param_name] = param_type.model_validate(message.payload)
+                    kwargs[param_name] = param_type.model_validate(  # type:ignore
+                        message.payload
+                    )
                 elif hasattr(param_type, "__dataclass_fields__"):
-                    kwargs[param_name] = param_type(**message.payload)
+                    kwargs[param_name] = param_type(**message.payload)  # type:ignore
                 else:
                     kwargs[param_name] = message.payload
 

@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .broker import SimpleBroker
+    from .session import SimpleBroker
 
-from .message import Message
+from .session import Message
 
 
 class SimpMessagingTemplate:

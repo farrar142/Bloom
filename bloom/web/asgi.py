@@ -313,12 +313,6 @@ class ASGIApplication:
         self.stomp_handler = StompProtocolHandler(broker, session_manager, manager)
         self.stomp_handler.collect_handlers(manager)
 
-        # 설정 적용
-        if ws_manager._broker_registry:
-            self.stomp_handler.apply_config(
-                ws_manager._broker_registry.config, ws_manager.endpoints
-            )
-
     async def _shutdown(self, timeout: float = 30.0) -> None:
         """
         shutdown 이벤트 처리 (Graceful Shutdown)

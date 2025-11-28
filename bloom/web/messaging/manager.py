@@ -19,15 +19,11 @@ from .entry import (
 from .registry import (
     MessageExceptionHandlerRegistry,
     MessageHandlerRegistry,
+    MessageBrokerRegistry,
     StompEndpointRegistry,
     SubscribeHandlerRegistry,
 )
 
-# 기존 configurer 모듈의 Registry들도 import (하위 호환성)
-from .configurer import (
-    StompEndpointRegistry as ConfigurerStompEndpointRegistry,
-    MessageBrokerRegistry,
-)
 
 if TYPE_CHECKING:
     from bloom.core.manager import ContainerManager
@@ -187,24 +183,6 @@ class WebSocketManager(AbstractManager):
             )
             if endpoint_registries:
                 self._endpoint_registry = endpoint_registries[0]
-
-            # Factory로 생성된 configurer.py의 StompEndpointRegistry도 검색 (하위 호환성)
-            configurer_endpoint_registries = container_manager.get_sub_instances(
-                ConfigurerStompEndpointRegistry
-            )
-            if configurer_endpoint_registries:
-                for configurer_registry in configurer_endpoint_registries:
-                    # configurer의 StompEndpoint를 StompEndpointEntry로 변환
-                    for endpoint in configurer_registry.endpoints:
-                        entry = StompEndpointEntry(
-                            path=endpoint.path,
-                            allowed_origins=endpoint.allowed_origins,
-                            allowed_origin_patterns=endpoint.allowed_origin_patterns,
-                            sockjs_enabled=endpoint.sockjs_enabled,
-                            heartbeat_send=endpoint.heartbeat_send,
-                            heartbeat_receive=endpoint.heartbeat_receive,
-                        )
-                        self._endpoint_registry._entries.append(entry)
 
             # Factory로 생성된 MessageHandlerRegistry 검색
             message_registries = container_manager.get_sub_instances(

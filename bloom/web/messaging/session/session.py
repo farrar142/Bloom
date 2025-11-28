@@ -197,6 +197,8 @@ class WebSocketSessionManager:
 
     def __init__(self):
         self._sessions: dict[str, WebSocketSession] = {}
+        self._app_destination_prefixes: list[str] = ["/app"]
+        self._user_destination_prefix: str = "/user"
 
     def add(self, session: WebSocketSession) -> None:
         """세션 추가"""
@@ -222,3 +224,21 @@ class WebSocketSessionManager:
     def count(self) -> int:
         """활성 세션 수"""
         return len(self._sessions)
+
+    @property
+    def app_destination_prefixes(self) -> list[str]:
+        """애플리케이션 목적지 프리픽스 목록"""
+        return self._app_destination_prefixes
+
+    @property
+    def user_destination_prefix(self) -> str:
+        """사용자 목적지 프리픽스"""
+        return self._user_destination_prefix
+
+    def set_app_destination_prefixes(self, prefixes: list[str]) -> None:
+        """애플리케이션 목적지 프리픽스 설정"""
+        self._app_destination_prefixes = prefixes
+
+    def set_user_destination_prefix(self, prefix: str) -> None:
+        """사용자 목적지 프리픽스 설정"""
+        self._user_destination_prefix = prefix

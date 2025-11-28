@@ -369,5 +369,5 @@ class SimpleBroker:
         return len(self._session_subscriptions)
 
 
-# message.py에서 import 순환 방지를 위해 여기서 import
+# 순환 import 방지를 위해 여기서 import
 from .message import Message

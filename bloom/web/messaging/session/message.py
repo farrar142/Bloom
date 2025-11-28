@@ -209,3 +209,10 @@ class Message:
             headers=headers,
             body=self.to_json(),
         )
+
+
+__all__ = [
+    "StompCommand",
+    "StompFrame",
+    "Message",
+]
