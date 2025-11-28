@@ -7,6 +7,7 @@ from pathlib import Path
 
 if TYPE_CHECKING:
     from .core.container import Container
+    from .web.messaging.manager import WebSocketManager
 
 from .core.manager import ContainerManager, set_current_manager, try_get_current_manager
 from .core.utils import topological_sort, group_by_dependency_level
@@ -42,6 +43,7 @@ class Application:
         self._asgi: ASGIApplication | None = None
         self._is_ready = False
         self._config_manager = ConfigManager()
+        self._websocket_manager: "WebSocketManager | None" = None
         # 생성 시점에 현재 매니저로 설정 (데코레이터 자동 등록 지원)
         set_current_manager(self.manager)
 
@@ -67,6 +69,19 @@ class Application:
         if self._asgi is None:
             self._asgi = ASGIApplication(self.router, application=self)
         return self._asgi
+
+    @property
+    def websocket_manager(self) -> "WebSocketManager":
+        """
+        WebSocketManager 인스턴스 반환
+
+        @EnableWebSocket이 붙은 컴포넌트가 있으면 WebSocket이 활성화됩니다.
+        """
+        if self._websocket_manager is None:
+            from .web.messaging.manager import WebSocketManager
+
+            self._websocket_manager = WebSocketManager(self.manager)
+        return self._websocket_manager
 
     def load_config(
         self,
@@ -113,6 +128,7 @@ class Application:
 
         1. 컴포넌트 의존성 정렬 및 초기화
         2. 라우터에 핸들러 등록
+        3. WebSocket 초기화 (@EnableWebSocket이 있는 경우)
 
         Args:
             parallel: True면 의존성 레벨별로 병렬 초기화 수행
@@ -139,12 +155,19 @@ class Application:
         # 3. 라우터 초기화
         self.router.collect_routes()
 
+        # 4. WebSocket 초기화 (@EnableWebSocket 감지)
+        self._initialize_websocket()
+
         self._is_ready = True
         return self
 
     def _bind_configuration_properties(self) -> None:
         """ConfigurationProperties를 바인딩하여 인스턴스 생성"""
         self._config_manager.bind_configuration_properties(self.manager)
+
+    def _initialize_websocket(self) -> None:
+        """WebSocket 초기화 (@EnableWebSocket 컴포넌트가 있는 경우)"""
+        self.websocket_manager.initialize()
 
     def _initialize_containers(self) -> None:
         """모든 컨테이너를 토폴로지컬 순서로 초기화 (순차적)"""

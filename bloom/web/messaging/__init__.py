@@ -24,6 +24,18 @@ from .controller import (
 from .template import SimpMessagingTemplate
 from .session import WebSocketSession, WebSocketDisconnect, WebSocketSessionManager
 from .handler import StompProtocolHandler
+from .configurer import (
+    StompEndpointRegistry,
+    StompEndpoint,
+    MessageBrokerRegistry,
+    MessageBrokerConfig,
+)
+from .manager import (
+    EnableWebSocket,
+    EnableWebSocketElement,
+    is_websocket_enabled,
+    WebSocketManager,
+)
 
 __all__ = [
     # 메시지 모델
@@ -58,4 +70,14 @@ __all__ = [
     "WebSocketSessionManager",
     # 핸들러 (내부 사용)
     "StompProtocolHandler",
+    # 설정 레지스트리 (개발자용)
+    "StompEndpointRegistry",
+    "StompEndpoint",
+    "MessageBrokerRegistry",
+    "MessageBrokerConfig",
+    # WebSocket 활성화 (개발자용)
+    "EnableWebSocket",
+    "EnableWebSocketElement",
+    "is_websocket_enabled",
+    "WebSocketManager",
 ]

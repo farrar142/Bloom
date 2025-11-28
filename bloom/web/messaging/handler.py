@@ -10,6 +10,7 @@ from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from bloom.core.manager import ContainerManager
+    from .configurer import MessageBrokerConfig, StompEndpoint
 
 from bloom.core.container import HandlerContainer, ComponentContainer
 
@@ -49,9 +50,15 @@ class StompProtocolHandler:
         - SUBSCRIBE/UNSUBSCRIBE 처리
         - SEND → @MessageMapping 라우팅
         - 핸들러 반환값 → @SendTo/@SendToUser 발행
+
+    WebSocketConfigurer를 통한 설정:
+        @Component
+        class MyWebSocketConfig(WebSocketConfigurer):
+            def configure_message_broker(self, registry):
+                registry.set_application_destination_prefixes("/app", "/api")
     """
 
-    # 애플리케이션 목적지 프리픽스 (클라이언트 SEND 시 사용)
+    # 기본 애플리케이션 목적지 프리픽스 (WebSocketConfigurer로 변경 가능)
     APP_DESTINATION_PREFIX = "/app"
 
     def __init__(
@@ -68,6 +75,46 @@ class StompProtocolHandler:
         self._message_handlers: list[MessageHandlerInfo] = []
         self._subscribe_handlers: list[SubscribeHandlerInfo] = []
         self._exception_handlers: dict[type[Exception], HandlerContainer] = {}
+
+        # WebSocketConfigurer 설정 (apply_config로 설정됨)
+        self._app_destination_prefixes: list[str] = ["/app"]
+        self._user_destination_prefix: str = "/user"
+        self._endpoints: list["StompEndpoint"] = []
+
+    def apply_config(
+        self,
+        broker_config: "MessageBrokerConfig",
+        endpoints: list["StompEndpoint"],
+    ) -> None:
+        """
+        WebSocketConfigurer에서 추출한 설정 적용
+
+        Args:
+            broker_config: 메시지 브로커 설정
+            endpoints: STOMP 엔드포인트 목록
+        """
+        self._app_destination_prefixes = broker_config.application_destination_prefixes
+        self._user_destination_prefix = broker_config.user_destination_prefix
+        self._endpoints = endpoints
+
+        # 첫 번째 프리픽스를 기본값으로 설정 (하위 호환성)
+        if self._app_destination_prefixes:
+            StompProtocolHandler.APP_DESTINATION_PREFIX = (
+                self._app_destination_prefixes[0]
+            )
+
+    def is_app_destination(self, destination: str) -> bool:
+        """목적지가 애플리케이션 목적지인지 확인"""
+        return any(
+            destination.startswith(prefix) for prefix in self._app_destination_prefixes
+        )
+
+    def strip_app_prefix(self, destination: str) -> str:
+        """목적지에서 애플리케이션 프리픽스 제거"""
+        for prefix in self._app_destination_prefixes:
+            if destination.startswith(prefix):
+                return destination[len(prefix) :]
+        return destination
 
     def collect_handlers(self, manager: "ContainerManager") -> None:
         """
@@ -313,10 +360,10 @@ class StompProtocolHandler:
         # Message 생성
         message = Message.from_stomp_frame(frame, session.id, session.user)
 
-        # /app/ 프리픽스 처리 (애플리케이션 핸들러로 라우팅)
-        if destination.startswith(self.APP_DESTINATION_PREFIX):
-            # /app/chat.send → /chat.send
-            handler_dest = destination[len(self.APP_DESTINATION_PREFIX) :]
+        # 애플리케이션 프리픽스 처리 (애플리케이션 핸들러로 라우팅)
+        if self.is_app_destination(destination):
+            # /app/chat.send → /chat.send (프리픽스 제거)
+            handler_dest = self.strip_app_prefix(destination)
             await self._route_to_handler(session, handler_dest, message)
         else:
             # 직접 브로커로 발행

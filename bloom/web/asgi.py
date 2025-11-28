@@ -208,11 +208,62 @@ class ASGIApplication:
         if self.application and not self.application._is_ready:
             self.application.ready()
 
+        # WebSocketManager에서 설정 가져오기 (ready()에서 이미 초기화됨)
+        self._apply_websocket_from_manager()
+
         # 등록된 startup 콜백 실행
         for callback in self._on_startup:
             result = callback()
             if asyncio.iscoroutine(result):
                 await result
+
+    def _apply_websocket_from_manager(self) -> None:
+        """WebSocketManager에서 WebSocket 설정을 가져와 적용"""
+        if not self.application:
+            return
+
+        ws_manager = self.application.websocket_manager
+
+        # @EnableWebSocket이 없으면 패스
+        if not ws_manager.enabled:
+            return
+
+        # StompProtocolHandler 설정
+        if ws_manager.stomp_handler:
+            self.stomp_handler = ws_manager.stomp_handler
+        else:
+            # StompProtocolHandler가 없으면 생성
+            self._create_stomp_handler()
+
+        # 엔드포인트 경로 설정
+        endpoint_paths = ws_manager.get_endpoint_paths()
+        if endpoint_paths:
+            self.websocket_path = endpoint_paths[0]
+
+    def _create_stomp_handler(self) -> None:
+        """StompProtocolHandler를 생성하고 설정 적용"""
+        if not self.application:
+            return
+
+        from .messaging import (
+            SimpleBroker,
+            WebSocketSessionManager,
+            StompProtocolHandler,
+        )
+
+        ws_manager = self.application.websocket_manager
+        manager = self.application.manager
+
+        broker = SimpleBroker()
+        session_manager = WebSocketSessionManager()
+        self.stomp_handler = StompProtocolHandler(broker, session_manager, manager)
+        self.stomp_handler.collect_handlers(manager)
+
+        # 설정 적용
+        if ws_manager._broker_registry:
+            self.stomp_handler.apply_config(
+                ws_manager._broker_registry.config, ws_manager.endpoints
+            )
 
     async def _shutdown(self, timeout: float = 30.0) -> None:
         """
