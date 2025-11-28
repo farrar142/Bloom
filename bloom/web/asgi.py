@@ -4,7 +4,7 @@ import json
 from typing import Any, Callable, Coroutine
 from urllib.parse import parse_qs
 
-from .http import HttpRequest, HttpResponse
+from .http import HttpRequest, HttpResponse, StreamingResponse
 from .router import Router
 
 # ASGI 타입 정의
@@ -52,8 +52,11 @@ class ASGIApplication:
         # Router를 통해 핸들러 호출 (비동기)
         response = await self.router.dispatch(request)
 
-        # 응답 전송
-        await self._send_response(send, response)
+        # 응답 전송 (스트리밍 여부에 따라 분기)
+        if isinstance(response, StreamingResponse):
+            await self._send_streaming_response(send, response)
+        else:
+            await self._send_response(send, response)
 
     async def _handle_lifespan(
         self, scope: Scope, receive: Receive, send: Send
@@ -120,6 +123,46 @@ class ASGIApplication:
             {
                 "type": "http.response.body",
                 "body": body,
+            }
+        )
+
+    async def _send_streaming_response(
+        self, send: Send, response: StreamingResponse
+    ) -> None:
+        """StreamingResponse를 청크 단위로 전송"""
+        # 헤더 구성 (Content-Length 없음 - Transfer-Encoding: chunked 사용)
+        headers = [
+            (b"content-type", response.content_type.encode("utf-8")),
+        ]
+        # 추가 헤더
+        for key, value in response.headers.items():
+            headers.append((key.encode("utf-8"), value.encode("utf-8")))
+
+        # HTTP 응답 시작
+        await send(
+            {
+                "type": "http.response.start",
+                "status": response.status_code,
+                "headers": headers,
+            }
+        )
+
+        # 청크 단위로 바디 전송
+        async for chunk in response:
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": chunk,
+                    "more_body": True,
+                }
+            )
+
+        # 스트림 종료
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b"",
+                "more_body": False,
             }
         )
 

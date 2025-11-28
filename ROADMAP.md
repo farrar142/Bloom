@@ -51,7 +51,7 @@
 | `@ErrorHandler` | ✅ | 예외 핸들러 데코레이터 |
 
 #### 테스트
-- **192개 테스트** 작성 완료
+- **229개 테스트** 작성 완료
 - 모든 테스트 통과 ✅
 
 ---
@@ -84,15 +84,15 @@
 
 #### 🔧 DI 확장
 - [ ] `@Scope("prototype")` - 호출마다 새 인스턴스
-- [ ] `@Lazy` - 지연 초기화
+- [x] `@Lazy` - 지연 초기화 ✅
 - [x] `@PostConstruct` / `@PreDestroy` - 라이프사이클 훅 ✅
 - [ ] 조건부 빈 등록 (`@ConditionalOnProperty`)
 
 #### 🌐 Web 확장
 - [ ] WebSocket 지원
-- [ ] SSE (Server-Sent Events) 지원
-- [ ] Response Streaming
-- [ ] 파일 다운로드 (`FileResponse`)
+- [x] SSE (Server-Sent Events) 지원 ✅
+- [x] Response Streaming ✅
+- [x] 파일 다운로드 (`FileResponse`) ✅
 - [ ] 정적 파일 서빙
 - [ ] OpenAPI (Swagger) 자동 생성
 
@@ -188,7 +188,7 @@
 | 항목 | 수치 |
 |------|------|
 | Python 파일 | ~35개 |
-| 테스트 케이스 | 181개 |
+| 테스트 케이스 | 214개 |
 | 코드 라인 | ~4,000줄 (추정) |
 | 외부 의존성 | 2개 (pydantic, uvicorn) |
 

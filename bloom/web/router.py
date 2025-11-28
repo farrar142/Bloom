@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 from .controller import ControllerContainer
 from .handler import HttpMethodHandler
-from .http import HttpRequest, HttpResponse
+from .http import HttpRequest, HttpResponse, StreamingResponse
 from .params import resolve_parameters
 
 
@@ -173,7 +173,7 @@ class Router:
 
         return None, {}
 
-    async def dispatch(self, request: HttpRequest) -> HttpResponse:
+    async def dispatch(self, request: HttpRequest) -> HttpResponse | StreamingResponse:
         """요청을 핸들러에 디스패치 (비동기)"""
 
         # 핸들러 먼저 찾기 (미들웨어에서 Authorize 검사에 필요)
@@ -202,7 +202,10 @@ class Router:
                     result = await handler(**resolved_params)
 
                     # 결과 타입에 따라 응답 생성
-                    if isinstance(result, HttpResponse):
+                    if isinstance(result, StreamingResponse):
+                        # 스트리밍 응답은 미들웨어를 거치지 않고 직접 반환
+                        return result
+                    elif isinstance(result, HttpResponse):
                         ctx.set_response(result)
                     else:
                         # response_type이 있으면 변환
