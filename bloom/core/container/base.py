@@ -24,6 +24,7 @@ class Container[T]:
     def __init__(self, target: type[T]):
         self.target = target
         self.elements = list[Element[T]]()
+        self.element = Element[T]()  # 단일 element (메타데이터 저장용)
         self.owner_cls: type | None = None  # Factory/Handler의 부모 클래스
         self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
 
