@@ -50,7 +50,6 @@ Router에서 자동으로 수집되어 요청/응답 처리 시 실행됩니다.
 """
 
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Optional, overload
 
@@ -79,6 +78,81 @@ class MiddlewareContext:
     def set_exception(self, exc: Exception) -> None:
         """예외 설정 (핸들러에서 발생한 예외)"""
         self._exception = exc
+
+
+class MiddlewareProcessContext:
+    """
+    미들웨어 체인 처리용 Async Context Manager
+
+    contextlib.asynccontextmanager 대신 직접 구현하여 성능 최적화.
+    __aenter__에서 미들웨어 전처리, __aexit__에서 후처리 수행.
+    """
+
+    __slots__ = ("chain", "request", "handler", "ctx")
+
+    def __init__(
+        self,
+        chain: "MiddlewareChain",
+        request: HttpRequest,
+        handler: HttpMethodHandler | None,
+    ):
+        self.chain = chain
+        self.request = request
+        self.handler = handler
+        self.ctx = MiddlewareContext()
+
+    async def __aenter__(self) -> MiddlewareContext:
+        """미들웨어 요청 단계 실행"""
+        middlewares = self.chain.get_all_middlewares()
+        self.ctx.handler = self.handler
+
+        # 요청 단계: 모든 미들웨어의 첫 번째 yield까지 실행
+        for middleware in middlewares:
+            gen = middleware._process_request(self.request, self.handler)
+            first_yield = await gen.asend(None)  # type: ignore
+
+            self.ctx._generators.append(gen)
+
+            # early return 확인
+            if first_yield is not None:
+                response = (
+                    first_yield
+                    if isinstance(first_yield, HttpResponse)
+                    else HttpResponse.ok(first_yield)
+                )
+                self.ctx.early_response = response
+                # early return 이전까지의 미들웨어만 응답 처리
+                self.ctx._generators.pop()
+                break
+
+        return self.ctx
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """미들웨어 응답 단계 실행"""
+        ctx = self.ctx
+        request = self.request
+
+        # 응답 단계: 역순으로 응답/예외 처리
+        if ctx.early_response:
+            ctx._response = await self.chain._finish_generators(
+                ctx._generators, request, ctx.early_response
+            )
+        elif ctx._exception:
+            ctx._response = await self.chain._handle_exception(
+                ctx._generators, request, ctx._exception
+            )
+        elif ctx._response:
+            ctx._response = await self.chain._finish_generators(
+                ctx._generators, request, ctx._response
+            )
+        else:
+            ctx._response = await self.chain._finish_generators(
+                ctx._generators,
+                request,
+                HttpResponse.internal_error("No response set"),
+            )
+
+        return False  # 예외를 다시 raise
 
 
 class MiddlewareChain:
@@ -249,6 +323,7 @@ class MiddlewareChain:
         self._invalidate_cache()
 
         return new_group
+
     def disable(self, *middlewares: Middleware) -> "MiddlewareChain":
         """
         특정 미들웨어 인스턴스 비활성화
@@ -321,14 +396,15 @@ class MiddlewareChain:
         # 캐시에 저장
         self._middlewares_cache = all_middlewares
         return all_middlewares
-    @asynccontextmanager
-    async def process(
+
+    def process(
         self, request: HttpRequest, handler: HttpMethodHandler | None = None
-    ) -> AsyncGenerator[MiddlewareContext, None]:
+    ) -> MiddlewareProcessContext:
         """
-        미들웨어 체인 실행 (asynccontextmanager)
+        미들웨어 체인 실행 (최적화된 async context manager)
 
         async with 문으로 사용하며, 요청 전처리 → 핸들러 → 응답 후처리 흐름을 제어합니다.
+        contextlib.asynccontextmanager 대신 직접 구현하여 성능 최적화.
 
         사용법:
             ```python
@@ -349,58 +425,10 @@ class MiddlewareChain:
             request: HTTP 요청
             handler: 라우팅된 핸들러 (HttpMethodHandler)
 
-        Yields:
-            MiddlewareContext: 응답/예외를 설정하는 컨텍스트 객체
+        Returns:
+            MiddlewareProcessContext: async context manager
         """
-        middlewares = self.get_all_middlewares()
-        ctx = MiddlewareContext()
-        ctx.handler = handler  # 핸들러 저장
-
-        # 요청 단계: 모든 미들웨어의 첫 번째 yield까지 실행
-        for middleware in middlewares:
-            gen = middleware._process_request(request, handler)
-            first_yield = await gen.asend(None)  # type: ignore
-
-            ctx._generators.append(gen)
-
-            # early return 확인
-            if first_yield is not None:
-                response = (
-                    first_yield
-                    if isinstance(first_yield, HttpResponse)
-                    else HttpResponse.ok(first_yield)
-                )
-                ctx.early_response = response
-                # early return 이전까지의 미들웨어만 응답 처리
-                ctx._generators.pop()  # 현재 generator는 이미 응답 반환함
-                break
-
-        try:
-            yield ctx
-        finally:
-            # 응답 단계: 역순으로 응답/예외 처리
-            if ctx.early_response:
-                # early return인 경우
-                ctx._response = await self._finish_generators(
-                    ctx._generators, request, ctx.early_response
-                )
-            elif ctx._exception:
-                # 예외 발생한 경우
-                ctx._response = await self._handle_exception(
-                    ctx._generators, request, ctx._exception
-                )
-            elif ctx._response:
-                # 정상 응답인 경우
-                ctx._response = await self._finish_generators(
-                    ctx._generators, request, ctx._response
-                )
-            else:
-                # 응답이 설정되지 않은 경우
-                ctx._response = await self._finish_generators(
-                    ctx._generators,
-                    request,
-                    HttpResponse.internal_error("No response set"),
-                )
+        return MiddlewareProcessContext(self, request, handler)
 
     def get_final_response(self, ctx: MiddlewareContext) -> HttpResponse:
         """컨텍스트에서 최종 응답 반환"""

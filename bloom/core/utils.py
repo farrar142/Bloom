@@ -86,9 +86,7 @@ def topological_sort(items: list[tuple[str, T]]) -> list[tuple[str, T]]:
     return sorted_items
 
 
-def group_by_dependency_level(
-    items: list[tuple[str, T]]
-) -> list[list[tuple[str, T]]]:
+def group_by_dependency_level(items: list[tuple[str, T]]) -> list[list[tuple[str, T]]]:
     """
     컨테이너들을 의존성 레벨별로 그룹화
 

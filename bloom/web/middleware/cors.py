@@ -120,8 +120,12 @@ class CorsMiddleware(Middleware):
 
         # 성능 최적화: 자주 사용되는 문자열 미리 캐싱
         self._methods_str = ", ".join(self.allow_methods)
-        self._headers_str = ", ".join(self.allow_headers) if self.allow_headers != ["*"] else ""
-        self._expose_headers_str = ", ".join(self.expose_headers) if self.expose_headers else ""
+        self._headers_str = (
+            ", ".join(self.allow_headers) if self.allow_headers != ["*"] else ""
+        )
+        self._expose_headers_str = (
+            ", ".join(self.expose_headers) if self.expose_headers else ""
+        )
         self._max_age_str = str(self.max_age)
 
     async def process_request(self, request: HttpRequest) -> HttpResponse | None:

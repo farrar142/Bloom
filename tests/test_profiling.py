@@ -37,7 +37,10 @@ class TestParameterResolverProfiling:
         return HttpRequest(
             method="POST",
             path="/users",
-            headers={"content-type": "application/json", "authorization": "Bearer token123"},
+            headers={
+                "content-type": "application/json",
+                "authorization": "Bearer token123",
+            },
             body=b'{"name": "John", "email": "john@example.com"}',
             query_params={"page": "1", "limit": "10"},
         )

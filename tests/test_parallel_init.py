@@ -258,10 +258,14 @@ class TestParallelInitialization:
         # 병렬이면 ~50ms, 순차면 ~150ms
         # 병렬 초기화가 순차보다 빨라야 함 (최소 2배 이상)
         # 단, 오버헤드 고려하여 여유 있게 검증
-        print(f"\n병렬 초기화: {parallel_time * 1000:.1f}ms (예상: ~{sleep_time * 1000}ms)")
+        print(
+            f"\n병렬 초기화: {parallel_time * 1000:.1f}ms (예상: ~{sleep_time * 1000}ms)"
+        )
 
         # 병렬 초기화는 순차(150ms)보다 확실히 빨라야 함
-        assert parallel_time < sleep_time * 2.5, f"병렬 초기화가 너무 느림: {parallel_time * 1000:.1f}ms"
+        assert (
+            parallel_time < sleep_time * 2.5
+        ), f"병렬 초기화가 너무 느림: {parallel_time * 1000:.1f}ms"
 
 
 class TestParallelInitEdgeCases:
