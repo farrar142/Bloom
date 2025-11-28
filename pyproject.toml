@@ -12,3 +12,10 @@ dependencies = [
     "pyyaml>=6.0.3",
     "uvicorn>=0.30.0",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "performance: 성능 벤치마크 테스트 (기본 실행에서 제외)",
+]
+addopts = "-m 'not performance'"

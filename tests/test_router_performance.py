@@ -5,6 +5,8 @@ import time
 from bloom import Application, Component, Controller
 from bloom.web import Get, RequestMapping
 
+pytestmark = pytest.mark.performance  # 이 모듈의 모든 테스트에 performance 마커 적용
+
 
 @pytest.fixture
 def large_scale_app(reset_container_manager):
