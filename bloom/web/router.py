@@ -5,6 +5,8 @@ import dataclasses
 import re
 from typing import Any, TYPE_CHECKING
 
+from pydantic import BaseModel
+
 if TYPE_CHECKING:
     from bloom.core.manager import ContainerManager
     from .middleware import MiddlewareChain
@@ -34,7 +36,7 @@ def _convert_to_response_type(result: Any, response_type: type) -> Any:
         return result
 
     # pydantic BaseModel인 경우
-    if hasattr(response_type, "model_validate"):
+    if isinstance(response_type, BaseModel):
         if isinstance(result, dict):
             return response_type.model_validate(result)
         # dict가 아니면 model_validate에 맡김

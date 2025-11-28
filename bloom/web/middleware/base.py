@@ -49,6 +49,8 @@ from abc import ABC
 from collections.abc import AsyncGenerator
 from typing import Any, Optional
 
+from bloom.web.handler import HttpMethodHandler
+
 from ..http import HttpRequest, HttpResponse
 
 
@@ -124,7 +126,7 @@ class Middleware(ABC):
         return response
 
     async def _process_request(
-        self, request: HttpRequest, handler: Any = None
+        self, request: HttpRequest, handler: HttpMethodHandler | None = None
     ) -> AsyncGenerator[HttpResponse | None, HttpResponse]:
         """
         요청/응답 처리 (yield 기반 - 내부용)

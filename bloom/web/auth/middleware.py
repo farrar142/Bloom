@@ -44,6 +44,9 @@ from dataclasses import dataclass, field
 import inspect
 from typing import Any, Optional
 
+from bloom.core.container.base import Container
+from bloom.web.handler import HttpMethodHandler
+
 from .authenticator import Authentication, Authenticator, ANONYMOUS
 from .authorize import AuthorizeElement
 from ..http import HttpRequest, HttpResponse
@@ -220,7 +223,7 @@ class AuthMiddleware(Middleware):
         return None
 
     async def _process_request(
-        self, request: HttpRequest, handler: Any = None
+        self, request: HttpRequest, handler: HttpMethodHandler | None = None
     ) -> AsyncGenerator[HttpResponse | None, HttpResponse]:
         """
         인증 및 인가 처리
@@ -267,7 +270,7 @@ class AuthMiddleware(Middleware):
         yield response
 
     def _check_authorize(
-        self, request: HttpRequest, handler: Any
+        self, request: HttpRequest, handler: HttpMethodHandler
     ) -> HttpResponse | None:
         """
         핸들러의 @Authorize 검사

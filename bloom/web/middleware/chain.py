@@ -54,6 +54,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Optional, overload
 
+from bloom.web.handler import HttpMethodHandler
+
 from ..http import HttpRequest, HttpResponse
 
 from .base import Middleware
@@ -306,7 +308,7 @@ class MiddlewareChain:
 
     @asynccontextmanager
     async def process(
-        self, request: HttpRequest, handler: Any = None
+        self, request: HttpRequest, handler: HttpMethodHandler | None = None
     ) -> AsyncGenerator[MiddlewareContext, None]:
         """
         미들웨어 체인 실행 (asynccontextmanager)

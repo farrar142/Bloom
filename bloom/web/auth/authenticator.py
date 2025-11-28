@@ -42,18 +42,12 @@ class Authentication:
     Attributes:
         user_id: 인증된 사용자 ID
         authenticated: 인증 성공 여부
-        principal: 인증된 주체 (사용자 객체 등)
-        credentials: 인증에 사용된 자격 증명 (토큰 등)
         authorities: 권한 목록
-        details: 추가 인증 정보
     """
 
     user_id: str | None = None
     authenticated: bool = False
-    principal: Any = None
-    credentials: Any = None
     authorities: list[str] = field(default_factory=list)
-    details: dict[str, Any] = field(default_factory=dict)
 
     def is_authenticated(self) -> bool:
         """인증 여부 확인"""

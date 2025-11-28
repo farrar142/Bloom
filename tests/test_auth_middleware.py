@@ -15,6 +15,7 @@ class TestAuthMiddleware:
     async def test_authenticator_chain_execution_order(self):
         """Authenticator 체인 실행 순서 테스트"""
         execution_order: list[str] = []
+
         @Component
         class FirstAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
@@ -33,6 +34,7 @@ class TestAuthMiddleware:
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -53,6 +55,7 @@ class TestAuthMiddleware:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class TestController:
             @Get("/test")
@@ -71,6 +74,7 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_authentication_success(self):
         """인증 성공 시 request.auth에 저장"""
+
         class TokenAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 if request.headers.get("Authorization") == "Bearer valid-token":
@@ -83,6 +87,7 @@ class TestAuthMiddleware:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -98,6 +103,7 @@ class TestAuthMiddleware:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/test")
@@ -124,12 +130,14 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_require_auth_returns_401(self):
         """require_auth=True일 때 인증 실패 시 401 반환"""
+
         class AlwaysFailAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 return None
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -145,6 +153,7 @@ class TestAuthMiddleware:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class TestController:
             @Get("/test")
@@ -162,12 +171,14 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_exclude_paths(self):
         """exclude_paths로 특정 경로 인증 제외"""
+
         class StrictAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 return None  # 항상 실패
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -186,6 +197,7 @@ class TestAuthMiddleware:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class TestController:
             @Get("/public/data")
@@ -212,6 +224,7 @@ class TestAuthMiddleware:
     async def test_supports_filters_authenticator(self):
         """supports()가 False면 해당 인증기 건너뛰기"""
         execution_log: list[str] = []
+
         class HeaderAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 execution_log.append("header")
@@ -227,6 +240,7 @@ class TestAuthMiddleware:
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -244,6 +258,7 @@ class TestAuthMiddleware:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/test")
@@ -264,6 +279,7 @@ class TestAuthMiddleware:
     async def test_first_successful_auth_wins(self):
         """첫 번째 성공한 인증기의 결과 사용"""
         execution_log: list[str] = []
+
         class FirstAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 execution_log.append("first")
@@ -279,6 +295,7 @@ class TestAuthMiddleware:
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -296,6 +313,7 @@ class TestAuthMiddleware:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/test")
@@ -315,6 +333,7 @@ class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_async_authenticator(self):
         """비동기 인증기 지원"""
+
         class AsyncAuthenticator(Authenticator):
             async def authenticate(self, request: HttpRequest) -> Authentication | None:
                 # 비동기 작업 시뮬레이션
@@ -322,6 +341,7 @@ class TestAuthMiddleware:
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -337,6 +357,7 @@ class TestAuthMiddleware:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/test")
@@ -359,6 +380,7 @@ class TestAuthMiddlewareGroups:
     @pytest.mark.asyncio
     async def test_group_based_authentication(self):
         """그룹별로 다른 인증기 사용"""
+
         class ApiKeyAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 if request.headers.get("X-API-Key") == "secret":
@@ -376,6 +398,7 @@ class TestAuthMiddlewareGroups:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -401,6 +424,7 @@ class TestAuthMiddlewareGroups:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/api/data")
@@ -438,12 +462,14 @@ class TestAuthMiddlewareGroups:
     @pytest.mark.asyncio
     async def test_group_require_only_affects_that_group(self):
         """각 그룹의 require 설정이 독립적으로 동작"""
+
         class AlwaysFailAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 return None
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -467,6 +493,7 @@ class TestAuthMiddlewareGroups:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class TestController:
             @Get("/strict/data")
@@ -492,12 +519,14 @@ class TestAuthMiddlewareGroups:
     @pytest.mark.asyncio
     async def test_group_exclude_paths(self):
         """그룹별 exclude 설정"""
+
         class StrictAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 return None
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -518,6 +547,7 @@ class TestAuthMiddlewareGroups:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class TestController:
             @Get("/api/private")
@@ -551,12 +581,14 @@ class TestAuthMiddlewareGroups:
     @pytest.mark.asyncio
     async def test_default_group_fallback(self):
         """include가 없는 default 그룹은 모든 경로에 적용"""
+
         class DefaultAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 return Authentication(user_id="default", authenticated=True)
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -573,6 +605,7 @@ class TestAuthMiddlewareGroups:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/any/path")
@@ -592,6 +625,7 @@ class TestAuthMiddlewareGroups:
     async def test_specific_group_takes_priority(self):
         """include가 설정된 그룹이 default 그룹보다 우선"""
         execution_log: list[str] = []
+
         class ApiAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 execution_log.append("api")
@@ -607,6 +641,7 @@ class TestAuthMiddlewareGroups:
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -630,6 +665,7 @@ class TestAuthMiddlewareGroups:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/api/data")
@@ -662,12 +698,14 @@ class TestAuthMiddlewareGroups:
     @pytest.mark.asyncio
     async def test_no_matching_group_allows_request(self):
         """매칭되는 그룹이 없으면 인증 없이 통과"""
+
         class StrictAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 return None
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -687,6 +725,7 @@ class TestAuthMiddlewareGroups:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class TestController:
             @Get("/public/data")
@@ -704,6 +743,7 @@ class TestAuthMiddlewareGroups:
     async def test_multiple_authenticators_per_group(self):
         """그룹에 여러 인증기 등록 시 순서대로 시도"""
         execution_log: list[str] = []
+
         class PrimaryAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 execution_log.append("primary")
@@ -723,6 +763,7 @@ class TestAuthMiddlewareGroups:
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -743,6 +784,7 @@ class TestAuthMiddlewareGroups:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/api/data")
@@ -774,6 +816,7 @@ class TestAuthMiddlewareGroups:
     @pytest.mark.asyncio
     async def test_group_with_different_auth_types(self):
         """그룹별로 다른 인증 타입 사용 (API Key vs JWT vs Session)"""
+
         class ApiKeyAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 key = request.headers.get("X-API-Key")
@@ -815,6 +858,7 @@ class TestAuthMiddlewareGroups:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Cookie" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -847,6 +891,7 @@ class TestAuthMiddlewareGroups:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/api/v1/resources")
@@ -906,6 +951,7 @@ class TestAuthMiddlewareGroups:
     @pytest.mark.asyncio
     async def test_group_wrong_auth_type_returns_401(self):
         """그룹에 맞지 않는 인증 타입 사용 시 401"""
+
         class ApiKeyAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 if request.headers.get("X-API-Key") == "valid":
@@ -923,6 +969,7 @@ class TestAuthMiddlewareGroups:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -946,6 +993,7 @@ class TestAuthMiddlewareGroups:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class TestController:
             @Get("/api/data")
@@ -976,6 +1024,7 @@ class TestAuthMiddlewareGroups:
     async def test_overlapping_groups_first_match_wins(self):
         """경로가 여러 그룹에 매칭될 수 있을 때 첫 번째 매칭 그룹 사용"""
         execution_log: list[str] = []
+
         class SpecificAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 execution_log.append("specific")
@@ -991,6 +1040,7 @@ class TestAuthMiddlewareGroups:
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1016,6 +1066,7 @@ class TestAuthMiddlewareGroups:
                 return chain
 
         captured_auth: list[Authentication | None] = []
+
         @Controller
         class TestController:
             @Get("/api/v2/data")
@@ -1052,6 +1103,7 @@ class TestAuthenticationResolver:
     @pytest.mark.asyncio
     async def test_authentication_injection_via_resolver(self):
         """AuthMiddleware + AuthenticationResolver 통합 - 핸들러에서 auth 파라미터로 받기"""
+
         class TokenAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 if request.headers.get("Authorization") == "Bearer valid-token":
@@ -1064,6 +1116,7 @@ class TestAuthenticationResolver:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1077,6 +1130,7 @@ class TestAuthenticationResolver:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class UserController:
             @Get("/me")
@@ -1108,6 +1162,7 @@ class TestAuthenticationResolver:
     @pytest.mark.asyncio
     async def test_optional_authentication_resolver(self):
         """Optional[Authentication] 파라미터 주입"""
+
         class OptionalAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 token = request.headers.get("Authorization")
@@ -1117,6 +1172,7 @@ class TestAuthenticationResolver:
 
             def supports(self, request: HttpRequest) -> bool:
                 return True
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1130,6 +1186,7 @@ class TestAuthenticationResolver:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class UserController:
             @Get("/profile")
@@ -1158,6 +1215,7 @@ class TestAuthenticationResolver:
     @pytest.mark.asyncio
     async def test_authentication_with_path_params(self):
         """Authentication + path param 조합"""
+
         class ApiKeyAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 if request.headers.get("X-API-Key") == "secret":
@@ -1170,6 +1228,7 @@ class TestAuthenticationResolver:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "X-API-Key" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1183,6 +1242,7 @@ class TestAuthenticationResolver:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class ResourceController:
             @Get("/resources/{id}")
@@ -1209,6 +1269,7 @@ class TestAuthenticationResolver:
     @pytest.mark.asyncio
     async def test_authentication_authorities_check(self):
         """Authentication.has_authority() 체크"""
+
         class RoleAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 role = request.headers.get("X-Role")
@@ -1226,6 +1287,7 @@ class TestAuthenticationResolver:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "X-Role" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1239,6 +1301,7 @@ class TestAuthenticationResolver:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class AdminController:
             @Get("/admin/action")
@@ -1269,13 +1332,14 @@ class TestAuthenticationResolver:
     @pytest.mark.asyncio
     async def test_group_auth_with_resolver(self):
         """그룹별 인증 + AuthenticationResolver 통합"""
+
         class ApiAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 if request.headers.get("X-API-Key") == "api-key":
                     return Authentication(
                         user_id="api-client",
                         authenticated=True,
-                        details={"type": "api"},
+                        authorities=["api"],
                     )
                 return None
 
@@ -1288,12 +1352,13 @@ class TestAuthenticationResolver:
                     return Authentication(
                         user_id="web-user",
                         authenticated=True,
-                        details={"type": "web"},
+                        authorities=["web"],
                     )
                 return None
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Cookie" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1317,15 +1382,22 @@ class TestAuthenticationResolver:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth_middleware)
                 return chain
+
         @Controller
         class MultiController:
             @Get("/api/info")
             async def api_info(self, auth: Authentication) -> dict:
-                return {"user": auth.user_id, "type": auth.details.get("type")}
+                return {
+                    "user": auth.user_id,
+                    "type": "api" if auth.has_authority("api") else "unknown",
+                }
 
             @Get("/web/info")
             async def web_info(self, auth: Authentication) -> dict:
-                return {"user": auth.user_id, "type": auth.details.get("type")}
+                return {
+                    "user": auth.user_id,
+                    "type": "web" if auth.has_authority("web") else "unknown",
+                }
 
         app = Application("test").ready()
 
@@ -1353,6 +1425,7 @@ class TestAuthorizeDecorator:
     async def test_authorize_authenticated_user_access(self):
         """인증된 사용자가 @Authorize 엔드포인트에 접근 성공"""
         from bloom.web.auth import Authorize
+
         class TokenAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 if request.headers.get("Authorization") == "Bearer valid":
@@ -1361,6 +1434,7 @@ class TestAuthorizeDecorator:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1372,6 +1446,7 @@ class TestAuthorizeDecorator:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth)
                 return chain
+
         @Controller
         class ProtectedController:
             @Authorize(Authentication, lambda auth: auth.is_authenticated())
@@ -1393,6 +1468,7 @@ class TestAuthorizeDecorator:
     async def test_authorize_unauthenticated_user_forbidden(self):
         """인증되지 않은 사용자가 @Authorize 엔드포인트에 접근 시 403"""
         from bloom.web.auth import Authorize
+
         class TokenAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 if request.headers.get("Authorization") == "Bearer valid":
@@ -1401,6 +1477,7 @@ class TestAuthorizeDecorator:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1412,6 +1489,7 @@ class TestAuthorizeDecorator:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth)
                 return chain
+
         @Controller
         class ProtectedController:
             @Get("/protected")
@@ -1431,6 +1509,7 @@ class TestAuthorizeDecorator:
     async def test_authorize_with_authority_check(self):
         """권한 검사 - has_authority 사용"""
         from bloom.web.auth import Authorize
+
         class TokenAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -1446,6 +1525,7 @@ class TestAuthorizeDecorator:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1457,6 +1537,7 @@ class TestAuthorizeDecorator:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth)
                 return chain
+
         @Controller
         class AdminController:
             @Get("/admin")
@@ -1486,6 +1567,7 @@ class TestAuthorizeDecorator:
     async def test_authorize_with_custom_predicate(self):
         """커스텀 predicate 사용"""
         from bloom.web.auth import Authorize
+
         class TokenAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -1493,18 +1575,19 @@ class TestAuthorizeDecorator:
                     return Authentication(
                         user_id="premium_user",
                         authenticated=True,
-                        details={"plan": "premium"},
+                        authorities=["premium"],
                     )
                 elif token == "free":
                     return Authentication(
                         user_id="free_user",
                         authenticated=True,
-                        details={"plan": "free"},
+                        authorities=["free"],
                     )
                 return None
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1516,12 +1599,11 @@ class TestAuthorizeDecorator:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth)
                 return chain
+
         @Controller
         class PremiumController:
             @Get("/premium")
-            @Authorize(
-                Authentication, lambda auth: auth.details.get("plan") == "premium"
-            )
+            @Authorize(Authentication, lambda auth: auth.has_authority("premium"))
             async def premium_content(self) -> str:
                 return "premium content"
 
@@ -1546,6 +1628,7 @@ class TestAuthorizeDecorator:
     async def test_authorize_with_require_auth_group(self):
         """require()로 인증 필수 그룹과 @Authorize 결합"""
         from bloom.web.auth import Authorize
+
         class TokenAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -1561,6 +1644,7 @@ class TestAuthorizeDecorator:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1578,6 +1662,7 @@ class TestAuthorizeDecorator:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth)
                 return chain
+
         @Controller
         class ApiController:
             @Get("/api/admin")
@@ -1623,6 +1708,7 @@ class TestAuthorizeDecorator:
     async def test_authorize_multiple_decorators(self):
         """여러 @Authorize 데코레이터 사용"""
         from bloom.web.auth import Authorize
+
         class TokenAuthenticator(Authenticator):
             def authenticate(self, request: HttpRequest) -> Authentication | None:
                 token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -1644,6 +1730,7 @@ class TestAuthorizeDecorator:
 
             def supports(self, request: HttpRequest) -> bool:
                 return "Authorization" in request.headers
+
         @Component
         class MiddlewareConfig:
             @Factory
@@ -1655,6 +1742,7 @@ class TestAuthorizeDecorator:
                 chain = MiddlewareChain()
                 chain.default_group.add(auth)
                 return chain
+
         @Controller
         class SuperController:
             @Get("/super")
