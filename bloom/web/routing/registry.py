@@ -6,7 +6,7 @@ RouteEntry 리스트를 관리하고 RouteTrie를 통한 빠른 검색을 제공
 from typing import TYPE_CHECKING
 
 from bloom.core.abstract import AbstractRegistry
-from bloom.web.route_trie import RouteTrie
+from .trie import RouteTrie
 
 if TYPE_CHECKING:
     from bloom.web.handler import HttpMethodHandler

@@ -41,12 +41,23 @@ class Service:
 
 ## 개발 워크플로우
 
+### Python 환경 (uv 사용)
+
+```bash
+uv run python script.py          # Python 스크립트 실행
+uv run pytest                    # 테스트 실행
+uv add package_name              # 패키지 추가
+uv sync                          # 의존성 동기화
+```
+
 ### 테스트 실행
 
 ```bash
-pytest                           # 전체 192개 테스트
-pytest tests/test_web.py -v      # 웹 레이어 테스트
-pytest -k "lifecycle"            # 특정 패턴 테스트
+uv run pytest                    # 전체 테스트 (performance 제외)
+uv run pytest -m performance     # 성능 벤치마크 테스트만
+uv run pytest -m ""              # 모든 테스트 (performance 포함)
+uv run pytest tests/test_web.py -v   # 웹 레이어 테스트
+uv run pytest -k "lifecycle"     # 특정 패턴 테스트
 ```
 
 ### 테스트 작성 규칙
@@ -58,10 +69,80 @@ pytest -k "lifecycle"            # 특정 패턴 테스트
 ### 서버 실행
 
 ```bash
-uvicorn main:app.asgi --reload  # app = Application("name").scan(...).ready()
+uv run uvicorn main:app.asgi --reload  # app = Application("name").scan(...).ready()
 ```
 
 ## 코드 패턴 및 컨벤션
+
+### Manager-Registry-Entry 패턴
+
+웹 레이어에서 핸들러/라우트 등을 체계적으로 관리하기 위한 3계층 패턴입니다.
+
+```
+Manager (싱글톤)
+  └── Registry (컬렉션 관리)
+        └── Entry (개별 항목)
+```
+
+#### 계층별 역할
+
+| 계층 | 역할 | 예시 |
+|------|------|------|
+| **Entry** | 개별 항목 (불변 데이터) | `RouteEntry`, `HttpMethodHandler` |
+| **Registry** | Entry 컬렉션 관리, 조회/매칭 | `RouteRegistry`, `MethodRegistry` |
+| **Manager** | Registry들을 통합 관리, 외부 API 제공 | `Router` |
+
+#### 추상 클래스 (`bloom/core/abstract/`)
+
+```python
+from bloom.core.abstract import Entry, AbstractRegistry, AbstractManager
+
+# 1. Entry 정의 (개별 항목)
+class RouteEntry(Entry):
+    path: str
+    method: str
+    handler: Callable
+
+# 2. Registry 정의 (Entry 컬렉션)
+class RouteRegistry(AbstractRegistry[RouteEntry]):
+    def match(self, path: str, method: str) -> RouteEntry | None:
+        for entry in self._entries:
+            if entry.matches(path, method):
+                return entry
+        return None
+
+# 3. Manager 정의 (Registry 통합)
+class Router(AbstractManager[RouteRegistry]):
+    def dispatch(self, request: HttpRequest) -> HttpResponse:
+        for registry in self._registries:
+            entry = registry.match(request.path, request.method)
+            if entry:
+                return entry.handler(request)
+        return HttpResponse.not_found()
+```
+
+#### GroupRegistry 패턴 (미들웨어용)
+
+미들웨어처럼 그룹 단위로 활성화/비활성화가 필요한 경우:
+
+```python
+from bloom.core.abstract import EntryGroup, GroupRegistry
+
+# EntryGroup: 항목들을 그룹으로 묶음
+class MiddlewareGroup(EntryGroup[Middleware]):
+    pass
+
+# GroupRegistry: EntryGroup들을 관리
+class MiddlewareChain(GroupRegistry[Middleware]):
+    group_type = MiddlewareGroup
+    
+    def add_group_after(self, *middlewares: Middleware) -> MiddlewareGroup:
+        group = MiddlewareGroup()
+        for m in middlewares:
+            group.add(m)
+        self._groups.append(group)
+        return group
+```
 
 ### Container-Element 패턴 (중요!)
 
@@ -311,14 +392,17 @@ class GlobalErrorHandlers:
 ```
 bloom/
 ├── core/           # DI 컨테이너 핵심
+│   ├── abstract/   # 추상 패턴 (Entry, AbstractRegistry, AbstractManager, EntryGroup, GroupRegistry)
 │   ├── container/  # Container, Element, ComponentContainer, FactoryContainer, HandlerContainer
 │   ├── manager.py  # ContainerManager (ContextVar 기반)
 │   ├── lifecycle.py # PostConstruct/PreDestroy 처리
 │   └── lazy.py     # Lazy[T] descriptor
 ├── web/            # ASGI 웹 레이어
-│   ├── router.py   # URL 라우팅
+│   ├── router.py   # URL 라우팅 (Manager-Registry-Entry 패턴)
+│   ├── routing/    # RouteRegistry, RouteEntry, MethodRegistry
 │   ├── params/     # 파라미터 리졸버들
-│   ├── middleware/ # 미들웨어 체인
+│   ├── middleware/ # 미들웨어 (GroupRegistry 패턴)
+│   ├── builtin/    # 내장 미들웨어 (CorsMiddleware, ErrorHandlerMiddleware)
 │   ├── auth/       # 인증/인가
 │   └── error/      # 에러 핸들링
 ```
