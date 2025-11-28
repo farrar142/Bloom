@@ -3,10 +3,12 @@
 from .base import ParameterResolver, get_type_info, is_optional, unwrap_optional
 from .registry import (
     UNRESOLVED,
+    CachedResolverInfo,
     ParameterResolverRegistry,
     get_default_registry,
     register_resolver,
     resolve_parameters,
+    resolve_parameters_cached,
 )
 from .resolvers import (
     AuthenticationResolver,
@@ -42,10 +44,12 @@ __all__ = [
     "get_type_info",
     # Registry
     "ParameterResolverRegistry",
+    "CachedResolverInfo",
     "UNRESOLVED",
     "get_default_registry",
     "register_resolver",
     "resolve_parameters",
+    "resolve_parameters_cached",
     # Types
     "RequestBody",
     "HttpHeader",

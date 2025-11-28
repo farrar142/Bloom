@@ -60,10 +60,15 @@ class HandlerTestController:
 
 @pytest.fixture(autouse=True)
 def reset_container_manager():
-    """각 테스트 전후로 ContainerManager 초기화"""
+    """각 테스트 전후로 ContainerManager 및 파라미터 리졸버 캐시 초기화"""
+    from bloom.web.params import get_default_registry
+
     # 새로운 테스트용 manager 생성 및 설정
     manager = ContainerManager("test")
     set_current_manager(manager)
+    # 파라미터 리졸버 캐시 초기화
+    get_default_registry().clear_cache()
     yield manager
     # 테스트 후 정리
     set_current_manager(None)
+    get_default_registry().clear_cache()

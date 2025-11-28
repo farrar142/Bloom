@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from .controller import ControllerContainer
 from .handler import HttpMethodHandler
 from .http import HttpRequest, HttpResponse, StreamingResponse
-from .params import resolve_parameters
+from .params import resolve_parameters_cached
 from .route_trie import RouteTrie
 
 
@@ -168,8 +168,9 @@ class Router:
                 else:
                     # 핸들러의 타입 힌트로 파라미터 리졸버를 통해 값 주입
                     type_hints = handler.get_type_hints()
-                    resolved_params = await resolve_parameters(
-                        type_hints, request, path_params
+                    # 캐싱된 리졸버 사용 (handler_id로 리졸버 매핑 캐시)
+                    resolved_params = await resolve_parameters_cached(
+                        id(handler), type_hints, request, path_params
                     )
 
                     # 핸들러 호출 - 비동기
