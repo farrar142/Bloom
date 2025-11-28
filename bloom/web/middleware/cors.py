@@ -118,6 +118,12 @@ class CorsMiddleware(Middleware):
         self.allow_credentials = allow_credentials
         self.max_age = max_age
 
+        # 성능 최적화: 자주 사용되는 문자열 미리 캐싱
+        self._methods_str = ", ".join(self.allow_methods)
+        self._headers_str = ", ".join(self.allow_headers) if self.allow_headers != ["*"] else ""
+        self._expose_headers_str = ", ".join(self.expose_headers) if self.expose_headers else ""
+        self._max_age_str = str(self.max_age)
+
     async def process_request(self, request: HttpRequest) -> HttpResponse | None:
         """
         Preflight (OPTIONS) 요청 처리
@@ -142,7 +148,7 @@ class CorsMiddleware(Middleware):
         return response
 
     def _add_cors_headers(self, request: HttpRequest, response: HttpResponse) -> None:
-        """CORS 헤더 추가"""
+        """CORS 헤더 추가 (캐싱된 문자열 사용)"""
         origin = request.headers.get("Origin", "")
 
         # Origin 검증
@@ -153,8 +159,8 @@ class CorsMiddleware(Middleware):
             else:
                 response.headers["Access-Control-Allow-Origin"] = origin
 
-        # 메서드 허용
-        response.headers["Access-Control-Allow-Methods"] = ", ".join(self.allow_methods)
+        # 메서드 허용 (캐싱된 문자열)
+        response.headers["Access-Control-Allow-Methods"] = self._methods_str
 
         # 헤더 허용
         if self.allow_headers == ["*"]:
@@ -167,23 +173,19 @@ class CorsMiddleware(Middleware):
             else:
                 response.headers["Access-Control-Allow-Headers"] = "*"
         else:
-            response.headers["Access-Control-Allow-Headers"] = ", ".join(
-                self.allow_headers
-            )
+            response.headers["Access-Control-Allow-Headers"] = self._headers_str
 
-        # 노출 헤더
-        if self.expose_headers:
-            response.headers["Access-Control-Expose-Headers"] = ", ".join(
-                self.expose_headers
-            )
+        # 노출 헤더 (캐싱된 문자열)
+        if self._expose_headers_str:
+            response.headers["Access-Control-Expose-Headers"] = self._expose_headers_str
 
         # 인증 정보 허용
         if self.allow_credentials:
             response.headers["Access-Control-Allow-Credentials"] = "true"
 
-        # Preflight 캐시
+        # Preflight 캐시 (캐싱된 문자열)
         if request.method == "OPTIONS":
-            response.headers["Access-Control-Max-Age"] = str(self.max_age)
+            response.headers["Access-Control-Max-Age"] = self._max_age_str
 
     def _is_origin_allowed(self, origin: str) -> bool:
         """Origin이 허용되는지 확인"""
