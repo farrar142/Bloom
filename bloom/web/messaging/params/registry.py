@@ -3,7 +3,9 @@
 from dataclasses import dataclass
 from typing import Any, get_origin
 
-from .base import MessageParameterResolver, MessageResolverContext
+from bloom.web.params.context import MessageResolverContext
+
+from .base import MessageParameterResolver
 
 
 # 해석되지 않은 파라미터를 나타내는 센티널
@@ -31,6 +33,9 @@ class MessageParameterResolverRegistry:
     등록 순서대로 supports()를 확인하므로, 더 구체적인 리졸버를 먼저 등록해야 합니다.
 
     핸들러별 리졸버 매핑을 캐싱하여 성능을 최적화합니다.
+
+    ParameterResolverRegistry와 동일한 인터페이스를 제공하여,
+    HTTP와 WebSocket 리졸버가 호환됩니다.
     """
 
     def __init__(self):
@@ -96,14 +101,16 @@ class MessageParameterResolverRegistry:
         self._resolver_cache[handler_id] = cached_resolvers
         return cached_resolvers
 
-    async def resolve_parameters(
+    async def resolve_with_context(
         self,
         handler_id: int,
         type_hints: dict[str, type],
         context: MessageResolverContext,
     ) -> dict[str, Any]:
         """
-        캐시를 활용한 파라미터 해석
+        통합 컨텍스트를 사용한 파라미터 해석
+
+        HTTP의 ParameterResolverRegistry와 동일한 인터페이스를 제공합니다.
 
         Args:
             handler_id: 핸들러 고유 ID (id(handler))
@@ -121,7 +128,7 @@ class MessageParameterResolverRegistry:
         for info in cached_resolvers:
             # 후보 리졸버들을 순서대로 시도
             for resolver in info.resolvers:
-                value = await resolver.resolve(
+                value = await resolver.resolve_with_context(
                     info.param_name, info.param_type, context
                 )
                 if value is not UNRESOLVED:
@@ -129,6 +136,29 @@ class MessageParameterResolverRegistry:
                     break
 
         return resolved
+
+    async def resolve_parameters(
+        self,
+        handler_id: int,
+        type_hints: dict[str, type],
+        context: MessageResolverContext,
+    ) -> dict[str, Any]:
+        """
+        캐시를 활용한 파라미터 해석 (하위 호환성)
+
+        Args:
+            handler_id: 핸들러 고유 ID (id(handler))
+            type_hints: 파라미터 이름 -> 타입 매핑
+            context: 메시지 리졸버 컨텍스트
+
+        Returns:
+            파라미터 이름 -> 값 매핑
+        """
+        return await self.resolve_with_context(handler_id, type_hints, context)
+
+    def clear_cache(self) -> None:
+        """캐시 초기화"""
+        self._resolver_cache.clear()
 
 
 # 싱글톤 레지스트리

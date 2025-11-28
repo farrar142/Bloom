@@ -2,11 +2,12 @@
 
 from typing import Any, Annotated, get_origin, get_args
 
+from bloom.web.params.context import MessageResolverContext
+
 from ..session import Message, WebSocketSession
 from ..auth import StompAuthentication, STOMP_ANONYMOUS
 from .base import (
     MessageParameterResolver,
-    MessageResolverContext,
     is_optional,
     unwrap_optional,
 )
@@ -32,7 +33,7 @@ class StompAuthenticationResolver(MessageParameterResolver):
         except TypeError:
             return False
 
-    async def resolve(
+    async def resolve_message(
         self,
         param_name: str,
         param_type: type,
@@ -51,13 +52,13 @@ class MessageResolver(MessageParameterResolver):
     def supports(self, param_name: str, param_type: type, origin: type | None) -> bool:
         return param_type is Message
 
-    async def resolve(
+    async def resolve_message(
         self,
         param_name: str,
         param_type: type,
         context: MessageResolverContext,
     ) -> Any:
-        return context.message
+        return context.stomp_message
 
 
 class WebSocketSessionResolver(MessageParameterResolver):
@@ -70,7 +71,7 @@ class WebSocketSessionResolver(MessageParameterResolver):
     def supports(self, param_name: str, param_type: type, origin: type | None) -> bool:
         return param_type is WebSocketSession
 
-    async def resolve(
+    async def resolve_message(
         self,
         param_name: str,
         param_type: type,
@@ -89,10 +90,10 @@ class PathParamResolver(MessageParameterResolver):
 
     def supports(self, param_name: str, param_type: type, origin: type | None) -> bool:
         # 특수 타입이 아니고, path_params에 있을 수 있는 모든 파라미터
-        # 실제 매칭은 resolve()에서 확인
+        # 실제 매칭은 resolve_message()에서 확인
         return param_type in (str, int, float) or param_type is None
 
-    async def resolve(
+    async def resolve_message(
         self,
         param_name: str,
         param_type: type,
@@ -134,16 +135,17 @@ class PayloadResolver(MessageParameterResolver):
             return True
         return False
 
-    async def resolve(
+    async def resolve_message(
         self,
         param_name: str,
         param_type: type,
         context: MessageResolverContext,
     ) -> Any:
-        if context.message is None or context.message.payload is None:
+        message = context.stomp_message
+        if message is None or message.payload is None:
             return UNRESOLVED
 
-        payload = context.message.payload
+        payload = message.payload
 
         # Pydantic 모델
         if hasattr(param_type, "model_validate"):
@@ -189,7 +191,7 @@ class MessageBodyResolver(MessageParameterResolver):
                 return True
         return False
 
-    async def resolve(
+    async def resolve_message(
         self,
         param_name: str,
         param_type: type,
@@ -213,10 +215,11 @@ class MessageBodyResolver(MessageParameterResolver):
         else:
             return UNRESOLVED
 
-        if context.message is None or context.message.payload is None:
+        message = context.stomp_message
+        if message is None or message.payload is None:
             return None if optional else UNRESOLVED
 
-        payload = context.message.payload
+        payload = message.payload
         return self._convert_payload(payload, inner_type)
 
     def _convert_payload(self, payload: Any, target_type: type) -> Any:
@@ -260,7 +263,7 @@ class ListPayloadResolver(MessageParameterResolver):
 
         return origin is list
 
-    async def resolve(
+    async def resolve_message(
         self,
         param_name: str,
         param_type: type,
@@ -277,18 +280,20 @@ class ListPayloadResolver(MessageParameterResolver):
 
         # list[T]에서 T 추출
         args = get_args(param_type)
+        message = context.stomp_message
+
         if not args:
             # list (제네릭 없음) - 그대로 반환
-            if context.message is None or context.message.payload is None:
+            if message is None or message.payload is None:
                 return None if optional else UNRESOLVED
-            return context.message.payload
+            return message.payload
 
         item_type = args[0]
 
-        if context.message is None or context.message.payload is None:
+        if message is None or message.payload is None:
             return None if optional else UNRESOLVED
 
-        payload = context.message.payload
+        payload = message.payload
 
         if not isinstance(payload, list):
             return UNRESOLVED
@@ -349,18 +354,19 @@ class OptionalPayloadResolver(MessageParameterResolver):
 
         return False
 
-    async def resolve(
+    async def resolve_message(
         self,
         param_name: str,
         param_type: type,
         context: MessageResolverContext,
     ) -> Any:
         inner_type = unwrap_optional(param_type)
+        message = context.stomp_message
 
-        if context.message is None or context.message.payload is None:
+        if message is None or message.payload is None:
             return None
 
-        payload = context.message.payload
+        payload = message.payload
 
         # Pydantic 모델
         if hasattr(inner_type, "model_validate"):

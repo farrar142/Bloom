@@ -1,10 +1,12 @@
 """파라미터 리졸버 베이스 클래스"""
 
 from abc import ABC, abstractmethod
-from typing import Any, Union, get_origin, get_args
+from typing import Any, Union, get_origin, get_args, TYPE_CHECKING
 from types import UnionType, NoneType
 
-from bloom.web.http import HttpRequest
+if TYPE_CHECKING:
+    from bloom.web.http import HttpRequest
+    from .context import ResolverContext
 
 
 def is_optional(param_type: type) -> bool:
@@ -31,10 +33,13 @@ def unwrap_optional(param_type: type) -> type:
 
 class ParameterResolver(ABC):
     """
-    HTTP 핸들러 파라미터를 해석하는 베이스 클래스
+    핸들러 파라미터를 해석하는 베이스 클래스
 
+    HTTP와 WebSocket/STOMP 양쪽에서 사용할 수 있는 통합 인터페이스입니다.
     각 리졸버는 특정 타입의 파라미터를 처리할 수 있는지 확인하고,
-    HttpRequest로부터 해당 파라미터 값을 추출합니다.
+    컨텍스트로부터 해당 파라미터 값을 추출합니다.
+
+    기존 HTTP 전용 resolve() 시그니처도 하위 호환성을 위해 지원합니다.
     """
 
     @abstractmethod
@@ -52,16 +57,43 @@ class ParameterResolver(ABC):
         """
         ...
 
+    async def resolve_with_context(
+        self,
+        param_name: str,
+        param_type: type,
+        context: "ResolverContext",
+    ) -> Any:
+        """
+        통합 컨텍스트를 사용한 파라미터 값 해석
+
+        Args:
+            param_name: 파라미터 이름
+            param_type: 파라미터 타입
+            context: 통합 리졸버 컨텍스트 (HTTP 또는 WebSocket)
+
+        Returns:
+            해석된 파라미터 값
+        """
+        # 기본 구현: HTTP 컨텍스트인 경우 기존 resolve() 호출
+        if context.is_http and context.http_request is not None:
+            return await self.resolve(
+                param_name, param_type, context.http_request, context.path_params
+            )
+        # WebSocket 컨텍스트인 경우 UNRESOLVED 반환 (서브클래스에서 오버라이드)
+        from .registry import UNRESOLVED
+
+        return UNRESOLVED
+
     @abstractmethod
     async def resolve(
         self,
         param_name: str,
         param_type: type,
-        request: HttpRequest,
+        request: "HttpRequest",
         path_params: dict[str, str],
     ) -> Any:
         """
-        파라미터 값 해석
+        파라미터 값 해석 (HTTP 전용, 하위 호환성)
 
         Args:
             param_name: 파라미터 이름

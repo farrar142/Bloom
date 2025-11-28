@@ -2,11 +2,14 @@
 
 from .base import (
     MessageParameterResolver,
-    MessageResolverContext,
     is_optional,
     unwrap_optional,
 )
+
+# MessageResolverContext는 공통 context 모듈에서 import
+from bloom.web.params.context import MessageResolverContext
 from .registry import (
+    UNRESOLVED,
     MessageParameterResolverRegistry,
     get_default_message_registry,
 )
@@ -40,6 +43,7 @@ __all__ = [
     "is_optional",
     "unwrap_optional",
     # Registry
+    "UNRESOLVED",
     "MessageParameterResolverRegistry",
     "get_default_message_registry",
     # Types

@@ -1,6 +1,11 @@
 """파라미터 리졸버 패키지"""
 
 from .base import ParameterResolver, get_type_info, is_optional, unwrap_optional
+from .context import (
+    ResolverContext,
+    HttpResolverContext,
+    MessageResolverContext,
+)
 from .registry import (
     UNRESOLVED,
     CachedResolverInfo,
@@ -42,6 +47,12 @@ __all__ = [
     # Base
     "ParameterResolver",
     "get_type_info",
+    "is_optional",
+    "unwrap_optional",
+    # Context
+    "ResolverContext",
+    "HttpResolverContext",
+    "MessageResolverContext",
     # Registry
     "ParameterResolverRegistry",
     "CachedResolverInfo",

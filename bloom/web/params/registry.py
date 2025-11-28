@@ -1,11 +1,13 @@
 """파라미터 리졸버 레지스트리"""
 
 from dataclasses import dataclass
-from typing import Any, Callable, get_origin
-
-from bloom.web.http import HttpRequest
+from typing import Any, Callable, get_origin, TYPE_CHECKING
 
 from .base import ParameterResolver
+
+if TYPE_CHECKING:
+    from bloom.web.http import HttpRequest
+    from .context import ResolverContext
 
 
 @dataclass
@@ -91,15 +93,51 @@ class ParameterResolverRegistry:
         self._resolver_cache[handler_id] = cached_resolvers
         return cached_resolvers
 
+    async def resolve_with_context(
+        self,
+        handler_id: int,
+        type_hints: dict[str, type],
+        context: "ResolverContext",
+    ) -> dict[str, Any]:
+        """
+        통합 컨텍스트를 사용한 파라미터 해석
+
+        HTTP와 WebSocket 양쪽에서 사용 가능한 통합 메서드입니다.
+
+        Args:
+            handler_id: 핸들러 고유 ID (id(handler))
+            type_hints: 파라미터 이름 -> 타입 매핑
+            context: 통합 리졸버 컨텍스트 (HTTP 또는 WebSocket)
+
+        Returns:
+            파라미터 이름 -> 값 매핑
+        """
+        # 캐시에서 리졸버 매핑 조회 또는 생성
+        cached_resolvers = self.build_resolver_cache(handler_id, type_hints)
+
+        resolved: dict[str, Any] = {}
+
+        for info in cached_resolvers:
+            # 후보 리졸버들을 순서대로 시도, UNRESOLVED면 다음 리졸버로
+            for resolver in info.resolvers:
+                value = await resolver.resolve_with_context(
+                    info.param_name, info.param_type, context
+                )
+                if value is not UNRESOLVED:
+                    resolved[info.param_name] = value
+                    break
+
+        return resolved
+
     async def resolve_parameters_cached(
         self,
         handler_id: int,
         type_hints: dict[str, type],
-        request: HttpRequest,
+        request: "HttpRequest",
         path_params: dict[str, str],
     ) -> dict[str, Any]:
         """
-        캐시를 활용한 파라미터 해석 (최적화된 버전)
+        캐시를 활용한 파라미터 해석 (최적화된 버전, HTTP 전용)
 
         Args:
             handler_id: 핸들러 고유 ID (id(handler))
@@ -130,11 +168,11 @@ class ParameterResolverRegistry:
     async def resolve_parameters(
         self,
         type_hints: dict[str, type],
-        request: HttpRequest,
+        request: "HttpRequest",
         path_params: dict[str, str],
     ) -> dict[str, Any]:
         """
-        모든 파라미터 해석 (비캐싱 버전 - 하위 호환성)
+        모든 파라미터 해석 (비캐싱 버전 - 하위 호환성, HTTP 전용)
 
         Args:
             type_hints: 파라미터 이름 -> 타입 매핑
@@ -196,7 +234,7 @@ def register_resolver(resolver: ParameterResolver) -> None:
 
 async def resolve_parameters(
     type_hints: dict[str, type],
-    request: HttpRequest,
+    request: "HttpRequest",
     path_params: dict[str, str],
 ) -> dict[str, Any]:
     """
@@ -216,7 +254,7 @@ async def resolve_parameters(
 async def resolve_parameters_cached(
     handler_id: int,
     type_hints: dict[str, type],
-    request: HttpRequest,
+    request: "HttpRequest",
     path_params: dict[str, str],
 ) -> dict[str, Any]:
     """
