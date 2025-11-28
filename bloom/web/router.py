@@ -2,7 +2,6 @@
 
 import asyncio
 import dataclasses
-import re
 from typing import Any, TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -15,6 +14,7 @@ from .controller import ControllerContainer
 from .handler import HttpMethodHandler
 from .http import HttpRequest, HttpResponse, StreamingResponse
 from .params import resolve_parameters
+from .route_trie import RouteTrie
 
 
 def _convert_to_response_type(result: Any, response_type: type) -> Any:
@@ -73,10 +73,8 @@ class Router:
 
     def __init__(self, manager: "ContainerManager"):
         self.manager = manager
-        # (method, path_pattern) -> HttpMethodHandler
-        self._routes: dict[tuple[str, str], HttpMethodHandler] = {}
-        # 컴파일된 정규식 패턴 캐시
-        self._compiled_patterns: dict[str, re.Pattern] = {}
+        # RouteTrie를 사용한 최적화된 라우트 저장
+        self._route_trie = RouteTrie()
         # 미들웨어 체인 (collect_routes에서 수집)
         self._middleware_chain: "MiddlewareChain | None" = None
 
@@ -130,48 +128,24 @@ class Router:
 
                     # prefix + handler path 결합
                     full_path = prefix + container.get_metadata("http_path")
-                    key = (container.get_metadata("http_method"), full_path)
-                    self._routes[key] = container
-                    # 경로 패턴 컴파일 (path parameter 지원)
-                    self._compile_pattern(full_path)
+                    method = container.get_metadata("http_method")
 
-    def _compile_pattern(self, path: str) -> re.Pattern:
-        """경로를 정규식 패턴으로 변환 (예: /users/{id} -> /users/(?P<id>[^/]+))"""
-        if path not in self._compiled_patterns:
-            # {param} 형식을 정규식으로 변환
-            pattern = re.sub(r"\{(\w+)\}", r"(?P<\1>[^/]+)", path)
-            self._compiled_patterns[path] = re.compile(f"^{pattern}$")
-        return self._compiled_patterns[path]
-
-    def _match_path(self, path: str, pattern_path: str) -> tuple[bool, dict[str, str]]:
-        """경로 매칭 및 path parameter 추출"""
-        pattern = self._compiled_patterns.get(pattern_path)
-        if not pattern:
-            return False, {}
-
-        match = pattern.match(path)
-        if match:
-            return True, match.groupdict()
-        return False, {}
+                    # RouteTrie에 경로 삽입
+                    self._route_trie.insert(method, full_path, container)
 
     def find_handler(
         self, method: str, path: str
     ) -> tuple[HttpMethodHandler | None, dict[str, str]]:
-        """요청에 맞는 핸들러 찾기"""
-        # 정확히 일치하는 경로 먼저 확인
-        exact_key = (method, path)
-        if exact_key in self._routes:
-            return self._routes[exact_key], {}
+        """
+        요청에 맞는 핸들러 찾기 (RouteTrie 사용)
 
-        # 패턴 매칭으로 확인
-        for (route_method, route_path), handler in self._routes.items():
-            if route_method != method:
-                continue
-            matched, params = self._match_path(path, route_path)
-            if matched:
-                return handler, params
+        시간 복잡도:
+        - 정적 경로: O(1) ~ O(세그먼트 개수)
+        - 동적 경로: O(세그먼트 개수)
 
-        return None, {}
+        기존 O(n) 선형 탐색에서 O(log n) 트리 탐색으로 개선
+        """
+        return self._route_trie.search(method, path)
 
     async def dispatch(self, request: HttpRequest) -> HttpResponse | StreamingResponse:
         """요청을 핸들러에 디스패치 (비동기)"""
@@ -222,7 +196,8 @@ class Router:
 
     def get_routes(self) -> list[tuple[str, str, str]]:
         """등록된 라우트 목록 반환 (method, path, handler_name)"""
+        routes = self._route_trie.get_all_routes()
         return [
             (method, path, handler.handler_method.__name__)
-            for (method, path), handler in self._routes.items()
+            for method, path, handler in routes
         ]

@@ -39,8 +39,8 @@ class Configuration:
 
 
 @Component
-class Controller:
-    """Handler 메서드를 포함하는 컨트롤러"""
+class HandlerTestController:
+    """Handler 메서드를 포함하는 컨트롤러 (테스트용)"""
 
     @Handler(("GET", "/users"))
     def get_users(self) -> list[str]:
