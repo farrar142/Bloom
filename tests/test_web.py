@@ -1021,17 +1021,17 @@ class TestFileResponse:
     @pytest.mark.asyncio
     async def test_file_response_from_path(self):
         """파일 경로에서 FileResponse 생성"""
-        with tempfile.NamedTemporaryFile(
-            mode="wb", suffix=".txt", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".txt", delete=False) as f:
             f.write(b"File content from path")
             temp_path = f.name
 
         try:
             response = FileResponse(temp_path)
-            
+
             # 파일명 자동 추출
-            assert Path(temp_path).name in response.headers.get("Content-Disposition", "")
+            assert Path(temp_path).name in response.headers.get(
+                "Content-Disposition", ""
+            )
             assert response.content_type == "text/plain"
 
             chunks = [chunk async for chunk in response]
@@ -1042,15 +1042,13 @@ class TestFileResponse:
     @pytest.mark.asyncio
     async def test_file_response_from_pathlib(self):
         """Path 객체에서 FileResponse 생성"""
-        with tempfile.NamedTemporaryFile(
-            mode="wb", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".json", delete=False) as f:
             f.write(b'{"key": "value"}')
             temp_path = Path(f.name)
 
         try:
             response = FileResponse(temp_path)
-            
+
             assert response.content_type == "application/json"
             chunks = [chunk async for chunk in response]
             assert b"".join(chunks) == b'{"key": "value"}'
@@ -1112,9 +1110,7 @@ class TestFileResponse:
     @pytest.mark.asyncio
     async def test_file_response_auto_filename_from_file_object(self):
         """파일 객체에서 파일명 자동 추출"""
-        with tempfile.NamedTemporaryFile(
-            mode="wb", suffix=".csv", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".csv", delete=False) as f:
             f.write(b"a,b,c")
             temp_path = f.name
 
@@ -1167,7 +1163,7 @@ class TestFileResponseASGI:
         start = messages[0]
         headers_dict = {k.decode(): v.decode() for k, v in start["headers"]}
         assert headers_dict.get("content-type") == "text/csv"
-        
+
         content_disposition = headers_dict.get(
             "Content-Disposition", headers_dict.get("content-disposition", "")
         )
@@ -1187,13 +1183,12 @@ class TestFileResponseASGI:
     async def test_asgi_file_response_from_path(self, reset_container_manager):
         """ASGI에서 파일 경로 FileResponse 처리"""
         # 임시 파일 생성
-        with tempfile.NamedTemporaryFile(
-            mode="wb", suffix=".txt", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".txt", delete=False) as f:
             f.write(b"Content from temp file")
             temp_path = f.name
 
         try:
+
             @Controller
             class FileController:
                 @Get("/file")

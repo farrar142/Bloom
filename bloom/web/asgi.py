@@ -1,11 +1,16 @@
 """ASGI 애플리케이션 인터페이스"""
 
+from __future__ import annotations
+
 import json
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, TYPE_CHECKING
 from urllib.parse import parse_qs
 
 from .http import HttpRequest, HttpResponse, StreamingResponse
 from .router import Router
+
+if TYPE_CHECKING:
+    from .messaging import StompProtocolHandler
 
 # ASGI 타입 정의
 Scope = dict[str, Any]
@@ -17,20 +22,34 @@ class ASGIApplication:
     """
     ASGI 표준 애플리케이션
 
+    HTTP 요청과 WebSocket 연결을 모두 처리.
+
     사용 예시:
         # uvicorn으로 실행
         app = ASGIApplication(router)
 
+        # WebSocket 메시징 활성화
+        app = ASGIApplication(router, stomp_handler=stomp_handler)
+
         # uvicorn main:app
     """
 
-    def __init__(self, router: Router):
+    def __init__(
+        self,
+        router: Router,
+        stomp_handler: "StompProtocolHandler | None" = None,
+        websocket_path: str = "/ws",
+    ):
         self.router = router
+        self.stomp_handler = stomp_handler
+        self.websocket_path = websocket_path
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """ASGI 진입점"""
         if scope["type"] == "http":
             await self._handle_http(scope, receive, send)
+        elif scope["type"] == "websocket":
+            await self._handle_websocket(scope, receive, send)
         elif scope["type"] == "lifespan":
             await self._handle_lifespan(scope, receive, send)
         else:
@@ -57,6 +76,44 @@ class ASGIApplication:
             await self._send_streaming_response(send, response)
         else:
             await self._send_response(send, response)
+
+    async def _handle_websocket(
+        self, scope: Scope, receive: Receive, send: Send
+    ) -> None:
+        """WebSocket 연결 처리"""
+        if not self.stomp_handler:
+            # WebSocket 지원 비활성화 - 연결 거부
+            await send({"type": "websocket.close", "code": 1000})
+            return
+
+        # WebSocket 연결 이벤트 대기
+        message = await receive()
+        if message["type"] != "websocket.connect":
+            return
+
+        # 헤더 파싱
+        headers = {
+            key.decode("utf-8"): value.decode("utf-8")
+            for key, value in scope.get("headers", [])
+        }
+
+        # 쿼리 파라미터 파싱
+        query_string = scope.get("query_string", b"").decode("utf-8")
+        query_params = {k: v[0] for k, v in parse_qs(query_string).items()}
+
+        # WebSocketSession 생성
+        from .messaging.session import WebSocketSession
+
+        session = WebSocketSession(
+            path=scope["path"],
+            headers=headers,
+            query_params=query_params,
+            _receive=receive,
+            _send=send,
+        )
+
+        # STOMP 핸들러로 위임
+        await self.stomp_handler.handle_session(session)
 
     async def _handle_lifespan(
         self, scope: Scope, receive: Receive, send: Send
