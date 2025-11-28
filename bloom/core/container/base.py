@@ -58,7 +58,7 @@ class Container[T]:
 
     def get_dependencies(self) -> list[type]:
         """이 컨테이너가 의존하는 타입들을 반환 (Lazy 컴포넌트 제외)"""
-        from ..lazy import LazyProxy, is_lazy_component
+        from ..lazy import is_lazy_component
 
         dependencies = []
         manager = try_get_current_manager()
@@ -70,6 +70,44 @@ class Container[T]:
                         continue
             dependencies.append(field_type)
         return dependencies
+
+    def get_lazy_dependencies(self) -> list[type]:
+        """이 컨테이너가 Lazy로 의존하는 타입들을 반환
+        
+        Lazy[T] 타입 힌트에서 T를 추출하거나,
+        @Lazy로 마킹된 컴포넌트를 주입받는 경우를 감지합니다.
+        """
+        from typing import get_origin, get_args
+        from ..lazy import is_lazy_component
+
+        lazy_deps = []
+        manager = try_get_current_manager()
+        if not manager:
+            return lazy_deps
+
+        for field_type in getattr(self.target, "__annotations__", {}).values():
+            # Lazy[T] 타입 힌트 처리
+            origin = get_origin(field_type)
+            if origin is not None:
+                # 파라미터화된 제네릭 타입은 건너뜀
+                # (예: list[str], dict[str, int] 등)
+                args = get_args(field_type)
+                if args:
+                    # 첫 번째 타입 인자가 실제 의존성
+                    inner_type = args[0]
+                    if isinstance(inner_type, type):
+                        if dep_container := manager.get_container(inner_type):
+                            if is_lazy_component(dep_container):
+                                lazy_deps.append(inner_type)
+                continue
+
+            # 일반 타입: @Lazy로 마킹된 컴포넌트인지 확인
+            if isinstance(field_type, type):
+                if dep_container := manager.get_container(field_type):
+                    if is_lazy_component(dep_container):
+                        lazy_deps.append(field_type)
+
+        return lazy_deps
 
     def _get_cached_instance(self) -> T | None:
         """캐시된 인스턴스가 있으면 반환"""
@@ -88,6 +126,14 @@ class Container[T]:
         for name, dep_type in annotations.items():
             if name == "return":
                 continue
+
+            # 먼저 이미 등록된 인스턴스가 있는지 확인
+            existing_instance = manager.get_instance(dep_type, raise_exception=False)
+            if existing_instance is not None:
+                kwargs[name] = existing_instance
+                continue
+
+            # 인스턴스가 없으면 컨테이너에서 생성
             if dep_container := manager.get_container(dep_type):
                 # @Lazy 컴포넌트는 LazyProxy로 주입
                 if is_lazy_component(dep_container):

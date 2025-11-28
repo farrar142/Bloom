@@ -75,11 +75,19 @@ def _extract_graph_data(manager: "ContainerManager") -> GraphData:
 
         # 의존성 수집 (유효한 타입만)
         dependencies: set[str] = set()
+        lazy_dependencies: set[str] = set()
+
         for container in containers:
             for dep_type in container.get_dependencies():
                 dep_name = dep_type.__name__
                 if dep_name in valid_type_names:
                     dependencies.add(dep_name)
+
+            # Lazy 의존성 수집
+            for dep_type in container.get_lazy_dependencies():
+                dep_name = dep_type.__name__
+                if dep_name in valid_type_names:
+                    lazy_dependencies.add(dep_name)
 
         # Factory Chain 확인
         factories = [c for c in containers if isinstance(c, FactoryContainer)]
@@ -112,6 +120,7 @@ def _extract_graph_data(manager: "ContainerManager") -> GraphData:
                 name=type_name,
                 kind="Factory",
                 dependencies=list(dependencies),
+                lazy_dependencies=list(lazy_dependencies),
                 factories=factory_infos,
             )
         else:
@@ -123,6 +132,7 @@ def _extract_graph_data(manager: "ContainerManager") -> GraphData:
                 name=type_name,
                 kind=kind,
                 dependencies=list(dependencies),
+                lazy_dependencies=list(lazy_dependencies),
             )
 
         data.add_container(info)

@@ -11,6 +11,7 @@ from .renderer import (
     render_containers_by_type,
     render_dependency_tree,
     render_factory_chains,
+    render_lazy_dependencies,
     render_multi_level_chains,
     render_diamond_patterns,
     render_dependency_matrix,
@@ -66,6 +67,9 @@ def generate_graph(
 
     # Factory Chain 상세
     lines.extend(render_factory_chains(data))
+
+    # Lazy 의존성
+    lines.extend(render_lazy_dependencies(data))
 
     # 분석
     all_types = set(data.containers.keys())

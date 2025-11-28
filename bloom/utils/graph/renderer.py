@@ -133,37 +133,51 @@ def render_containers_by_type(data: GraphData) -> list[str]:
 
 
 def render_dependency_tree(data: GraphData) -> list[str]:
-    """의존성 트리 렌더링"""
+    """의존성 트리 렌더링 (Lazy 의존성은 점선으로 표시)"""
     lines = [
         "## Dependency Graph",
         "-" * 40,
+        "",
+        "Legend: ─── = direct dependency, ┄┄┄ = lazy dependency (deferred)",
         "",
     ]
 
     visited: set[str] = set()
 
     def draw_tree(
-        type_name: str, prefix: str = "", is_last: bool = True, depth: int = 0
+        type_name: str, prefix: str = "", is_last: bool = True, depth: int = 0, is_lazy: bool = False
     ) -> None:
         if depth > 10:
             return
 
-        connector = "└── " if is_last else "├── "
+        # Lazy 의존성은 점선 스타일
+        if is_lazy:
+            connector = "└┄┄ " if is_last else "├┄┄ "
+            lazy_marker = " (lazy)"
+        else:
+            connector = "└── " if is_last else "├── "
+            lazy_marker = ""
 
         if depth == 0:
             lines.append(f"{type_name}")
         else:
-            lines.append(f"{prefix}{connector}{type_name}")
+            lines.append(f"{prefix}{connector}{type_name}{lazy_marker}")
 
         if type_name in visited:
             return
         visited.add(type_name)
 
+        # 일반 의존성
         deps = sorted(data.dep_graph.get(type_name, set()))
-        for i, dep in enumerate(deps):
-            is_last_dep = i == len(deps) - 1
+        # Lazy 의존성
+        lazy_deps = sorted(data.lazy_dep_graph.get(type_name, set()))
+
+        all_deps = [(d, False) for d in deps] + [(d, True) for d in lazy_deps]
+
+        for i, (dep, is_lazy_dep) in enumerate(all_deps):
+            is_last_dep = i == len(all_deps) - 1
             new_prefix = prefix + ("    " if is_last else "│   ")
-            draw_tree(dep, new_prefix, is_last_dep, depth + 1)
+            draw_tree(dep, new_prefix, is_last_dep, depth + 1, is_lazy_dep)
 
     root_types = data.get_root_types()
     for root_type in sorted(root_types):
@@ -216,6 +230,33 @@ def render_factory_chains(data: GraphData) -> list[str]:
         lines.append("           ▼")
         lines.append(f"      [{name}]")
         lines.append("")
+
+    return lines
+
+
+def render_lazy_dependencies(data: GraphData) -> list[str]:
+    """Lazy 의존성 관계 렌더링"""
+    if not data.lazy_dep_graph:
+        return []
+
+    lines = [
+        "## Lazy Dependencies (Deferred Loading)",
+        "-" * 40,
+        "",
+        "Components using @Lazy for deferred initialization:",
+        "(Breaks circular dependencies by deferring resolution)",
+        "",
+    ]
+
+    for type_name in sorted(data.lazy_dep_graph.keys()):
+        lazy_deps = sorted(data.lazy_dep_graph[type_name])
+        if lazy_deps:
+            lines.append(f"  {type_name}")
+            for i, dep in enumerate(lazy_deps):
+                is_last = i == len(lazy_deps) - 1
+                connector = "└┄┄" if is_last else "├┄┄"
+                lines.append(f"    {connector} {dep} (lazy)")
+            lines.append("")
 
     return lines
 

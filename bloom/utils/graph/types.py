@@ -23,12 +23,19 @@ class ContainerInfo:
     name: str
     kind: ContainerKind
     dependencies: list[str] = field(default_factory=list)
+    # Lazy 의존성 (순환 해결용 지연 로딩)
+    lazy_dependencies: list[str] = field(default_factory=list)
     # Factory Chain인 경우
     factories: list[FactoryInfo] = field(default_factory=list)
 
     @property
     def is_factory_chain(self) -> bool:
         return len(self.factories) >= 2
+
+    @property
+    def all_dependencies(self) -> list[str]:
+        """모든 의존성 (일반 + Lazy)"""
+        return self.dependencies + self.lazy_dependencies
 
 
 @dataclass
@@ -51,14 +58,23 @@ class GraphData:
     # 의존성 그래프: 타입 이름 -> 의존하는 타입 이름들
     dep_graph: dict[str, set[str]] = field(default_factory=dict)
 
+    # Lazy 의존성 그래프: 타입 이름 -> Lazy로 의존하는 타입 이름들
+    lazy_dep_graph: dict[str, set[str]] = field(default_factory=dict)
+
     def add_container(self, info: ContainerInfo) -> None:
         """컨테이너 추가"""
         self.containers[info.name] = info
-        # 의존성 그래프에도 추가
+        # 의존성 그래프에 추가
         if info.name not in self.dep_graph:
             self.dep_graph[info.name] = set()
         for dep in info.dependencies:
             self.dep_graph[info.name].add(dep)
+        # Lazy 의존성 그래프에 추가
+        if info.lazy_dependencies:
+            if info.name not in self.lazy_dep_graph:
+                self.lazy_dep_graph[info.name] = set()
+            for dep in info.lazy_dependencies:
+                self.lazy_dep_graph[info.name].add(dep)
 
     @property
     def total_containers(self) -> int:
