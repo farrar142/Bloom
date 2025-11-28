@@ -386,7 +386,7 @@ class ASGIApplication:
         """HttpResponse를 ASGI 응답으로 전송"""
         # 응답 바디 생성
         if response.body is not None:
-            body = response.to_json()
+            body = response.to_bytes()
             content_type = response.content_type
         else:
             body = b""

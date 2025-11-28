@@ -107,6 +107,9 @@ class Router:
         # RouteManager 초기화 (라우트 수집)
         self._route_manager.initialize(self.manager)
 
+        # OpenAPI 엔드포인트 등록
+        self._register_openapi_routes()
+
         # ErrorHandlerMiddleware에 controller_prefixes 전달
         error_handler_middleware = middleware_chain.get_middleware(
             ErrorHandlerMiddleware, raise_exception=False
@@ -115,6 +118,52 @@ class Router:
             error_handler_middleware.set_controller_prefixes(
                 self._route_manager.controller_prefixes
             )
+
+    def _register_openapi_routes(self) -> None:
+        """OpenAPI 엔드포인트를 라우트에 등록"""
+        from .openapi import OpenAPIConfig, OpenAPIGenerator, OpenAPIController
+        from .routing import RouteEntry
+
+        # OpenAPIConfig가 등록되어 있는지 확인
+        config = self.manager.get_instance(OpenAPIConfig, raise_exception=False)
+        if config is None:
+            return
+
+        # OpenAPI 스펙 생성
+        generator = OpenAPIGenerator(config)
+        spec = generator.generate(self._route_manager)
+
+        # OpenAPIController 인스턴스 생성
+        controller = OpenAPIController(spec, config)
+
+        # 간단한 핸들러 래퍼 생성 및 등록
+        self._register_openapi_route(
+            "GET", config.openapi_url, controller.get_openapi_json
+        )
+        self._register_openapi_route("GET", config.docs_url, controller.get_swagger_ui)
+        self._register_openapi_route("GET", config.redoc_url, controller.get_redoc)
+
+    def _register_openapi_route(self, method: str, path: str, handler_func) -> None:
+        """OpenAPI 핸들러를 라우트로 등록 (bound method 지원)"""
+        from .routing import RouteEntry
+        from .handler import MethodElement, PathElement
+
+        # bound method를 일반 함수로 래핑 (파라미터 없는 함수)
+        def wrapper():
+            return handler_func()
+
+        # 함수 이름 설정
+        wrapper.__name__ = handler_func.__name__
+        wrapper.__doc__ = handler_func.__doc__
+
+        # HttpMethodHandler를 동적으로 생성
+        container = HttpMethodHandler.get_or_create(wrapper, (method, path))
+        container.add_elements(MethodElement(method))
+        container.add_elements(PathElement(path))
+
+        # RouteEntry 생성 및 등록
+        entry = RouteEntry(method, path, container)
+        self._route_manager.registry.register(entry)
 
     def find_handler(
         self, method: str, path: str

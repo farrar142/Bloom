@@ -80,11 +80,13 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
         if self._bound_method is None:
             owner_type = self._get_owner_type()
             if owner_type is None:
-                raise Exception(
-                    f"Handler method {self.handler_method.__name__} must have 'self' parameter with type hint"
+                # owner가 없는 경우 (standalone 함수) 원래 함수 반환
+                self._bound_method = self.handler_method
+            else:
+                owner_instance = self._get_manager().get_instance(owner_type)
+                self._bound_method = self.handler_method.__get__(
+                    owner_instance, owner_type
                 )
-            owner_instance = self._get_manager().get_instance(owner_type)
-            self._bound_method = self.handler_method.__get__(owner_instance, owner_type)
         return self._bound_method  # type: ignore
 
     def initialize_instance(self) -> Self:

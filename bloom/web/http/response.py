@@ -62,3 +62,33 @@ class HttpResponse:
         if self.body is None:
             return b""
         return json.dumps(self.body, ensure_ascii=False).encode("utf-8")
+
+    def to_bytes(self) -> bytes:
+        """응답 본문을 바이트로 변환
+
+        content_type에 따라 적절한 직렬화 방법 사용:
+        - application/json: JSON 직렬화
+        - text/*, application/xml 등: 문자열 인코딩
+        - 기타: 바이트 그대로 반환 또는 JSON 직렬화
+        """
+        import json
+
+        if self.body is None:
+            return b""
+
+        # 이미 바이트인 경우
+        if isinstance(self.body, bytes):
+            return self.body
+
+        # content_type에 따라 분기
+        ct = self.content_type.lower()
+
+        # text/* (text/html, text/plain, text/css 등) 또는 XML 계열
+        if ct.startswith("text/") or "xml" in ct:
+            if isinstance(self.body, str):
+                return self.body.encode("utf-8")
+            # 문자열이 아니면 str()로 변환
+            return str(self.body).encode("utf-8")
+
+        # application/json 또는 기타 (JSON 직렬화)
+        return json.dumps(self.body, ensure_ascii=False).encode("utf-8")

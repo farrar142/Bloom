@@ -1,7 +1,9 @@
 """Bloom Framework 예제 앱 - uvicorn 멀티워커 테스트용"""
 
 from bloom import Application, Component, Controller, Get, Post, RequestMapping
+from bloom.core.decorators import Factory
 from bloom.web.http import HttpResponse
+from bloom.web.openapi.config import OpenAPIConfig
 
 
 # 서비스 레이어
@@ -64,6 +66,13 @@ class HealthController:
     @Get("/")
     async def root(self) -> dict:
         return {"message": "Welcome to Bloom Framework!", "docs": "/health"}
+
+
+@Component
+class OpenApiConfig:
+    @Factory
+    def openapi_config(self) -> OpenAPIConfig:
+        return OpenAPIConfig(title="My API")
 
 
 # 애플리케이션 생성

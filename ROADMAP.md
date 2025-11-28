@@ -16,6 +16,7 @@
 | `@PostConstruct` / `@PreDestroy` | ✅ | 라이프사이클 훅 |
 | `LifecycleManager` | ✅ | 컨테이너 라이프사이클 관리 |
 | ContextVar 기반 매니저 | ✅ | 스레드 안전한 컨테이너 관리 |
+| `Lazy[T]` | ✅ | 순환 의존성 해결용 지연 주입 |
 
 #### Configuration
 | 기능 | 상태 | 설명 |
@@ -37,6 +38,8 @@
 | `HttpRequest` / `HttpResponse` | ✅ | 요청/응답 모델 |
 | ASGI Application | ✅ | uvicorn 호환 |
 | Radix Tree Router | ✅ | O(log n) 최적화된 라우트 매칭 |
+| 정적 파일 서빙 | ✅ | `StaticFilesManager` 기반 |
+| OpenAPI 자동 생성 | ✅ | Swagger UI, ReDoc 지원 |
 
 #### Parameter Resolvers
 | 기능 | 상태 | 설명 |
@@ -75,8 +78,20 @@
 | `WebSocketSession` | ✅ | WebSocket 세션 관리 |
 | @Controller 메시징 지원 | ✅ | HTTP와 WebSocket 통합 |
 
+#### 문서화
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| `copilot-instructions.md` | ✅ | AI 코딩 가이드 |
+| `architecture-patterns.md` | ✅ | 아키텍처 패턴 문서 |
+| `config-properties.md` | ✅ | 설정 바인딩 문서 |
+
+#### 패키징
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| `pyproject.toml` | ✅ | 패키지 메타데이터 |
+
 #### 테스트
-- **315개 테스트** 작성 완료
+- **393개 테스트** 작성 완료
 - 모든 테스트 통과 ✅
 
 ---
@@ -92,7 +107,7 @@
 - [ ] CONTRIBUTING.md 작성
 
 #### 📦 패키징
-- [ ] `pyproject.toml` 작성
+- [x] `pyproject.toml` 작성 ✅
 - [ ] PyPI 배포 준비
 - [ ] GitHub Actions CI/CD 구성
 - [ ] 버전 관리 체계 수립
@@ -109,7 +124,7 @@
 
 #### 🔧 DI 확장
 - [ ] `@Scope("prototype")` - 호출마다 새 인스턴스
-- [x] `@Lazy` - 지연 초기화 ✅
+- [x] `Lazy[T]` - 지연 초기화 ✅
 - [x] `@PostConstruct` / `@PreDestroy` - 라이프사이클 훅 ✅
 - [ ] 조건부 빈 등록 (`@ConditionalOnProperty`)
 
@@ -120,8 +135,8 @@
 - [x] SSE (Server-Sent Events) 지원 ✅
 - [x] Response Streaming ✅
 - [x] 파일 다운로드 (`FileResponse`) ✅
-- [ ] 정적 파일 서빙
-- [ ] OpenAPI (Swagger) 자동 생성
+- [x] 정적 파일 서빙 (`StaticFilesManager`) ✅
+- [x] OpenAPI (Swagger) 자동 생성 ✅
 
 #### 🔐 보안 확장
 - [ ] JWT 내장 Authenticator
@@ -215,10 +230,10 @@
 
 | 항목 | 수치 |
 |------|------|
-| Python 파일 | ~50개 |
-| 테스트 케이스 | 315개 |
-| 코드 라인 | ~6,000줄 (추정) |
-| 외부 의존성 | 3개 (pydantic, uvicorn, pyyaml) |
+| Python 파일 | ~65개 |
+| 테스트 케이스 | 416개 |
+| 코드 라인 | ~8,500줄 (추정) |
+| 외부 의존성 | 4개 (pydantic, uvicorn, pyyaml, aiohttp) |
 
 ---
 

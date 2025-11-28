@@ -72,6 +72,12 @@ class ContainerManager:
         """모듈에서 컴포넌트 스캔"""
         from .container.base import Container as BaseContainer
 
+        # module 자체가 클래스일 때 (Controller 등) 클래스 자체도 등록
+        if isinstance(module, type):
+            if container := BaseContainer.get_container(module):
+                qualifier = container.get_qual_name()
+                self.register_container(container, qualifier)
+
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
             if container := BaseContainer.get_container(attr):
