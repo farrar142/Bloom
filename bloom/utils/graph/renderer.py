@@ -145,7 +145,11 @@ def render_dependency_tree(data: GraphData) -> list[str]:
     visited: set[str] = set()
 
     def draw_tree(
-        type_name: str, prefix: str = "", is_last: bool = True, depth: int = 0, is_lazy: bool = False
+        type_name: str,
+        prefix: str = "",
+        is_last: bool = True,
+        depth: int = 0,
+        is_lazy: bool = False,
     ) -> None:
         if depth > 10:
             return
@@ -339,55 +343,92 @@ def render_initialization_order(
     if not levels:
         return []
 
+    # 박스 너비 상수
+    OUTER_BOX_WIDTH = 58
+    INNER_BOX_WIDTH = 48
+    NAME_MAX_LEN = 18
+    DEP_MAX_LEN = 22
+
     lines = [
         "## Initialization Order (Dependency Resolution)",
         "-" * 40,
         "",
-        "Components grouped by initialization level:",
-        "(Level N waits for all Level N-1 components to be ready)",
+        "Step-by-step initialization sequence:",
+        "(Components in same group can be initialized in parallel)",
         "",
     ]
 
-    # 레벨별 초기화 순서
+    max_level = max(level for level, _ in levels) if levels else 0
+    step = 1
+
     for level, types in levels:
+        # 단계 헤더 - 고정 너비
         if level == 0:
-            lines.append(f"  Level {level} (No dependencies - initialize first):")
+            header_text = f"Step {step}: Initialize base components (no deps)"
         else:
-            lines.append(f"  Level {level} (Waiting for Level {level - 1}):")
-        
-        for t in types:
+            header_text = f"Step {step}: Initialize after Step {step - 1} completes"
+
+        lines.append(f"  ┌{'─' * OUTER_BOX_WIDTH}┐")
+        lines.append(f"  │ {header_text:<{OUTER_BOX_WIDTH - 2}} │")
+        lines.append(f"  └{'─' * OUTER_BOX_WIDTH}┘")
+
+        # 병렬 그룹 시각화
+        if len(types) > 1:
+            group_header = f"Parallel Group ({len(types)} components)"
+            lines.append(f"      ┌{'─' * INNER_BOX_WIDTH}┐")
+            lines.append(f"      │ {group_header:<{INNER_BOX_WIDTH - 2}} │")
+            lines.append(f"      ├{'─' * INNER_BOX_WIDTH}┤")
+
+            for t in types:
+                deps = waiting.get(t, [])
+                abbrev_name = abbreviate_name(t, NAME_MAX_LEN)
+
+                if deps:
+                    # 의존성도 축약
+                    abbrev_deps = [abbreviate_name(d, 10) for d in deps[:2]]
+                    dep_str = ", ".join(abbrev_deps)
+                    if len(deps) > 2:
+                        dep_str += f" +{len(deps) - 2}"
+                    # 의존성 문자열 길이 제한
+                    if len(dep_str) > DEP_MAX_LEN:
+                        dep_str = dep_str[: DEP_MAX_LEN - 1] + "…"
+                    content = f"• {abbrev_name:<{NAME_MAX_LEN}} ← [{dep_str}]"
+                else:
+                    content = f"• {abbrev_name}"
+
+                # 박스 내부 패딩
+                lines.append(f"      │ {content:<{INNER_BOX_WIDTH - 2}} │")
+
+            lines.append(f"      └{'─' * INNER_BOX_WIDTH}┘")
+        else:
+            # 단일 컴포넌트
+            t = types[0]
+            abbrev_t = abbreviate_name(t, 25)
             deps = waiting.get(t, [])
             if deps:
-                dep_str = ", ".join(deps[:3])
-                if len(deps) > 3:
-                    dep_str += f", +{len(deps) - 3} more"
-                lines.append(f"    • {t}")
-                lines.append(f"      └─ waits for: {dep_str}")
+                abbrev_deps = [abbreviate_name(d, 12) for d in deps[:2]]
+                dep_str = ", ".join(abbrev_deps)
+                if len(deps) > 2:
+                    dep_str += f" +{len(deps) - 2}"
+                lines.append(f"      [ {abbrev_t} ] ← [{dep_str}]")
             else:
-                lines.append(f"    • {t}")
-        lines.append("")
+                lines.append(f"      [ {abbrev_t} ]")
 
-    # 시각적 타임라인
-    lines.append("  Initialization Timeline:")
-    lines.append("")
-    
-    max_level = max(level for level, _ in levels) if levels else 0
-    
-    for level, types in levels:
-        # 프로그레스 바 스타일
-        progress = "█" * (level + 1) + "░" * (max_level - level)
-        type_count = len(types)
-        sample_types = ", ".join(types[:3])
-        if len(types) > 3:
-            sample_types += f", ..."
-        
-        lines.append(f"  [{progress}] Level {level}: {type_count} component(s)")
-        lines.append(f"            {sample_types}")
-        
+        # 다음 단계로 화살표
         if level < max_level:
-            lines.append("            ↓")
-    
+            lines.append("          │")
+            lines.append("          ▼")
+
+        lines.append("")
+        step += 1
+
+    # 완료 메시지
+    total = sum(len(types) for _, types in levels)
+    lines.append(
+        f"  ✓ Initialization complete: {total} components in {len(levels)} steps"
+    )
     lines.append("")
+
     return lines
 
 

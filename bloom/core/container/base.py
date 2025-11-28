@@ -73,7 +73,7 @@ class Container[T]:
 
     def get_lazy_dependencies(self) -> list[type]:
         """이 컨테이너가 Lazy로 의존하는 타입들을 반환
-        
+
         Lazy[T] 타입 힌트에서 T를 추출하거나,
         @Lazy로 마킹된 컴포넌트를 주입받는 경우를 감지합니다.
         """
