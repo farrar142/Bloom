@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import signal
 from typing import Any, Callable, Coroutine, TYPE_CHECKING
 from urllib.parse import parse_qs
 
@@ -11,6 +13,7 @@ from .router import Router
 
 if TYPE_CHECKING:
     from .messaging import StompProtocolHandler
+    from bloom.application import Application
 
 # ASGI 타입 정의
 Scope = dict[str, Any]
@@ -23,6 +26,7 @@ class ASGIApplication:
     ASGI 표준 애플리케이션
 
     HTTP 요청과 WebSocket 연결을 모두 처리.
+    멀티 워커 환경에서도 안전하게 동작합니다.
 
     사용 예시:
         # uvicorn으로 실행
@@ -31,7 +35,12 @@ class ASGIApplication:
         # WebSocket 메시징 활성화
         app = ASGIApplication(router, stomp_handler=stomp_handler)
 
-        # uvicorn main:app
+        # 멀티 워커 실행
+        # uvicorn main:app --workers 4
+
+    멀티 워커 지원:
+        각 워커 프로세스에서 lifespan.startup 이벤트 시 자동으로
+        Application.ready()가 호출되어 DI 컨테이너가 초기화됩니다.
     """
 
     def __init__(
@@ -39,14 +48,57 @@ class ASGIApplication:
         router: Router,
         stomp_handler: "StompProtocolHandler | None" = None,
         websocket_path: str = "/ws",
+        application: "Application | None" = None,
     ):
         self.router = router
         self.stomp_handler = stomp_handler
         self.websocket_path = websocket_path
+        self.application = application
+        
+        # 멀티워커 지원을 위한 상태
+        self._active_requests = 0
+        self._shutdown_event: asyncio.Event | None = None
+        self._is_shutting_down = False
+        
+        # 라이프사이클 콜백
+        self._on_startup: list[Callable[[], Coroutine[Any, Any, None] | None]] = []
+        self._on_shutdown: list[Callable[[], Coroutine[Any, Any, None] | None]] = []
+
+    def on_startup(
+        self, func: Callable[[], Coroutine[Any, Any, None] | None]
+    ) -> Callable[[], Coroutine[Any, Any, None] | None]:
+        """
+        startup 이벤트 콜백 등록
+
+        사용 예시:
+            @app.on_startup
+            async def init_database():
+                await db.connect()
+        """
+        self._on_startup.append(func)
+        return func
+
+    def on_shutdown(
+        self, func: Callable[[], Coroutine[Any, Any, None] | None]
+    ) -> Callable[[], Coroutine[Any, Any, None] | None]:
+        """
+        shutdown 이벤트 콜백 등록
+
+        사용 예시:
+            @app.on_shutdown
+            async def close_database():
+                await db.disconnect()
+        """
+        self._on_shutdown.append(func)
+        return func
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """ASGI 진입점"""
         if scope["type"] == "http":
+            # Graceful shutdown 중이면 503 반환
+            if self._is_shutting_down:
+                await self._send_service_unavailable(send)
+                return
             await self._handle_http(scope, receive, send)
         elif scope["type"] == "websocket":
             await self._handle_websocket(scope, receive, send)
@@ -57,25 +109,34 @@ class ASGIApplication:
 
     async def _handle_http(self, scope: Scope, receive: Receive, send: Send) -> None:
         """HTTP 요청 처리"""
-        # 요청 바디 수집
-        body = b""
-        while True:
-            message = await receive()
-            body += message.get("body", b"")
-            if not message.get("more_body", False):
-                break
+        # 활성 요청 카운트 증가
+        self._active_requests += 1
+        try:
+            # 요청 바디 수집
+            body = b""
+            while True:
+                message = await receive()
+                body += message.get("body", b"")
+                if not message.get("more_body", False):
+                    break
 
-        # HttpRequest 생성
-        request = self._build_request(scope, body)
+            # HttpRequest 생성
+            request = self._build_request(scope, body)
 
-        # Router를 통해 핸들러 호출 (비동기)
-        response = await self.router.dispatch(request)
+            # Router를 통해 핸들러 호출 (비동기)
+            response = await self.router.dispatch(request)
 
-        # 응답 전송 (스트리밍 여부에 따라 분기)
-        if isinstance(response, StreamingResponse):
-            await self._send_streaming_response(send, response)
-        else:
-            await self._send_response(send, response)
+            # 응답 전송 (스트리밍 여부에 따라 분기)
+            if isinstance(response, StreamingResponse):
+                await self._send_streaming_response(send, response)
+            else:
+                await self._send_response(send, response)
+        finally:
+            # 활성 요청 카운트 감소
+            self._active_requests -= 1
+            # shutdown 대기 중이고 모든 요청이 완료되면 이벤트 설정
+            if self._shutdown_event and self._active_requests == 0:
+                self._shutdown_event.set()
 
     async def _handle_websocket(
         self, scope: Scope, receive: Receive, send: Send
@@ -118,14 +179,85 @@ class ASGIApplication:
     async def _handle_lifespan(
         self, scope: Scope, receive: Receive, send: Send
     ) -> None:
-        """Lifespan 이벤트 처리 (startup/shutdown)"""
+        """
+        Lifespan 이벤트 처리 (startup/shutdown)
+
+        멀티 워커 환경에서 각 워커 프로세스마다 호출됩니다.
+        - startup: Application 초기화, DI 컨테이너 준비
+        - shutdown: 진행 중 요청 대기, 리소스 정리
+        """
         while True:
             message = await receive()
+            
             if message["type"] == "lifespan.startup":
-                await send({"type": "lifespan.startup.complete"})
+                try:
+                    await self._startup()
+                    await send({"type": "lifespan.startup.complete"})
+                except Exception as e:
+                    await send({"type": "lifespan.startup.failed", "message": str(e)})
+                    return
+                    
             elif message["type"] == "lifespan.shutdown":
+                await self._shutdown()
                 await send({"type": "lifespan.shutdown.complete"})
                 return
+
+    async def _startup(self) -> None:
+        """startup 이벤트 처리"""
+        # Application이 있으면 ready() 호출 (멀티워커 환경 지원)
+        if self.application and not self.application._is_ready:
+            self.application.ready()
+        
+        # 등록된 startup 콜백 실행
+        for callback in self._on_startup:
+            result = callback()
+            if asyncio.iscoroutine(result):
+                await result
+
+    async def _shutdown(self, timeout: float = 30.0) -> None:
+        """
+        shutdown 이벤트 처리 (Graceful Shutdown)
+
+        1. 새 요청 거부 시작
+        2. 진행 중인 요청이 완료될 때까지 대기 (타임아웃 있음)
+        3. Application shutdown 호출
+        4. 등록된 shutdown 콜백 실행
+        """
+        # 새 요청 거부 시작
+        self._is_shutting_down = True
+        
+        # 진행 중인 요청이 있으면 대기
+        if self._active_requests > 0:
+            self._shutdown_event = asyncio.Event()
+            try:
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                pass  # 타임아웃 시 강제 종료
+        
+        # Application shutdown 호출
+        if self.application:
+            self.application.shutdown()
+        
+        # 등록된 shutdown 콜백 실행
+        for callback in self._on_shutdown:
+            result = callback()
+            if asyncio.iscoroutine(result):
+                await result
+
+    async def _send_service_unavailable(self, send: Send) -> None:
+        """503 Service Unavailable 응답 전송 (Graceful Shutdown 중)"""
+        await send({
+            "type": "http.response.start",
+            "status": 503,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"retry-after", b"5"),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b'{"error": "Service is shutting down"}',
+        })
 
     def _build_request(self, scope: Scope, body: bytes) -> HttpRequest:
         """ASGI scope로부터 HttpRequest 생성"""

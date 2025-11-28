@@ -171,8 +171,8 @@
 - [x] 벤치마크 테스트 작성 ✅
 
 #### 🏭 프로덕션 준비
-- [ ] Graceful Shutdown
-- [ ] 멀티 워커 지원
+- [x] Graceful Shutdown ✅
+- [x] 멀티 워커 지원 ✅
 - [x] 설정 관리 시스템 (`@ConfigurationProperties`) ✅
 - [x] 환경 변수 치환 (`${VAR:default}`) ✅
 - [ ] 환경별 프로필 (`@Profile`)

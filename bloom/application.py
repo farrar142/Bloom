@@ -54,9 +54,18 @@ class Application:
 
     @property
     def asgi(self) -> ASGIApplication:
-        """ASGI 애플리케이션 반환 (uvicorn 등에서 사용)"""
+        """
+        ASGI 애플리케이션 반환 (uvicorn 등에서 사용)
+
+        멀티 워커 환경에서는 각 워커가 lifespan.startup 이벤트 시
+        자동으로 Application.ready()를 호출합니다.
+
+        사용 예시:
+            app = Application("my_app").scan(module)
+            # uvicorn main:app.asgi --workers 4
+        """
         if self._asgi is None:
-            self._asgi = ASGIApplication(self.router)
+            self._asgi = ASGIApplication(self.router, application=self)
         return self._asgi
 
     def load_config(
