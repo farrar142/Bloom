@@ -106,10 +106,40 @@ class Application:
         # 토폴로지컬 정렬
         sorted_containers = topological_sort(all_containers)
 
-        # 정렬된 순서로 초기화
+        # 정렬된 순서로 초기화 (초기화 순서 저장)
+        self._initialized_containers = sorted_containers
+
         for qualifier, container in sorted_containers:
             instance = container.initialize_instance()
             self.manager.set_instance(container.target, instance, qualifier=qualifier)
+
+    def shutdown(self) -> "Application":
+        """
+        애플리케이션 종료
+
+        모든 컴포넌트의 @PreDestroy 메서드를 역순으로 호출합니다.
+        (나중에 초기화된 컴포넌트부터 먼저 정리)
+
+        Returns:
+            self (메서드 체이닝 지원)
+        """
+        if not self._is_ready:
+            return self
+
+        # 현재 매니저 설정
+        set_current_manager(self.manager)
+
+        # 초기화 역순으로 PreDestroy 호출
+        if hasattr(self, "_initialized_containers"):
+            for qualifier, container in reversed(self._initialized_containers):
+                instance = self.manager.get_instance(
+                    container.target, raise_exception=False, qualifier=qualifier
+                )
+                if instance is not None:
+                    container.invoke_pre_destroy(instance)
+
+        self._is_ready = False
+        return self
 
     # 하위 호환성을 위한 메서드들
     def scan_components(self, module: object) -> None:

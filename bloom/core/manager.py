@@ -46,11 +46,6 @@ class ContainerManager:
         # type -> qualifier -> instance
         self.instance_registry: dict[type, dict[str, Any]] = {}
 
-    @staticmethod
-    def is_container(obj: Any) -> bool:
-        """객체가 컨테이너를 가지고 있는지 확인"""
-        return getattr(obj, "__container__", None) is not None
-
     def register_container(
         self, container: "Container", qualifier: str = "default"
     ) -> None:
@@ -63,18 +58,20 @@ class ContainerManager:
 
     def scan_components(self, module: object) -> None:
         """모듈에서 컴포넌트 스캔"""
+        from .container.base import Container as BaseContainer
+
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
-            if self.is_container(attr):
-                container = getattr(attr, "__container__")
+            if container := BaseContainer.get_container(attr):
                 qualifier = container.get_qual_name()
                 self.register_container(container, qualifier)
             # Factory/Handler 메서드들도 스캔하고 owner_cls 주입
             if isinstance(attr, type):
                 for method_name in dir(attr):
                     method = getattr(attr, method_name, None)
-                    if method and self.is_container(method):
-                        child_container = getattr(method, "__container__")
+                    if method and (
+                        child_container := BaseContainer.get_container(method)
+                    ):
                         child_container.owner_cls = attr  # owner 클래스 주입
                         qualifier = child_container.get_qual_name()
                         self.register_container(child_container, qualifier)

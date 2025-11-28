@@ -121,7 +121,7 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
         handler_key: Any = None,
     ) -> Self:
         """핸들러 메서드에 대한 컨테이너 생성"""
-        if not (container := getattr(handler_method, "__container__", None)):
+        if not (container := cls.get_container(handler_method)):
             container = cls(handler_method, handler_key)
             setattr(handler_method, "__container__", container)
             # 현재 활성 manager가 있으면 자동 등록

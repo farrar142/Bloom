@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
 from ..manager import get_current_manager, try_get_current_manager
 from .element import Element
+from .lifecycle import LifecycleManager
 
 
 class Container[T]:
@@ -26,6 +27,7 @@ class Container[T]:
         self.elements = list[Element[T]]()
         self.owner_cls: type | None = None  # Factory/Handler의 부모 클래스
         self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
+        self.lifecycle: LifecycleManager[T] = LifecycleManager(self)
 
     def _get_manager(self) -> "ContainerManager":
         """manager 반환 (없으면 현재 활성 매니저 반환)"""
@@ -38,6 +40,22 @@ class Container[T]:
 
     def __repr__(self) -> str:
         return f"Container(target={self.target.__name__}, elements={self.elements})"
+
+    @classmethod
+    def get_container(cls, obj: Any) -> Self | None:
+        """
+        객체에 연결된 컨테이너를 반환한다.
+
+        Args:
+            obj: 클래스, 메서드, 또는 함수
+
+        Returns:
+            Container 인스턴스 또는 None (컨테이너가 없는 경우)
+        """
+        container = getattr(obj, "__container__", None)
+        if container is not None and isinstance(container, cls):
+            return container
+        return None
 
     def get_dependencies(self) -> list[type]:
         """이 컨테이너가 의존하는 타입들을 반환"""
@@ -69,11 +87,18 @@ class Container[T]:
         instance.__dict__.update(kwargs)
         return instance
 
+    def invoke_pre_destroy(self, instance: T) -> None:
+        """@PreDestroy 메서드들 호출 (LifecycleManager에 위임)"""
+        self.lifecycle.invoke_pre_destroy(instance)
+
     def initialize_instance(self) -> T:
         """인스턴스 초기화 (캐시 확인 후 생성)"""
         if instance := self._get_cached_instance():
             return instance
-        return self._create_instance()
+        instance = self._create_instance()
+        # PostConstruct 호출
+        self.lifecycle.invoke_post_construct(instance)
+        return instance
 
     def get_qual_name(self) -> str:
         for element in self.elements:
@@ -85,11 +110,11 @@ class Container[T]:
     def get_or_create(cls, kls: type[T]) -> Self:
         """
         컨테이너 어노테이션이 붙은 클래스에 컨테이너 생성
-        
+
         현재 활성 manager가 있으면 자동으로 등록됨.
         없으면 나중에 scan() 시점에 등록됨.
         """
-        if not (container := getattr(kls, "__container__", None)):
+        if not (container := cls.get_container(kls)):
             container = cls(kls)
             setattr(kls, "__container__", container)
             # 현재 활성 manager가 있으면 자동 등록

@@ -7,6 +7,8 @@ from .core import (
     Qualifier,
     Factory,
     Handler,
+    PostConstruct,
+    PreDestroy,
 )
 from .web import (
     HttpRequest,
@@ -30,6 +32,8 @@ __all__ = [
     "Qualifier",
     "Factory",
     "Handler",
+    "PostConstruct",
+    "PreDestroy",
     # Web
     "HttpRequest",
     "HttpResponse",

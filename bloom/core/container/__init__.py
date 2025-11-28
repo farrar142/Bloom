@@ -5,6 +5,7 @@ from .base import Container
 from .component import ComponentContainer
 from .factory import FactoryContainer
 from .handler import HandlerContainer
+from .lifecycle import LifecycleManager
 
 __all__ = [
     "Element",
@@ -12,4 +13,5 @@ __all__ = [
     "ComponentContainer",
     "FactoryContainer",
     "HandlerContainer",
+    "LifecycleManager",
 ]

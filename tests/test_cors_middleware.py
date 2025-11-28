@@ -44,6 +44,7 @@ class TestCorsMiddleware:
 
         response = await middleware.process_request(request)
 
+        assert response is not None
         assert response.headers["Access-Control-Allow-Origin"] == "http://example.com"
         assert "GET" in response.headers["Access-Control-Allow-Methods"]
         assert "POST" in response.headers["Access-Control-Allow-Methods"]
@@ -62,6 +63,7 @@ class TestCorsMiddleware:
 
         response = await middleware.process_request(request)
 
+        assert response is not None
         assert response.headers["Access-Control-Max-Age"] == "3600"
 
     @pytest.mark.asyncio
@@ -254,6 +256,7 @@ class TestCorsMiddleware:
 
         response = await middleware.process_request(request)
 
+        assert response is not None
         methods = response.headers["Access-Control-Allow-Methods"]
         for method in ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]:
             assert method in methods
@@ -270,6 +273,7 @@ class TestCorsMiddleware:
 
         response = await middleware.process_request(request)
 
+        assert response is not None
         headers = response.headers["Access-Control-Allow-Headers"]
         assert headers == "*"
 
@@ -285,6 +289,7 @@ class TestCorsMiddleware:
 
         response = await middleware.process_request(request)
 
+        assert response is not None
         assert response.headers["Access-Control-Max-Age"] == "600"
 
     # ===========================================
@@ -311,6 +316,7 @@ class TestCorsMiddleware:
         )
         preflight_response = await middleware.process_request(preflight_request)
 
+        assert preflight_response is not None
         assert preflight_response.status_code == 204
         assert (
             preflight_response.headers["Access-Control-Allow-Origin"]

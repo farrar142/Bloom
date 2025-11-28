@@ -44,6 +44,11 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
         self.elements = list()
         self.owner_cls: type | None = None  # scan_components 후 주입됨
         self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
+        # FactoryContainer는 Factory 메서드의 반환 타입 클래스가 target이 아니므로
+        # lifecycle을 직접 초기화 (target은 property로 동적으로 결정됨)
+        from .lifecycle import LifecycleManager
+
+        self.lifecycle: LifecycleManager = LifecycleManager(self)  # type: ignore
 
     def _get_type_hints(self) -> dict:
         """타입 힌트를 resolve하여 캐시"""
@@ -155,7 +160,7 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
     @classmethod
     def get_or_create(cls, factory_method: Callable[P, R]) -> Self:
         """팩토리 메서드에 대한 컨테이너 생성"""
-        if not (container := getattr(factory_method, "__container__", None)):
+        if not (container := cls.get_container(factory_method)):
             container = cls(factory_method)
             setattr(factory_method, "__container__", container)
             # 현재 활성 manager가 있으면 자동 등록
