@@ -3,9 +3,8 @@
 from dataclasses import dataclass
 from typing import Any, get_origin
 
+from bloom.web.params.base import ParameterResolver
 from bloom.web.params.context import MessageResolverContext
-
-from .base import MessageParameterResolver
 
 
 # 해석되지 않은 파라미터를 나타내는 센티널
@@ -22,7 +21,7 @@ class CachedResolverInfo:
 
     param_name: str
     param_type: type
-    resolvers: list[MessageParameterResolver]
+    resolvers: list[ParameterResolver]
 
 
 class MessageParameterResolverRegistry:
@@ -34,22 +33,22 @@ class MessageParameterResolverRegistry:
 
     핸들러별 리졸버 매핑을 캐싱하여 성능을 최적화합니다.
 
-    ParameterResolverRegistry와 동일한 인터페이스를 제공하여,
-    HTTP와 WebSocket 리졸버가 호환됩니다.
+    ParameterResolver를 기본 타입으로 사용하여 HTTP와 WebSocket 리졸버가 호환됩니다.
+    HTTP 리졸버(ParameterResolver)와 WebSocket 리졸버(MessageParameterResolver) 모두 등록 가능합니다.
     """
 
     def __init__(self):
-        self._resolvers: list[MessageParameterResolver] = []
+        self._resolvers: list[ParameterResolver] = []
         # 핸들러 → 파라미터별 리졸버 매핑 캐시
         self._resolver_cache: dict[int, list[CachedResolverInfo]] = {}
 
-    def register(self, resolver: MessageParameterResolver) -> None:
-        """리졸버 등록"""
+    def register(self, resolver: ParameterResolver) -> None:
+        """리졸버 등록 (ParameterResolver 또는 MessageParameterResolver)"""
         self._resolvers.append(resolver)
 
     def find_resolver(
         self, param_name: str, param_type: type
-    ) -> MessageParameterResolver | None:
+    ) -> ParameterResolver | None:
         """파라미터에 맞는 리졸버 찾기"""
         origin = get_origin(param_type)
 
@@ -84,7 +83,7 @@ class MessageParameterResolverRegistry:
             origin = get_origin(param_type)
 
             # supports()가 True인 모든 리졸버 수집 (우선순위 순서)
-            matching_resolvers: list[MessageParameterResolver] = []
+            matching_resolvers: list[ParameterResolver] = []
             for resolver in self._resolvers:
                 if resolver.supports(param_name, param_type, origin):
                     matching_resolvers.append(resolver)

@@ -1,11 +1,14 @@
-"""STOMP 메시징 기본 파라미터 리졸버들"""
+"""STOMP 메시징 기본 파라미터 리졸버들
+
+WebSocket/STOMP 전용 리졸버만 포함합니다.
+PathParamResolver, AuthenticationResolver 등은 web/params에서 공유합니다.
+"""
 
 from typing import Any, Annotated, get_origin, get_args
 
 from bloom.web.params.context import MessageResolverContext
 
 from ..session import Message, WebSocketSession
-from ..auth import StompAuthentication, STOMP_ANONYMOUS
 from .base import (
     MessageParameterResolver,
     is_optional,
@@ -13,33 +16,6 @@ from .base import (
 )
 from .registry import UNRESOLVED
 from .types import MessageBodyType
-
-
-class StompAuthenticationResolver(MessageParameterResolver):
-    """
-    StompAuthentication 객체를 주입하는 리졸버
-
-    세션의 authentication 속성에서 StompAuthentication을 추출합니다.
-    인증되지 않은 경우 STOMP_ANONYMOUS를 반환합니다.
-
-    StompAuthentication의 하위 클래스도 지원합니다.
-    """
-
-    def supports(self, param_name: str, param_type: type, origin: type | None) -> bool:
-        try:
-            return isinstance(param_type, type) and issubclass(
-                param_type, StompAuthentication
-            )
-        except TypeError:
-            return False
-
-    async def resolve_message(
-        self,
-        param_name: str,
-        param_type: type,
-        context: MessageResolverContext,
-    ) -> Any:
-        return context.session.authentication or STOMP_ANONYMOUS
 
 
 class MessageResolver(MessageParameterResolver):
@@ -78,36 +54,6 @@ class WebSocketSessionResolver(MessageParameterResolver):
         context: MessageResolverContext,
     ) -> Any:
         return context.session
-
-
-class PathParamResolver(MessageParameterResolver):
-    """
-    경로 파라미터를 주입하는 리졸버
-
-    목적지 패턴에서 추출된 path parameter를 주입합니다.
-    예: /chat.{room_id} → room_id 파라미터
-    """
-
-    def supports(self, param_name: str, param_type: type, origin: type | None) -> bool:
-        # 특수 타입이 아니고, path_params에 있을 수 있는 모든 파라미터
-        # 실제 매칭은 resolve_message()에서 확인
-        return param_type in (str, int, float) or param_type is None
-
-    async def resolve_message(
-        self,
-        param_name: str,
-        param_type: type,
-        context: MessageResolverContext,
-    ) -> Any:
-        if param_name in context.path_params:
-            value = context.path_params[param_name]
-            # 타입 변환
-            if param_type is int:
-                return int(value)
-            elif param_type is float:
-                return float(value)
-            return value
-        return UNRESOLVED
 
 
 class PayloadResolver(MessageParameterResolver):

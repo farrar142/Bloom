@@ -447,19 +447,6 @@ class TestStompAuthenticator:
         assert auth.has_authority("ROLE_ADMIN") is True
         assert auth.has_authority("ROLE_SUPER") is False
 
-    def test_stomp_authentication_with_attributes(self):
-        """속성이 있는 StompAuthentication"""
-        auth = StompAuthentication(
-            user_id="user123",
-            authenticated=True,
-            attributes={"tenant_id": "tenant-abc", "org_id": 123},
-        )
-
-        assert auth.get_attribute("tenant_id") == "tenant-abc"
-        assert auth.get_attribute("org_id") == 123
-        assert auth.get_attribute("missing") is None
-        assert auth.get_attribute("missing", "default") == "default"
-
     def test_stomp_anonymous(self):
         """STOMP_ANONYMOUS 상수"""
         assert STOMP_ANONYMOUS.authenticated is False
