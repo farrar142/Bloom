@@ -95,7 +95,7 @@ class RouteTrie:
         self, method: str, path: str
     ) -> tuple["HttpMethodHandler | None", dict[str, str]]:
         """
-        경로에 맞는 핸들러 검색
+        경로에 맞는 핸들러 검색 (반복문 기반)
 
         Args:
             method: HTTP 메서드
@@ -107,49 +107,37 @@ class RouteTrie:
         # 경로를 세그먼트로 분리
         segments = [s for s in path.split("/") if s]
 
-        return self._search_recursive(self.root, segments, method, {})
-
-    def _search_recursive(
-        self,
-        node: RouteNode,
-        segments: list[str],
-        method: str,
-        params: dict[str, str],
-    ) -> tuple["HttpMethodHandler | None", dict[str, str]]:
-        """
-        재귀적으로 경로 탐색
-
-        우선순위:
-        1. 정적 경로 매칭
-        2. 동적 파라미터 매칭
-        """
-        # 모든 세그먼트를 소진했으면 현재 노드에서 핸들러 찾기
         if not segments:
-            handler = node.handlers.get(method)
-            return (handler, params) if handler else (None, {})
+            # 루트 경로
+            handler = self.root.handlers.get(method)
+            return (handler, {}) if handler else (None, {})
 
-        current_segment = segments[0]
-        remaining_segments = segments[1:]
+        # 스택 기반 탐색: (노드, 세그먼트 인덱스, 파라미터 딕셔너리)
+        stack: list[tuple[RouteNode, int, dict[str, str]]] = [(self.root, 0, {})]
+        segments_len = len(segments)
 
-        # 1. 정적 경로 우선 시도
-        if current_segment in node.children:
-            result, matched_params = self._search_recursive(
-                node.children[current_segment], remaining_segments, method, params
-            )
-            if result:
-                return result, matched_params
+        while stack:
+            node, idx, params = stack.pop()
 
-        # 2. 동적 파라미터 시도
-        if node.param_child:
-            # 파라미터 값 저장
-            new_params = params.copy()
-            new_params[node.param_child.param_name] = current_segment
+            # 모든 세그먼트를 소진했으면 핸들러 확인
+            if idx >= segments_len:
+                handler = node.handlers.get(method)
+                if handler:
+                    return handler, params
+                continue  # 핸들러 없으면 다음 후보 시도
 
-            result, matched_params = self._search_recursive(
-                node.param_child, remaining_segments, method, new_params
-            )
-            if result:
-                return result, matched_params
+            current_segment = segments[idx]
+            next_idx = idx + 1
+
+            # 동적 파라미터 먼저 스택에 (나중에 처리 = 정적보다 후순위)
+            if node.param_child:
+                new_params = params.copy()
+                new_params[node.param_child.param_name] = current_segment
+                stack.append((node.param_child, next_idx, new_params))
+
+            # 정적 경로 스택에 (먼저 처리 = 높은 우선순위)
+            if current_segment in node.children:
+                stack.append((node.children[current_segment], next_idx, params))
 
         # 매칭 실패
         return None, {}

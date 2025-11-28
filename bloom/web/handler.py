@@ -60,22 +60,6 @@ class HttpMethodHandler[**P, R](HandlerContainer[P, R]):
         super().__init__(handler_method)
         self.handler_key = handler_key
 
-    # @property
-    # def method(self) -> str:
-    #     return self.get_metadatas("http_method")[0]
-
-    # @property
-    # def path(self) -> str:
-    #     return self.get_metadatas("http_path")[0]
-
-    # @property
-    # def response_type(self) -> type | None:
-    #     return (
-    #         self.get_metadatas("response_type")[0]
-    #         if self.get_metadatas("response_type")
-    #         else None
-    #     )
-
     def __repr__(self) -> str:
         response_type = self.get_metadata("response_type")
         method = self.get_metadata("http_method")

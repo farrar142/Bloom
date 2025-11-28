@@ -37,10 +37,6 @@ class ParameterResolverRegistry:
         """리졸버 등록"""
         self._resolvers.append(resolver)
 
-    def register_first(self, resolver: ParameterResolver) -> None:
-        """리졸버를 맨 앞에 등록 (우선순위 높음)"""
-        self._resolvers.insert(0, resolver)
-
     def find_resolver(
         self, param_name: str, param_type: type
     ) -> ParameterResolver | None:

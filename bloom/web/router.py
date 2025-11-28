@@ -150,13 +150,17 @@ class Router:
     async def dispatch(self, request: HttpRequest) -> HttpResponse | StreamingResponse:
         """요청을 핸들러에 디스패치 (비동기)"""
 
-        # 핸들러 먼저 찾기 (미들웨어에서 Authorize 검사에 필요)
-        handler, path_params = self.find_handler(request.method, request.path)
+        # 로컬 변수 바인딩 (속성 조회 오버헤드 제거)
+        middleware_chain = self.middleware_chain
+        route_trie = self._route_trie
 
-        async with self.middleware_chain.process(request, handler) as ctx:
+        # 핸들러 먼저 찾기 (미들웨어에서 Authorize 검사에 필요)
+        handler, path_params = route_trie.search(request.method, request.path)
+
+        async with middleware_chain.process(request, handler) as ctx:
             # early return 확인 (인증 실패 등)
             if ctx.early_response:
-                return self.middleware_chain.get_final_response(ctx)
+                return middleware_chain.get_final_response(ctx)
 
             try:
                 if handler is None:
@@ -177,23 +181,28 @@ class Router:
                     result = await handler(**resolved_params)
 
                     # 결과 타입에 따라 응답 생성
-                    if isinstance(result, StreamingResponse):
+                    # HttpResponse가 가장 흔하므로 먼저 체크
+                    if result.__class__ is HttpResponse:
+                        ctx.set_response(result)
+                    elif isinstance(result, HttpResponse):
+                        # HttpResponse 서브클래스
+                        ctx.set_response(result)
+                    elif isinstance(result, StreamingResponse):
                         # 스트리밍 응답은 미들웨어를 거치지 않고 직접 반환
                         return result
-                    elif isinstance(result, HttpResponse):
-                        ctx.set_response(result)
                     else:
                         # response_type이 있으면 변환
-                        if response_type := handler.get_metadata(
+                        response_type = handler.get_metadata(
                             "response_type", raise_exception=False
-                        ):
+                        )
+                        if response_type:
                             result = _convert_to_response_type(result, response_type)
                         ctx.set_response(HttpResponse.ok(result))
 
             except Exception as e:
                 ctx.set_exception(e)
 
-        return self.middleware_chain.get_final_response(ctx)
+        return middleware_chain.get_final_response(ctx)
 
     def get_routes(self) -> list[tuple[str, str, str]]:
         """등록된 라우트 목록 반환 (method, path, handler_name)"""

@@ -214,10 +214,6 @@ class MiddlewareChain:
         self.default_group.add(CorsMiddleware())
         self.default_group.add(ErrorHandlerMiddleware())
 
-    def get_default_group(self) -> MiddlewareGroup:
-        """기본 그룹 반환"""
-        return self.default_group
-
     @overload
     def get_middleware[T: Middleware](
         self, middleware_type: type[T], raise_exception: bool = True
@@ -258,6 +254,10 @@ class MiddlewareChain:
         if raise_exception:
             raise ValueError(f"Middleware {middleware_type.__name__} not found")
         return None
+
+    def get_default_group(self) -> MiddlewareGroup:
+        """기본 그룹 반환"""
+        return self.default_group
 
     def add_group(self, name: str) -> MiddlewareGroup:
         """
