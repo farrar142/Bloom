@@ -12,6 +12,7 @@ from .controller import (
     RequestMapping,
 )
 from .asgi import ASGIApplication, create_asgi_app
+from .static import StaticFiles, StaticFilesContainer, StaticFilesManager
 
 __all__ = [
     "Authenticator",
@@ -39,4 +40,7 @@ __all__ = [
     "RequestMapping",
     "ASGIApplication",
     "create_asgi_app",
+    "StaticFiles",
+    "StaticFilesContainer",
+    "StaticFilesManager",
 ]

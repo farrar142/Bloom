@@ -67,11 +67,44 @@ class QualifierElement[T](Element[T]):
         self.metadata["qualifier"] = name
 
 
-def Qualifier[T](name: str) -> Callable[[type[T]], type[T]]:
-    def wrapper(cls: type[T]) -> type[T]:
-        container = ComponentContainer.get_or_create(cls)
-        container.add_element(QualifierElement(name))
-        return cls
+def Qualifier[T, **P, R](
+    name: str,
+) -> Callable[[type[T] | Callable[P, R]], type[T] | Callable[P, R]]:
+    """
+    Qualifier 데코레이터: 컴포넌트나 팩토리 메서드에 qualifier를 지정
+
+    동일한 타입의 여러 인스턴스를 구분할 때 사용합니다.
+
+    사용 예시 (클래스):
+        @Component
+        @Qualifier("mysql")
+        class MySqlRepository(Repository):
+            pass
+
+    사용 예시 (Factory 메서드):
+        @Component
+        class StaticConfig:
+            @Factory
+            @Qualifier("public")
+            def public_static(self) -> StaticFilesContainer:
+                return StaticFilesContainer().add("/static", "public")
+
+            @Factory
+            @Qualifier("assets")
+            def assets_static(self) -> StaticFilesContainer:
+                return StaticFilesContainer().add("/assets", "assets")
+    """
+
+    def wrapper(target: type[T] | Callable[P, R]) -> type[T] | Callable[P, R]:
+        if isinstance(target, type):
+            # 클래스인 경우 - ComponentContainer 사용
+            container = ComponentContainer.get_or_create(target)
+            container.add_element(QualifierElement(name))
+        else:
+            # 메서드인 경우 - FactoryContainer 사용
+            factory_container = FactoryContainer.get_or_create(target)
+            factory_container.add_element(QualifierElement(name))
+        return target
 
     return wrapper
 

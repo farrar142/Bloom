@@ -13,6 +13,7 @@ from .router import Router
 
 if TYPE_CHECKING:
     from .messaging import StompProtocolHandler
+    from .static import StaticFilesManager
     from bloom.application import Application
 
 # ASGI 타입 정의
@@ -63,6 +64,45 @@ class ASGIApplication:
         # 라이프사이클 콜백
         self._on_startup: list[Callable[[], Coroutine[Any, Any, None] | None]] = []
         self._on_shutdown: list[Callable[[], Coroutine[Any, Any, None] | None]] = []
+
+        # 정적 파일 매니저
+        self._static_files_manager: "StaticFilesManager | None" = None
+
+    def mount_static(
+        self,
+        path_prefix: str,
+        directory: str,
+        html: bool = False,
+        check_exists: bool = True,
+    ) -> "ASGIApplication":
+        """
+        정적 파일 디렉토리 마운트
+
+        Args:
+            path_prefix: URL 경로 프리픽스 (예: "/static")
+            directory: 서빙할 디렉토리 경로
+            html: True면 디렉토리 접근 시 index.html 자동 서빙
+            check_exists: 디렉토리 존재 확인 여부
+
+        Returns:
+            self (메서드 체이닝 지원)
+
+        사용 예시:
+            app.asgi.mount_static("/static", "public")
+            app.asgi.mount_static("/", "dist", html=True)  # SPA용
+        """
+        from .static import StaticFilesManager
+
+        if self._static_files_manager is None:
+            self._static_files_manager = StaticFilesManager()
+
+        self._static_files_manager.mount(
+            path_prefix=path_prefix,
+            directory=directory,
+            html=html,
+            check_exists=check_exists,
+        )
+        return self
 
     def on_startup(
         self, func: Callable[[], Coroutine[Any, Any, None] | None]
@@ -122,6 +162,20 @@ class ASGIApplication:
 
             # HttpRequest 생성
             request = self._build_request(scope, body)
+
+            # 정적 파일 확인 (마운트된 경우)
+            if self._static_files_manager and self._static_files_manager.matches(
+                request.path
+            ):
+                static_response = await self._static_files_manager.handle_request(
+                    request
+                )
+                if static_response is not None:
+                    if isinstance(static_response, StreamingResponse):
+                        await self._send_streaming_response(send, static_response)
+                    else:
+                        await self._send_response(send, static_response)
+                    return
 
             # Router를 통해 핸들러 호출 (비동기)
             response = await self.router.dispatch(request)

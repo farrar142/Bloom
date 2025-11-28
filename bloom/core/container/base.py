@@ -72,8 +72,11 @@ class Container[T]:
         return dependencies
 
     def _get_cached_instance(self) -> T | None:
-        """캐시된 인스턴스가 있으면 반환"""
-        return self._get_manager().get_instance(self.target, raise_exception=False)
+        """캐시된 인스턴스가 있으면 반환 (qualifier 고려)"""
+        qualifier = self.get_qual_name()
+        return self._get_manager().get_instance(
+            self.target, raise_exception=False, qualifier=qualifier
+        )
 
     def _inject_dependencies(self, annotations: dict[str, type]) -> dict[str, Any]:
         """어노테이션 기반으로 의존성을 주입하여 kwargs 반환"""
