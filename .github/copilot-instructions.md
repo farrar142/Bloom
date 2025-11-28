@@ -370,10 +370,12 @@ class CounterConfig:
 실행 순서: `create()` → `add_one()` → `add_two()` = Counter(3)
 
 **순서 결정 규칙:**
+
 1. `@Order` 데코레이터: 값이 낮을수록 먼저 실행
 2. 의존성 기반: Creator(자기 타입 미의존) → Modifier(자기 타입 의존)
 
 **Ambiguous Provider 에러:**
+
 - Creator가 2개 이상이고 Modifier가 있으면 에러 발생
 - 해결: Creator는 1개만, 나머지는 Modifier로 구성
 

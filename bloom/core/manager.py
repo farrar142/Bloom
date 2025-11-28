@@ -59,6 +59,12 @@ class ContainerManager:
         # 라이프사이클 관리자 (lazy initialization)
         self._lifecycle: "LifecycleManager | None" = None
 
+    def reset(self) -> None:
+        """모든 레지스트리 초기화 (테스트 또는 재시작 용도)"""
+        self.container_registry.clear()
+        self.instance_registry.clear()
+        self._lifecycle = None
+
     @property
     def lifecycle(self) -> "LifecycleManager":
         """라이프사이클 매니저 반환 (lazy initialization)"""

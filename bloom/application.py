@@ -172,10 +172,12 @@ class Application:
 
     def _validate_factory_chains(self, all_containers: list["Container"]) -> None:
         """
-        Factory Chain 유효성 검증
+        Factory Chain 유효성 검증 및 중간 Factory 마킹
 
-        Ambiguous Provider 패턴 감지 → 에러
+        1. Ambiguous Provider 패턴 감지 → 에러
+        2. Factory Chain의 중간 Factory들을 마킹 (마지막 Factory만 PostConstruct 호출)
         """
+        from bloom.core.container import FactoryContainer
         from bloom.core.utils import detect_factory_chains, validate_factory_chains
 
         # Factory Chain 감지
@@ -183,6 +185,13 @@ class Application:
 
         # Ambiguous Provider 검증 (에러 발생 가능)
         validate_factory_chains(chains)
+
+        # Factory Chain의 중간 Factory들을 마킹
+        # 마지막 Factory를 제외한 나머지는 intermediate
+        for target_type, factory_chain in chains.items():
+            if len(factory_chain) > 1:
+                for factory in factory_chain[:-1]:
+                    factory._is_chain_intermediate = True
 
     def _initialize_containers(self) -> None:
         """모든 컨테이너를 토폴로지컬 순서로 초기화 (순차적)

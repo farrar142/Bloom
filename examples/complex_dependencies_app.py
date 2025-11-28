@@ -423,7 +423,134 @@ class ConnectionPool:
 
 
 # =============================================================================
-# 8. 미들웨어 체인
+# 8. Factory Chain 순서 결정: @Order 없이 의존성 기반
+# =============================================================================
+"""
+@Order 데코레이터 없이 의존성 기반으로만 Factory Chain 순서가 결정되는 예제입니다.
+
+순서 결정 규칙:
+1. Creator (자기 타입 미의존): 먼저 실행
+2. Modifier (자기 타입 의존): 의존성 기반 토폴로지 정렬
+
+아래 예제에서:
+- create_settings(): Creator (Settings 미의존)
+- add_database_url(): Settings → Settings (Modifier, DataSource 의존)
+- add_cache_config(): Settings → Settings (Modifier, CacheConfig 의존)
+- finalize_settings(): Settings → Settings (Modifier, 다른 설정에 의존)
+
+실행 순서: create_settings → add_database_url/add_cache_config → finalize_settings
+"""
+
+
+class Settings:
+    """설정 객체 - Factory Chain으로 구성"""
+
+    def __init__(self):
+        self.values: dict[str, str] = {}
+        self.finalized: bool = False
+
+    def set(self, key: str, value: str) -> None:
+        if self.finalized:
+            raise RuntimeError("Settings are finalized, cannot modify")
+        self.values[key] = value
+
+    def get(self, key: str, default: str = "") -> str:
+        return self.values.get(key, default)
+
+
+class DataSource:
+    """데이터 소스 설정"""
+
+    def __init__(self, url: str = "localhost:5432", name: str = "default"):
+        self.url = url
+        self.name = name
+
+
+class CacheConfig:
+    """캐시 설정"""
+
+    def __init__(self, enabled: bool = True, ttl: int = 3600):
+        self.enabled = enabled
+        self.ttl = ttl
+
+
+@Component
+class SettingsFactory:
+    """
+    Settings Factory Chain - @Order 없이 의존성 기반 순서 결정
+
+    Creator: create_settings (Settings 미의존) - 항상 먼저
+    Modifiers: 각각 다른 의존성에 따라 순서 결정
+      - add_database_url: DataSource 의존
+      - add_cache_config: CacheConfig 의존
+      - finalize_settings: 둘 다 완료 후 실행
+
+    순서: create → (add_database_url | add_cache_config) → finalize
+    """
+
+    logger: Logger
+
+    @Factory
+    def create_data_source(self) -> DataSource:
+        """DataSource 생성"""
+        return DataSource(url="postgresql://localhost:5432", name="primary")
+
+    @Factory
+    def create_cache_config(self) -> CacheConfig:
+        """CacheConfig 생성"""
+        return CacheConfig(enabled=True, ttl=7200)
+
+    @Factory
+    def create_settings(self) -> Settings:
+        """Creator: Settings 초기 생성 (자기 타입 미의존)"""
+        self.logger.log("[Settings Factory] Creating initial settings")
+        settings = Settings()
+        settings.set("app.name", "ComplexDependencyApp")
+        settings.set("app.version", "1.0.0")
+        return settings
+
+    @Factory
+    def add_database_url(self, settings: Settings, data_source: DataSource) -> Settings:
+        """Modifier: DataSource 의존 - DB 설정 추가"""
+        self.logger.log("[Settings Factory] Adding database configuration")
+        settings.set("db.url", data_source.url)
+        settings.set("db.name", data_source.name)
+        return settings
+
+    @Factory
+    def add_cache_config(
+        self, settings: Settings, cache_config: CacheConfig
+    ) -> Settings:
+        """Modifier: CacheConfig 의존 - 캐시 설정 추가"""
+        self.logger.log("[Settings Factory] Adding cache configuration")
+        settings.set("cache.enabled", str(cache_config.enabled).lower())
+        settings.set("cache.ttl", str(cache_config.ttl))
+        return settings
+
+    @Factory
+    def finalize_settings(
+        self,
+        settings: Settings,
+        data_source: DataSource,
+        cache_config: CacheConfig,
+    ) -> Settings:
+        """
+        Modifier: 모든 설정 완료 후 최종화
+        DataSource와 CacheConfig에 의존하므로 마지막에 실행됨
+        """
+        self.logger.log("[Settings Factory] Finalizing settings")
+        # 모든 설정이 완료되었는지 확인
+        required_keys = ["db.url", "cache.enabled"]
+        for key in required_keys:
+            if not settings.get(key):
+                raise RuntimeError(f"Missing required setting: {key}")
+        settings.finalized = True
+        self.logger.log(f"[Settings Factory] Final settings: {settings.values}")
+        return settings
+
+
+# =============================================================================
+# 9. 미들웨어 체인
 # =============================================================================
 
 
@@ -473,7 +600,7 @@ class MiddlewareConfig:
 
 
 # =============================================================================
-# 9. 에러 핸들러
+# 10. 에러 핸들러
 # =============================================================================
 
 
@@ -517,7 +644,7 @@ class GlobalErrorHandlers:
 
 
 # =============================================================================
-# 10. 핸들러 패턴 (@Handler)
+# 11. 핸들러 패턴 (@Handler)
 # =============================================================================
 
 
@@ -692,6 +819,12 @@ if __name__ == "__main__":
     print(f"AppConfig: debug={config.debug}, version={config.version}")
     print(f"Features: {config.features}")
     print(f"Metadata: {config.metadata}")
+
+    # Settings (Order 없는 Factory Chain) 확인
+    print("\n--- Settings Factory Chain (@Order 없이 의존성 기반 순서) ---")
+    settings = app.manager.get_instance(Settings)
+    print(f"Settings finalized: {settings.finalized}")
+    print(f"Settings values: {settings.values}")
 
     # RequestContext 확인
     ctx = app.manager.get_instance(RequestContext)
