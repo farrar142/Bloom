@@ -22,13 +22,23 @@ OpenAPI 3.0 스펙을 자동으로 생성합니다.
     # /openapi.json, /docs 엔드포인트 자동 등록
 """
 
-from .config import OpenAPIConfig
+from .config import (
+    OpenAPIConfig,
+    OpenAPIContact,
+    OpenAPILicense,
+    OpenAPIServer,
+    OpenAPITag,
+)
 from .generator import OpenAPIGenerator
 from .schema import SchemaGenerator
 from .controller import OpenAPIController
 
 __all__ = [
     "OpenAPIConfig",
+    "OpenAPIContact",
+    "OpenAPILicense",
+    "OpenAPIServer",
+    "OpenAPITag",
     "OpenAPIGenerator",
     "SchemaGenerator",
     "OpenAPIController",

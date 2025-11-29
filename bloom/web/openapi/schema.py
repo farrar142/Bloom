@@ -138,10 +138,15 @@ class SchemaGenerator:
         try:
             json_schema = model.model_json_schema()  # type: ignore
 
-            # $defs가 있으면 components에 추가
+            # $defs가 있으면 components에 추가하고 $ref 경로 변환
             if "$defs" in json_schema:
                 for def_name, def_schema in json_schema.pop("$defs").items():
+                    # 중첩된 $ref 경로도 변환
+                    self._convert_refs(def_schema)
                     self._components[def_name] = def_schema
+
+            # 메인 스키마의 $ref 경로 변환
+            self._convert_refs(json_schema)
 
             # 메인 스키마 등록
             self._schemas[model] = (schema_name, json_schema)
@@ -150,6 +155,26 @@ class SchemaGenerator:
             return {"$ref": f"#/components/schemas/{schema_name}"}
         except Exception:
             return {"type": "object"}
+
+    def _convert_refs(self, schema: dict[str, Any]) -> None:
+        """$defs 참조를 components/schemas 참조로 변환"""
+        if not isinstance(schema, dict):
+            return
+
+        # $ref 경로 변환
+        if "$ref" in schema:
+            ref = schema["$ref"]
+            if ref.startswith("#/$defs/"):
+                schema["$ref"] = ref.replace("#/$defs/", "#/components/schemas/")
+
+        # 중첩된 스키마도 처리
+        for key, value in schema.items():
+            if isinstance(value, dict):
+                self._convert_refs(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        self._convert_refs(item)
 
     def _get_dataclass_schema(self, dc: type) -> dict[str, Any]:
         """dataclass에서 스키마 생성"""

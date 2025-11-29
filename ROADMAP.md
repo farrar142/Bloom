@@ -10,13 +10,23 @@
 | `@Component` | ✅ | 클래스 컴포넌트 등록 |
 | `@Factory` | ✅ | 메서드 기반 인스턴스 생성 |
 | `@Handler` | ✅ | 키 기반 핸들러 등록 |
-| `@Qualifier` | ✅ | 동일 타입 다중 인스턴스 구분 |
 | 필드 주입 | ✅ | 타입 어노테이션 기반 DI |
 | 토폴로지컬 정렬 | ✅ | 순환 의존성 감지 |
 | `@PostConstruct` / `@PreDestroy` | ✅ | 라이프사이클 훅 |
 | `LifecycleManager` | ✅ | 컨테이너 라이프사이클 관리 |
 | ContextVar 기반 매니저 | ✅ | 스레드 안전한 컨테이너 관리 |
 | `Lazy[T]` | ✅ | 순환 의존성 해결용 지연 주입 |
+| 의존성 그래프 초기화 | ✅ | DAG 기반 병렬 초기화 |
+| Factory Chain | ✅ | 동일 타입 Factory 체이닝 |
+
+#### AOP (Aspect-Oriented Programming)
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| `MethodAdvice` | ✅ | 메서드 어드바이스 추상 클래스 |
+| `MethodAdviceRegistry` | ✅ | 어드바이스 레지스트리 |
+| `InvocationContext` | ✅ | 호출 컨텍스트 (속성 저장) |
+| `before` / `after` / `on_error` | ✅ | 전처리/후처리/에러 훅 |
+| `MethodProxy` | ✅ | 메서드 프록시 래퍼 |
 
 #### Configuration
 | 기능 | 상태 | 설명 |
@@ -24,6 +34,7 @@
 | `@ConfigurationProperties` | ✅ | 설정 바인딩 데코레이터 |
 | YAML/JSON 설정 로드 | ✅ | 다중 포맷 지원 |
 | 환경 변수 치환 | ✅ | `${VAR:default}` 문법 |
+| 환경 변수 주입 | ✅ | `EnvStr`, `EnvInt`, `EnvFloat`, `EnvBool` |
 | dataclass/Pydantic 지원 | ✅ | 타입 안전 설정 모델 |
 
 #### Web Layer
@@ -91,7 +102,7 @@
 | `pyproject.toml` | ✅ | 패키지 메타데이터 |
 
 #### 테스트
-- **393개 테스트** 작성 완료
+- **478개 테스트** 작성 완료
 - 모든 테스트 통과 ✅
 
 ---
@@ -190,6 +201,7 @@
 - [x] 멀티 워커 지원 ✅
 - [x] 설정 관리 시스템 (`@ConfigurationProperties`) ✅
 - [x] 환경 변수 치환 (`${VAR:default}`) ✅
+- [x] 환경 변수 주입 (`EnvStr`, `EnvInt`, `EnvFloat`, `EnvBool`) ✅
 - [ ] 환경별 프로필 (`@Profile`)
 
 #### 🌍 국제화
@@ -231,7 +243,7 @@
 | 항목 | 수치 |
 |------|------|
 | Python 파일 | ~65개 |
-| 테스트 케이스 | 416개 |
+| 테스트 케이스 | 478개 |
 | 코드 라인 | ~8,500줄 (추정) |
 | 외부 의존성 | 4개 (pydantic, uvicorn, pyyaml, aiohttp) |
 

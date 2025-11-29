@@ -85,14 +85,3 @@ class AvailableInitialize:
 import example_app as module
 
 app = Application("example").scan(module).ready()
-
-
-class Qualifier[T, R]:
-    def __class_getitem__(cls, arg1: T, arg2: R = None):
-        if arg2 is None:
-            return Annotated[cls, arg1]
-        return Annotated[cls, arg2]
-
-
-def test(a: Qualifier[Literal[1], str]):
-    pass

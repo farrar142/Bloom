@@ -102,16 +102,23 @@ class ContainerManager:
                 self.register_container(container)
 
         for attr_name in dir(module):
-            attr = getattr(module, attr_name)
+            try:
+                attr = getattr(module, attr_name)
+            except Exception:
+                continue  # Pydantic 등 일부 라이브러리에서 getattr 시 예외 발생 가능
             if container := BaseContainer.get_container(attr):
                 self.register_container(container)
             # Factory/Handler 메서드들도 스캔하고 owner_cls 주입
             if isinstance(attr, type):
                 for method_name in dir(attr):
-                    method = getattr(attr, method_name, None)
-                    if method and (
-                        child_container := BaseContainer.get_container(method)
-                    ):
+                    try:
+                        method = getattr(attr, method_name, None)
+                        if method is None:
+                            continue
+                        child_container = BaseContainer.get_container(method)
+                    except Exception:
+                        continue
+                    if child_container:
                         child_container.owner_cls = attr  # owner 클래스 주입
                         self.register_container(child_container)
 
