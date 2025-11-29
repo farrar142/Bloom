@@ -53,7 +53,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, overload
 
 from bloom.core.abstract import EntryGroup, GroupRegistry
-from bloom.web.handler import HttpMethodHandler
+from bloom.web.handler import HttpMethodHandlerContainer
 
 from ..http import HttpRequest, HttpResponse
 
@@ -69,7 +69,7 @@ class MiddlewareContext:
     _response: HttpResponse | None = None
     _exception: Exception | None = None
     early_response: HttpResponse | None = None
-    handler: Any = None  # 라우팅된 핸들러 (HttpMethodHandler)
+    handler: Any = None  # 라우팅된 핸들러 (HttpMethodHandlerContainer)
 
     def set_response(self, response: HttpResponse) -> None:
         """핸들러 응답 설정"""
@@ -94,7 +94,7 @@ class MiddlewareProcessContext:
         self,
         chain: "MiddlewareChain",
         request: HttpRequest,
-        handler: HttpMethodHandler | None,
+        handler: HttpMethodHandlerContainer | None,
     ):
         self.chain = chain
         self.request = request
@@ -283,7 +283,7 @@ class MiddlewareChain(GroupRegistry[Middleware]):
     # ========================================
 
     def process(
-        self, request: HttpRequest, handler: HttpMethodHandler | None = None
+        self, request: HttpRequest, handler: HttpMethodHandlerContainer | None = None
     ) -> MiddlewareProcessContext:
         """
         미들웨어 체인 실행 (최적화된 async context manager)
@@ -308,7 +308,7 @@ class MiddlewareChain(GroupRegistry[Middleware]):
 
         Args:
             request: HTTP 요청
-            handler: 라우팅된 핸들러 (HttpMethodHandler)
+            handler: 라우팅된 핸들러 (HttpMethodHandlerContainer)
 
         Returns:
             MiddlewareProcessContext: async context manager

@@ -426,7 +426,7 @@ class TestRouterMiddlewareIntegration:
         from bloom.core.manager import get_current_manager
         from bloom.web.middleware import MiddlewareChain
         from bloom.web.router import Router
-        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.handler import HttpMethodHandlerContainer
         from bloom.web.controller import ControllerContainer
 
         execution_order = []
@@ -455,7 +455,7 @@ class TestRouterMiddlewareIntegration:
         controller_container = ControllerContainer(TestController)
         get_current_manager().register_container(controller_container)
 
-        handler = HttpMethodHandler(
+        handler = HttpMethodHandlerContainer(
             handler_method=TestController.test_handler,
         )
         handler.add_elements(MethodElement("GET"))
@@ -482,7 +482,7 @@ class TestRouterMiddlewareIntegration:
         from bloom.core.manager import get_current_manager
         from bloom.web.middleware import MiddlewareChain
         from bloom.web.router import Router
-        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.handler import HttpMethodHandlerContainer
         from bloom.web.controller import ControllerContainer
 
         handler_called = False
@@ -512,7 +512,7 @@ class TestRouterMiddlewareIntegration:
         controller_container = ControllerContainer(TestController)
         get_current_manager().register_container(controller_container)
 
-        handler = HttpMethodHandler(
+        handler = HttpMethodHandlerContainer(
             handler_method=TestController.test_handler,
         )
         handler.add_elements(MethodElement("GET"))
@@ -535,7 +535,7 @@ class TestRouterMiddlewareIntegration:
         from bloom.core.manager import get_current_manager
         from bloom.web.middleware import MiddlewareChain, CorsMiddleware
         from bloom.web.router import Router
-        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.handler import HttpMethodHandlerContainer
         from bloom.web.controller import ControllerContainer
 
         class TestController:
@@ -558,7 +558,7 @@ class TestRouterMiddlewareIntegration:
         controller_container = ControllerContainer(TestController)
         get_current_manager().register_container(controller_container)
 
-        handler = HttpMethodHandler(
+        handler = HttpMethodHandlerContainer(
             handler_method=TestController.get_users,
         )
         handler.add_elements(MethodElement("GET"))
@@ -602,7 +602,7 @@ class TestRouterMiddlewareIntegration:
         from bloom.core.manager import get_current_manager
         from bloom.web.middleware import MiddlewareChain
         from bloom.web.router import Router
-        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.handler import HttpMethodHandlerContainer
         from bloom.web.controller import ControllerContainer
 
         class TestController:
@@ -621,7 +621,7 @@ class TestRouterMiddlewareIntegration:
         controller_container = ControllerContainer(TestController)
         get_current_manager().register_container(controller_container)
 
-        handler = HttpMethodHandler(
+        handler = HttpMethodHandlerContainer(
             handler_method=TestController.get_data,
         )
         handler.add_elements(MethodElement("GET"), PathElement("/data"))
@@ -645,7 +645,7 @@ class TestRouterMiddlewareIntegration:
         from bloom.core.manager import get_current_manager
         from bloom.web.middleware import MiddlewareChain
         from bloom.web.router import Router
-        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.handler import HttpMethodHandlerContainer
         from bloom.web.controller import ControllerContainer
 
         handler_called = False
@@ -664,7 +664,7 @@ class TestRouterMiddlewareIntegration:
         controller_container = ControllerContainer(TestController)
         get_current_manager().register_container(controller_container)
 
-        handler = HttpMethodHandler(
+        handler = HttpMethodHandlerContainer(
             handler_method=TestController.protected_resource,
         )
         handler.add_elements(MethodElement("GET"))

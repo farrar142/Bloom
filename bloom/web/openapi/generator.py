@@ -8,7 +8,7 @@ import inspect
 
 if TYPE_CHECKING:
     from bloom.web.routing import RouteManager
-    from bloom.web.handler import HttpMethodHandler
+    from bloom.web.handler import HttpMethodHandlerContainer
 
 from .config import OpenAPIConfig
 from .schema import SchemaGenerator
@@ -108,7 +108,7 @@ class OpenAPIGenerator:
         return path
 
     def _generate_operation(
-        self, handler: "HttpMethodHandler", path: str
+        self, handler: "HttpMethodHandlerContainer", path: str
     ) -> dict[str, Any]:
         """핸들러에서 operation 객체 생성"""
         operation: dict[str, Any] = {}
@@ -145,7 +145,7 @@ class OpenAPIGenerator:
 
         return operation
 
-    def _generate_operation_id(self, handler: "HttpMethodHandler") -> str:
+    def _generate_operation_id(self, handler: "HttpMethodHandlerContainer") -> str:
         """operationId 생성"""
         method_name = handler.handler_method.__name__
 
@@ -159,7 +159,9 @@ class OpenAPIGenerator:
 
         return method_name
 
-    def _get_tag_from_handler(self, handler: "HttpMethodHandler") -> str | None:
+    def _get_tag_from_handler(
+        self, handler: "HttpMethodHandlerContainer"
+    ) -> str | None:
         """핸들러에서 태그 추출 (Controller 이름)"""
         if handler.owner_cls:
             name = handler.owner_cls.__name__
@@ -190,7 +192,7 @@ class OpenAPIGenerator:
         return list(tags.values())
 
     def _analyze_parameters(
-        self, handler: "HttpMethodHandler", path: str
+        self, handler: "HttpMethodHandlerContainer", path: str
     ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
         """
         핸들러 파라미터 분석
@@ -340,7 +342,7 @@ class OpenAPIGenerator:
         return type_map.get(param_type, {"type": "string"})
 
     def _generate_responses(
-        self, handler: "HttpMethodHandler", method: str
+        self, handler: "HttpMethodHandlerContainer", method: str
     ) -> dict[str, Any]:
         """응답 스키마 생성"""
         responses: dict[str, Any] = {}

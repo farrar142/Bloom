@@ -103,7 +103,7 @@ class EventHandlers:
 **의존성 그래프 표시:**
 ```
 HandlerContainer (Handler)
-HttpMethodHandler (Handler)
+HttpMethodHandlerContainer (Handler)
 ErrorHandlerContainer (Handler)
 ```
 
@@ -358,8 +358,11 @@ class BadConfig:
 
 ### 5.1 사용법
 
+`@Lazy` 데코레이터를 사용하여 컴포넌트의 초기화를 지연시킵니다:
+
 ```python
-from bloom import Component, Lazy
+from bloom import Component
+from bloom.core.lazy import Lazy
 
 @Component
 class EmailService:
@@ -369,17 +372,42 @@ class EmailService:
         self.logger.log(f"Sending email to {to}")
 
 @Component
+@Lazy  # 이 컴포넌트는 실제 사용 시점까지 초기화 지연
+class HeavyService:
+    """무거운 초기화가 필요한 서비스"""
+    
+    def __init__(self):
+        # 복잡한 초기화 로직...
+        pass
+
+@Component
 class NotificationService:
     logger: Logger
-    email_service: Lazy[EmailService]  # 지연 로딩
+    heavy_service: HeavyService  # LazyProxy가 주입됨
     
     def notify(self, message: str) -> None:
         self.logger.log(f"Notification: {message}")
-        # 접근 시점에 실제 인스턴스 반환
-        self.email_service.send_email("admin@example.com", message)
+        # 이 시점에 HeavyService가 실제로 초기화됨
+        self.heavy_service.process(message)
 ```
 
-### 5.2 의존성 그래프 표시
+### 5.2 동작 원리
+
+1. `@Lazy`로 마킹된 컴포넌트는 초기화 시 `LazyProxy`가 생성됨
+2. 다른 컴포넌트에 주입될 때 `LazyProxy`가 주입됨
+3. 실제 메서드/속성 접근 시점에 진짜 인스턴스가 생성됨
+
+```python
+# 초기화 시점
+notification_service = app.manager.get_instance(NotificationService)
+# → HeavyService는 아직 초기화되지 않음 (LazyProxy만 주입됨)
+
+# 실제 사용 시점
+notification_service.notify("Hello")
+# → heavy_service.process() 호출 시 HeavyService 초기화됨
+```
+
+### 5.3 의존성 그래프 표시
 
 ```
 ## Dependency Graph
@@ -389,24 +417,25 @@ Legend: ─── = direct dependency, ┄┄┄ = lazy dependency (deferred)
 
 NotificationService
     ├── Logger
-    └┄┄ EmailService (lazy)
+    └┄┄ HeavyService (lazy)
         └── Logger
 ```
 
-### 5.3 Lazy 의존성 섹션
+### 5.4 Lazy 의존성 섹션
 
 ```
 ## Lazy Dependencies (Deferred Loading)
 ----------------------------------------
 
-Components using @Lazy for deferred initialization:
+Components marked with @Lazy for deferred initialization:
 (Breaks circular dependencies by deferring resolution)
 
-  NotificationService
-    └┄┄ EmailService (lazy)
+  HeavyService (lazy)
+    └── Logger
 
-  UserCreatedHandler
-    └┄┄ EmailService (lazy)
+  Components depending on lazy components:
+    NotificationService
+      └┄┄ HeavyService
 ```
 
 ---
@@ -497,11 +526,21 @@ The following components form a circular dependency chain:
 
 ### 6.4 해결 방법
 
-**방법 1: Lazy 사용**
+**방법 1: @Lazy 사용**
 ```python
 @Component
+@Lazy  # ServiceC를 지연 초기화
 class ServiceC:
-    service_a: Lazy[ServiceA]  # 지연 로딩으로 순환 해결
+    service_a: ServiceA
+```
+
+또는 순환 고리 중 하나를 지연시킵니다:
+
+```python
+@Component
+@Lazy
+class ServiceA:
+    service_b: ServiceB
 ```
 
 **방법 2: 인터페이스/공통 컴포넌트 추출**
@@ -714,7 +753,7 @@ app = Application("my-app").scan(module).ready(parallel=True)
 | **@Handler(key)** | 키 기반 핸들러 등록 |
 | **Factory Chain** | 동일 타입 반환 Factory 체인 실행 |
 | **@Order(n)** | Factory Chain 실행 순서 지정 |
-| **Lazy[T]** | 순환 의존성 해결용 지연 로딩 |
+| **@Lazy** | 컴포넌트 지연 초기화 (순환 의존성 해결) |
 | **@PostConstruct** | DI 완료 후 초기화 |
 | **@PreDestroy** | 종료 시 정리 (역순) |
 | **Dependency Graph** | 의존성 시각화 및 분석 |

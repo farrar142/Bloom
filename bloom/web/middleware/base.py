@@ -49,7 +49,7 @@ from abc import ABC
 from collections.abc import AsyncGenerator
 from typing import Any, Optional
 
-from bloom.web.handler import HttpMethodHandler
+from bloom.web.handler import HttpMethodHandlerContainer
 
 from ..http import HttpRequest, HttpResponse
 
@@ -126,7 +126,7 @@ class Middleware(ABC):
         return response
 
     async def _process_request(
-        self, request: HttpRequest, handler: HttpMethodHandler | None = None
+        self, request: HttpRequest, handler: HttpMethodHandlerContainer | None = None
     ) -> AsyncGenerator[HttpResponse | None, HttpResponse]:
         """
         요청/응답 처리 (yield 기반 - 내부용)
@@ -136,7 +136,7 @@ class Middleware(ABC):
 
         Args:
             request: HTTP 요청
-            handler: 라우팅된 핸들러 (HttpMethodHandler) - Authorize 검사 등에 사용
+            handler: 라우팅된 핸들러 (HttpMethodHandlerContainer) - Authorize 검사 등에 사용
 
         예외 처리가 필요한 미들웨어는 이 메서드를 오버라이드하세요:
             ```python

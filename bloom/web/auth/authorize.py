@@ -4,7 +4,7 @@ from typing import Any, Callable, TypeVar
 
 from bloom.core.container.element import Element
 from bloom.web.http import HttpRequest
-from ..handler import HttpMethodHandler
+from ..handler import HttpMethodHandlerContainer
 
 
 T = TypeVar("T")
@@ -65,7 +65,7 @@ def Authorize(
     """
 
     def decorator(func: F) -> F:
-        container = HttpMethodHandler.get_or_create(func)
+        container = HttpMethodHandlerContainer.get_or_create(func)
         container.add_elements(AuthorizeElement(target_type, predicate))
 
         return func

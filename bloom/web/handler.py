@@ -33,7 +33,7 @@ class ResponseTypeElement(Element[T]):
         self.metadata["response_type"] = response_type
 
 
-class HttpMethodHandler[**P, R](HandlerContainer[P, R]):
+class HttpMethodHandlerContainer[**P, R](HandlerContainer[P, R]):
     """
     HTTP 메서드별 핸들러 컨테이너
 
@@ -66,7 +66,7 @@ class HttpMethodHandler[**P, R](HandlerContainer[P, R]):
         path = self.get_metadata("http_path")
         response_info = f", response={response_type}" if self else ""
         return (
-            f"HttpMethodHandler(method={self.handler_method.__name__}, "
+            f"HttpMethodHandlerContainer(method={self.handler_method.__name__}, "
             f"{method} {path}{response_info})"
         )
 
@@ -115,7 +115,9 @@ def _create_http_method_decorator(http_method: str):
                 path = f"/{func.__name__}"
             else:
                 path = __path_or_func if __path_or_func else f"/{func.__name__}"
-            container = HttpMethodHandler.get_or_create(func, (http_method, path))
+            container = HttpMethodHandlerContainer.get_or_create(
+                func, (http_method, path)
+            )
             setattr(func, "__container__", container)
             container.add_elements(MethodElement(http_method))
             container.add_elements(PathElement(path))

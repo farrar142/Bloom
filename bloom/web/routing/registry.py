@@ -9,7 +9,7 @@ from bloom.core.abstract import AbstractRegistry
 from .trie import RouteTrie
 
 if TYPE_CHECKING:
-    from bloom.web.handler import HttpMethodHandler
+    from bloom.web.handler import HttpMethodHandlerContainer
 
 from .entry import RouteEntry
 
@@ -44,7 +44,7 @@ class RouteRegistry(AbstractRegistry[RouteEntry]):
 
     def find(
         self, method: str, path: str
-    ) -> tuple["HttpMethodHandler | None", dict[str, str]]:
+    ) -> tuple["HttpMethodHandlerContainer | None", dict[str, str]]:
         """
         요청에 맞는 핸들러 찾기
 

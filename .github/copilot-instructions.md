@@ -86,11 +86,11 @@ Manager (싱글톤)
 
 #### 계층별 역할
 
-| 계층         | 역할                                  | 예시                              |
-| ------------ | ------------------------------------- | --------------------------------- |
-| **Entry**    | 개별 항목 (불변 데이터)               | `RouteEntry`, `HttpMethodHandler` |
-| **Registry** | Entry 컬렉션 관리, 조회/매칭          | `RouteRegistry`, `MethodRegistry` |
-| **Manager**  | Registry들을 통합 관리, 외부 API 제공 | `Router`                          |
+| 계층         | 역할                                  | 예시                                       |
+| ------------ | ------------------------------------- | ------------------------------------------ |
+| **Entry**    | 개별 항목 (불변 데이터)               | `RouteEntry`, `HttpMethodHandlerContainer` |
+| **Registry** | Entry 컬렉션 관리, 조회/매칭          | `RouteRegistry`, `MethodRegistry`          |
+| **Manager**  | Registry들을 통합 관리, 외부 API 제공 | `Router`                                   |
 
 #### 추상 클래스 (`bloom/core/abstract/`)
 

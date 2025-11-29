@@ -10,7 +10,7 @@ from bloom.core import ContainerManager
 from bloom.web import (
     HttpRequest,
     HttpResponse,
-    HttpMethodHandler,
+    HttpMethodHandlerContainer,
     Get,
     Post,
     Put,
@@ -58,7 +58,7 @@ class TestHttpModels:
         assert "안녕".encode("utf-8") in json_bytes
 
 
-class TestHttpMethodHandler:
+class TestHttpMethodHandlerContainer:
     """HTTP 메서드 핸들러 테스트"""
 
     def test_get_decorator(self):
@@ -71,7 +71,7 @@ class TestHttpMethodHandler:
                 return ["a", "b"]
 
         container = TestController.list_items.__container__
-        assert isinstance(container, HttpMethodHandler)
+        assert isinstance(container, HttpMethodHandlerContainer)
         assert container.get_metadata("http_method") == "GET"
         assert container.get_metadata("http_path") == "/items"
         assert container.handler_key == ("GET", "/items")

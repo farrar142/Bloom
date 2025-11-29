@@ -9,7 +9,7 @@ from bloom.core.decorators import Factory
 from bloom.web import (
     HttpRequest,
     HttpResponse,
-    HttpMethodHandler,
+    HttpMethodHandlerContainer,
     Get,
     Post,
     Put,
@@ -33,10 +33,12 @@ class TestMiddleware:
     async def test_middleware_execution_order(self):
         """미들웨어가 올바른 순서로 실행되는지 테스트"""
         execution_order: list[str] = []
+
         @Component
         class LoggingService:
             def log(self, message: str):
                 execution_order.append(message)
+
         @Component
         class MiddlewareA(Middleware):
             loggingService: LoggingService
@@ -52,6 +54,7 @@ class TestMiddleware:
             ) -> HttpResponse:
                 self.loggingService.log("A - after")
                 return response
+
         @Component
         class MiddlewareB(Middleware):
             loggingService: LoggingService
@@ -67,6 +70,7 @@ class TestMiddleware:
             ) -> HttpResponse:
                 self.loggingService.log("B - after")
                 return response
+
         @Component
         class MiddlewareC(Middleware):
             loggingService: LoggingService
@@ -82,6 +86,7 @@ class TestMiddleware:
             ) -> HttpResponse:
                 self.loggingService.log("C - after")
                 return response
+
         @Component
         class MiddlewareConfiguration:
             @Factory
@@ -89,6 +94,7 @@ class TestMiddleware:
                 chain = MiddlewareChain()
                 chain.add_group_after(*middlewares)
                 return chain
+
         @Controller
         @RequestMapping("/api")
         class TestController:

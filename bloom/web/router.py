@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from bloom.core.manager import ContainerManager
     from .middleware import MiddlewareChain
 
-from .handler import HttpMethodHandler
+from .handler import HttpMethodHandlerContainer
 from .http import HttpRequest, HttpResponse, StreamingResponse
 from .params import resolve_parameters_cached
 from .routing import RouteManager
@@ -67,7 +67,7 @@ class Router:
 
     사용 예시:
         router = Router(manager)
-        router.collect_routes()  # 등록된 HttpMethodHandler들 수집
+        router.collect_routes()  # 등록된 HttpMethodHandlerContainer들 수집
 
         response = router.dispatch(request)
     """
@@ -91,7 +91,7 @@ class Router:
         return self._route_manager
 
     def collect_routes(self) -> None:
-        """ContainerManager에서 HttpMethodHandler들을 수집"""
+        """ContainerManager에서 HttpMethodHandlerContainer들을 수집"""
         from .error import ErrorHandlerMiddleware
         from .middleware import MiddlewareChain
 
@@ -156,8 +156,8 @@ class Router:
         wrapper.__name__ = handler_func.__name__
         wrapper.__doc__ = handler_func.__doc__
 
-        # HttpMethodHandler를 동적으로 생성
-        container = HttpMethodHandler.get_or_create(wrapper, (method, path))
+        # HttpMethodHandlerContainer를 동적으로 생성
+        container = HttpMethodHandlerContainer.get_or_create(wrapper, (method, path))
         container.add_elements(MethodElement(method))
         container.add_elements(PathElement(path))
 
@@ -167,7 +167,7 @@ class Router:
 
     def find_handler(
         self, method: str, path: str
-    ) -> tuple[HttpMethodHandler | None, dict[str, str]]:
+    ) -> tuple[HttpMethodHandlerContainer | None, dict[str, str]]:
         """
         요청에 맞는 핸들러 찾기
 

@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .handler import HttpMethodHandler
+    from .handler import HttpMethodHandlerContainer
 
 
 class RouteNode:
@@ -29,7 +29,7 @@ class RouteNode:
         self.param_child: RouteNode | None = None
 
         # HTTP 메서드별 핸들러
-        self.handlers: dict[str, "HttpMethodHandler"] = {}
+        self.handlers: dict[str, "HttpMethodHandlerContainer"] = {}
 
     def __repr__(self) -> str:
         if self.is_param:
@@ -55,7 +55,9 @@ class RouteTrie:
     def __init__(self):
         self.root = RouteNode()
 
-    def insert(self, method: str, path: str, handler: "HttpMethodHandler") -> None:
+    def insert(
+        self, method: str, path: str, handler: "HttpMethodHandlerContainer"
+    ) -> None:
         """
         경로를 Trie에 삽입
 
@@ -93,7 +95,7 @@ class RouteTrie:
 
     def search(
         self, method: str, path: str
-    ) -> tuple["HttpMethodHandler | None", dict[str, str]]:
+    ) -> tuple["HttpMethodHandlerContainer | None", dict[str, str]]:
         """
         경로에 맞는 핸들러 검색 (반복문 기반)
 
@@ -142,7 +144,7 @@ class RouteTrie:
         # 매칭 실패
         return None, {}
 
-    def get_all_routes(self) -> list[tuple[str, str, "HttpMethodHandler"]]:
+    def get_all_routes(self) -> list[tuple[str, str, "HttpMethodHandlerContainer"]]:
         """
         등록된 모든 라우트 반환 (디버깅용)
 
@@ -157,7 +159,7 @@ class RouteTrie:
         self,
         node: RouteNode,
         current_path: str,
-        routes: list[tuple[str, str, "HttpMethodHandler"]],
+        routes: list[tuple[str, str, "HttpMethodHandlerContainer"]],
     ) -> None:
         """재귀적으로 모든 라우트 수집"""
         # 현재 노드에 핸들러가 있으면 추가

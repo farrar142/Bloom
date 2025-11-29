@@ -1,6 +1,6 @@
 """RouteEntry - HTTP 라우트 Entry
 
-HttpMethodHandler를 감싸는 Entry 클래스입니다.
+HttpMethodHandlerContainer를 감싸는 Entry 클래스입니다.
 """
 
 from typing import TYPE_CHECKING
@@ -8,32 +8,32 @@ from typing import TYPE_CHECKING
 from bloom.core.abstract import Entry
 
 if TYPE_CHECKING:
-    from bloom.web.handler import HttpMethodHandler
+    from bloom.web.handler import HttpMethodHandlerContainer
 
 
-class RouteEntry(Entry["HttpMethodHandler"]):
+class RouteEntry(Entry["HttpMethodHandlerContainer"]):
     """
     HTTP 라우트 Entry
 
-    HttpMethodHandler를 감싸고, 라우트 정보(method, path)를 포함합니다.
+    HttpMethodHandlerContainer를 감싸고, 라우트 정보(method, path)를 포함합니다.
 
     Attributes:
         method: HTTP 메서드 (GET, POST, PUT, DELETE 등)
         path: 전체 경로 (prefix + handler path)
-        handler: HttpMethodHandler 인스턴스
+        handler: HttpMethodHandlerContainer 인스턴스
 
     사용 예시:
         entry = RouteEntry("GET", "/api/users", handler)
         print(entry.method)  # "GET"
         print(entry.path)    # "/api/users"
-        print(entry.value)   # HttpMethodHandler
+        print(entry.value)   # HttpMethodHandlerContainer
     """
 
     def __init__(
         self,
         method: str,
         path: str,
-        handler: "HttpMethodHandler",
+        handler: "HttpMethodHandlerContainer",
     ):
         super().__init__(handler)
         self._method = method
@@ -50,8 +50,8 @@ class RouteEntry(Entry["HttpMethodHandler"]):
         return self._path
 
     @property
-    def handler(self) -> "HttpMethodHandler":
-        """HttpMethodHandler (value의 별칭)"""
+    def handler(self) -> "HttpMethodHandlerContainer":
+        """HttpMethodHandlerContainer (value의 별칭)"""
         return self._value
 
     def __repr__(self) -> str:

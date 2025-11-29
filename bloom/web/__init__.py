@@ -3,7 +3,7 @@
 from .auth import Authenticator, Authentication, ANONYMOUS, Authorize, AuthorizeElement
 from .error import ErrorHandler, ErrorHandlerContainer, ErrorHandlerMiddleware
 from .http import HttpRequest, HttpResponse, StreamingResponse, FileResponse
-from .handler import HttpMethodHandler, Get, Post, Put, Patch, Delete
+from .handler import HttpMethodHandlerContainer, Get, Post, Put, Patch, Delete
 from .router import Router
 from .controller import (
     ControllerContainer,
@@ -28,7 +28,7 @@ __all__ = [
     "HttpResponse",
     "StreamingResponse",
     "FileResponse",
-    "HttpMethodHandler",
+    "HttpMethodHandlerContainer",
     "Get",
     "Post",
     "Put",

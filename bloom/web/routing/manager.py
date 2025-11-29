@@ -1,6 +1,6 @@
 """RouteManager - 라우트 Manager
 
-ContainerManager에서 HttpMethodHandler들을 수집하여 RouteRegistry에 등록합니다.
+ContainerManager에서 HttpMethodHandlerContainer들을 수집하여 RouteRegistry에 등록합니다.
 """
 
 from typing import TYPE_CHECKING
@@ -18,11 +18,11 @@ class RouteManager(AbstractManager[RouteRegistry]):
     """
     라우트 Manager
 
-    ContainerManager에서 HttpMethodHandler들을 수집하고,
+    ContainerManager에서 HttpMethodHandlerContainer들을 수집하고,
     Controller의 RequestMapping prefix를 결합하여 RouteEntry를 생성합니다.
 
     특징:
-    - HttpMethodHandler 자동 수집
+    - HttpMethodHandlerContainer 자동 수집
     - Controller prefix 자동 결합
     - RouteRegistry 자동 생성/관리
 
@@ -35,7 +35,7 @@ class RouteManager(AbstractManager[RouteRegistry]):
     """
 
     registry_type = RouteRegistry
-    # entry_type은 사용하지 않음 (HttpMethodHandler에서 직접 수집)
+    # entry_type은 사용하지 않음 (HttpMethodHandlerContainer에서 직접 수집)
 
     def __init__(self):
         super().__init__()
@@ -52,16 +52,16 @@ class RouteManager(AbstractManager[RouteRegistry]):
 
         1. RouteRegistry 검색/생성
         2. Controller prefix 수집
-        3. HttpMethodHandler들을 수집하여 RouteEntry 생성
+        3. HttpMethodHandlerContainer들을 수집하여 RouteEntry 생성
 
         Args:
-            container_manager: HttpMethodHandler와 Controller를 검색할 ContainerManager
+            container_manager: HttpMethodHandlerContainer와 Controller를 검색할 ContainerManager
         """
         if self._initialized:
             return
 
         from bloom.web.controller import ControllerContainer
-        from bloom.web.handler import HttpMethodHandler
+        from bloom.web.handler import HttpMethodHandlerContainer
 
         # 1. RouteRegistry 검색/생성
         existing_registries = container_manager.get_sub_instances(RouteRegistry)
@@ -83,10 +83,10 @@ class RouteManager(AbstractManager[RouteRegistry]):
                         prefixes[0] if prefixes else ""
                     )
 
-        # 3. HttpMethodHandler 수집 및 RouteEntry 생성
+        # 3. HttpMethodHandlerContainer 수집 및 RouteEntry 생성
         for containers in container_manager.get_all_containers().values():
             for container in containers:
-                if isinstance(container, HttpMethodHandler):
+                if isinstance(container, HttpMethodHandlerContainer):
                     # owner_cls의 RequestMapping prefix 가져오기
                     prefix = ""
                     if container.owner_cls:
