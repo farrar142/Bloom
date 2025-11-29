@@ -34,41 +34,6 @@ class LifecycleManager:
         """레지스트리 반환"""
         return self._registry
 
-    def _find_lifecycle_handlers(
-        self, container: "Container", lifecycle_type: LifecycleType
-    ) -> list[LifecycleHandlerContainer]:
-        """
-        컨테이너의 target 클래스에서 라이프사이클 핸들러 찾기
-
-        Registry에 캐시된 핸들러가 있으면 사용하고, 없으면 동적으로 탐색합니다.
-        """
-        # Registry에서 먼저 찾기
-        cached = self._registry.get_handlers(container, lifecycle_type)
-        if cached:
-            return cached
-
-        # 동적으로 탐색
-        target = container.target
-        if not isinstance(target, type):
-            return []
-
-        handlers: list[LifecycleHandlerContainer] = []
-        for attr_name in dir(target):
-            try:
-                attr = getattr(target, attr_name, None)
-            except Exception:
-                continue
-
-            if handler := LifecycleHandlerContainer.get_container(attr):
-                if isinstance(handler, LifecycleHandlerContainer):
-                    if handler.lifecycle_type == lifecycle_type:
-                        handler.owner_cls = target
-                        # Registry에 캐시
-                        self._registry.register(handler)
-                        handlers.append(handler)
-
-        return handlers
-
     def _invoke_handler(
         self, handler: LifecycleHandlerContainer, instance: Any
     ) -> None:
@@ -92,9 +57,7 @@ class LifecycleManager:
             container: 대상 컨테이너
             instance: 컨테이너의 인스턴스
         """
-        handlers = self._find_lifecycle_handlers(
-            container, LifecycleType.POST_CONSTRUCT
-        )
+        handlers = self._registry.get_post_construct_handlers(container)
         for handler in handlers:
             self._invoke_handler(handler, instance)
 
@@ -106,7 +69,7 @@ class LifecycleManager:
             container: 대상 컨테이너
             instance: 컨테이너의 인스턴스
         """
-        handlers = self._find_lifecycle_handlers(container, LifecycleType.PRE_DESTROY)
+        handlers = self._registry.get_pre_destroy_handlers(container)
         for handler in handlers:
             self._invoke_handler(handler, instance)
 
