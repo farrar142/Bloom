@@ -3,14 +3,12 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from bloom.core.abstract import Entry
-
 if TYPE_CHECKING:
     from bloom.core.container import HandlerContainer
 
 
 @dataclass
-class SubscribeHandlerEntry(Entry):
+class SubscribeHandlerEntry:
     """
     구독 핸들러 Entry
 

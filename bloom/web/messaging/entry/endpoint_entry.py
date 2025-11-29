@@ -2,11 +2,9 @@
 
 from dataclasses import dataclass, field
 
-from bloom.core.abstract import Entry
-
 
 @dataclass
-class StompEndpointEntry(Entry):
+class StompEndpointEntry:
     """
     STOMP 엔드포인트 Entry
 

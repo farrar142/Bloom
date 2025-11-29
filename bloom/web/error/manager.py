@@ -10,7 +10,6 @@ from bloom.core.abstract import AbstractManager
 from bloom.core.manager import get_current_manager
 
 from .container import ErrorHandlerContainer
-from .entry import ErrorHandlerEntry
 from .registry import ErrorHandlerRegistry
 
 if TYPE_CHECKING:
@@ -55,7 +54,7 @@ class ErrorHandlerManager(AbstractManager[ErrorHandlerRegistry]):
 
     def collect_handlers(self) -> None:
         """
-        ContainerManager에서 ErrorHandlerContainer를 수집하여 Entry로 변환
+        ContainerManager에서 ErrorHandlerContainer를 수집
 
         각 핸들러를 Controller 스코프 또는 글로벌 스코프 Registry에 등록합니다.
         """
@@ -70,31 +69,17 @@ class ErrorHandlerManager(AbstractManager[ErrorHandlerRegistry]):
                 if not isinstance(container, ErrorHandlerContainer):
                     continue
 
-                # Entry 생성
-                owner_cls = container.owner_cls
-                scope_prefix = None
-
-                if owner_cls and owner_cls in self._controller_prefixes:
-                    scope_prefix = self._controller_prefixes[owner_cls]
-
-                entry = ErrorHandlerEntry(
-                    exception_type=container.exception_type,
-                    handler_method=container.handler_method,
-                    owner_cls=owner_cls,
-                    scope_prefix=scope_prefix,
-                )
-
                 # 스코프에 따라 Registry에 등록
-                if scope_prefix is not None:
-                    self._controller_registry.add(entry)
+                if container.is_controller_scope():
+                    self._controller_registry.add(container)
                 else:
-                    self._global_registry.add(entry)
+                    self._global_registry.add(container)
 
     def find_handler(
         self,
         exception: Exception,
         request_path: str,
-    ) -> ErrorHandlerEntry | None:
+    ) -> ErrorHandlerContainer | None:
         """
         예외와 요청 경로에 맞는 핸들러 찾기
 
@@ -114,7 +99,7 @@ class ErrorHandlerManager(AbstractManager[ErrorHandlerRegistry]):
 
     async def call_handler(
         self,
-        entry: ErrorHandlerEntry,
+        handler: ErrorHandlerContainer,
         exception: Exception,
         request: "HttpRequest",
     ) -> Any:
@@ -124,7 +109,7 @@ class ErrorHandlerManager(AbstractManager[ErrorHandlerRegistry]):
         핸들러 메서드의 타입 힌트를 확인하여 request 파라미터가 있으면 전달합니다.
 
         Args:
-            entry: 에러 핸들러 Entry
+            handler: 에러 핸들러 Container
             exception: 발생한 예외
             request: HTTP 요청
 
@@ -136,14 +121,14 @@ class ErrorHandlerManager(AbstractManager[ErrorHandlerRegistry]):
 
         # owner 인스턴스 가져오기
         owner_instance = None
-        if entry.owner_cls:
+        if handler.owner_cls:
             container_manager = get_current_manager()
             owner_instance = container_manager.get_instance(
-                entry.owner_cls, raise_exception=False
+                handler.owner_cls, raise_exception=False
             )
 
         # 핸들러 메서드의 파라미터 검사
-        sig = inspect.signature(entry.handler_method)
+        sig = inspect.signature(handler.handler_method)
         params = list(sig.parameters.values())
 
         # self 제외하고 파라미터 이름과 타입 힌트 확인
@@ -158,14 +143,14 @@ class ErrorHandlerManager(AbstractManager[ErrorHandlerRegistry]):
         # 핸들러 호출
         if owner_instance:
             if needs_request:
-                result = entry.handler_method(owner_instance, exception, request)
+                result = handler.handler_method(owner_instance, exception, request)
             else:
-                result = entry.handler_method(owner_instance, exception)
+                result = handler.handler_method(owner_instance, exception)
         else:
             if needs_request:
-                result = entry.handler_method(exception, request)
+                result = handler.handler_method(exception, request)
             else:
-                result = entry.handler_method(exception)
+                result = handler.handler_method(exception)
 
         # async 함수인 경우 await
         if asyncio.iscoroutine(result):

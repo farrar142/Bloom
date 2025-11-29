@@ -44,7 +44,6 @@ __all__ = [
     "StaticFiles",
     "StaticFilesContainer",
     "StaticFilesManager",
-    "RouteEntry",
     "RouteRegistry",
     "RouteManager",
 ]

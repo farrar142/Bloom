@@ -3,14 +3,12 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from bloom.core.abstract import Entry
-
 if TYPE_CHECKING:
     from bloom.core.container import HandlerContainer
 
 
 @dataclass
-class MessageExceptionHandlerEntry(Entry):
+class MessageExceptionHandlerEntry:
     """
     메시지 예외 핸들러 Entry
 

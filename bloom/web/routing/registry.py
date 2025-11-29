@@ -6,12 +6,11 @@ RouteEntry 리스트를 관리하고 RouteTrie를 통한 빠른 검색을 제공
 from typing import TYPE_CHECKING
 
 from bloom.core.abstract import AbstractRegistry
+from .entry import RouteEntry
 from .trie import RouteTrie
 
 if TYPE_CHECKING:
     from bloom.web.handler import HttpMethodHandlerContainer
-
-from .entry import RouteEntry
 
 
 class RouteRegistry(AbstractRegistry[RouteEntry]):
@@ -21,13 +20,13 @@ class RouteRegistry(AbstractRegistry[RouteEntry]):
     RouteEntry 리스트를 관리하고, RouteTrie를 사용한 빠른 검색을 제공합니다.
 
     특징:
-    - Entry 리스트 관리 (AbstractRegistry 기본 기능)
+    - RouteEntry 직접 관리 (AbstractRegistry 기본 기능)
     - RouteTrie를 통한 O(log n) 라우트 검색
     - method + path로 핸들러 조회
 
     사용 예시:
         registry = RouteRegistry()
-        registry.register(RouteEntry("GET", "/users", handler))
+        registry.register(RouteEntry("GET", "/users/{id}", handler))
 
         # 핸들러 검색
         handler, params = registry.find("GET", "/users/123")
@@ -37,7 +36,7 @@ class RouteRegistry(AbstractRegistry[RouteEntry]):
         super().__init__()
         self._trie = RouteTrie()
 
-    def register(self, entry: RouteEntry) -> None:
+    def register(self, entry: RouteEntry) -> None:  # type: ignore[override]
         """Entry 등록 및 Trie에 삽입"""
         super().register(entry)
         self._trie.insert(entry.method, entry.path, entry.handler)
@@ -73,6 +72,9 @@ class RouteRegistry(AbstractRegistry[RouteEntry]):
         """Registry 및 Trie 초기화"""
         super().clear()
         self._trie = RouteTrie()
+
+    def __repr__(self) -> str:
+        return f"RouteRegistry({len(self._entries)} routes)"
 
     def __repr__(self) -> str:
         return f"RouteRegistry({len(self._entries)} routes)"

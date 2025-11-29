@@ -6,14 +6,12 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, TYPE_CHECKING
 
-from bloom.core.abstract import Entry
-
 if TYPE_CHECKING:
     from bloom.web.http import HttpRequest, HttpResponse
 
 
 @dataclass
-class ErrorHandlerEntry(Entry):
+class ErrorHandlerEntry:
     """
     에러 핸들러 Entry
 

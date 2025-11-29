@@ -97,6 +97,57 @@ class ErrorHandlerContainer[**P, R](HandlerContainer[P, R]):
         """이 핸들러가 주어진 예외를 처리할 수 있는지 확인"""
         return any(isinstance(exception, t) for t in self.exception_types)
 
+    def is_exact_match(self, exception: Exception) -> bool:
+        """예외 타입이 정확히 일치하는지 확인"""
+        return type(exception) in self.exception_types
+
+    def get_mro_distance(self, exception: Exception) -> int:
+        """
+        예외 타입과의 MRO 거리 반환
+
+        정확한 타입이면 0, 부모 타입이면 MRO에서의 위치 반환.
+        처리할 수 없으면 큰 값 반환.
+        """
+        exc_type = type(exception)
+        min_distance = 9999
+
+        for handler_exc_type in self.exception_types:
+            if handler_exc_type == exc_type:
+                return 0
+            try:
+                distance = exc_type.__mro__.index(handler_exc_type)
+                min_distance = min(min_distance, distance)
+            except ValueError:
+                continue
+
+        return min_distance
+
+    def get_scope_prefix(self) -> str | None:
+        """Controller 스코프의 RequestMapping prefix 반환 (글로벌이면 None)"""
+        from bloom.web.controller import ControllerContainer
+
+        if self.owner_cls is None:
+            return None
+
+        container = ControllerContainer.get_container(self.owner_cls)
+        if container is None:
+            return None
+
+        prefixes = container.get_metadatas("request_mapping", default="")
+        return prefixes[0] if prefixes else None
+
+    def is_controller_scope(self) -> bool:
+        """Controller 스코프인지 확인"""
+        return self.get_scope_prefix() is not None
+
+    def matches_path(self, request_path: str) -> bool:
+        """요청 경로가 이 핸들러의 스코프에 해당하는지 확인"""
+        prefix = self.get_scope_prefix()
+        if prefix is None:
+            # 글로벌 스코프는 모든 경로 매칭
+            return True
+        return request_path.startswith(prefix)
+
 
 def ErrorHandler[T](
     *exception_types: type[Exception],

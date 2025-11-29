@@ -19,7 +19,7 @@ class RouteManager(AbstractManager[RouteRegistry]):
     라우트 Manager
 
     ContainerManager에서 HttpMethodHandlerContainer들을 수집하고,
-    Controller의 RequestMapping prefix를 결합하여 RouteEntry를 생성합니다.
+    Controller의 RequestMapping prefix를 결합하여 RouteEntry로 Registry에 등록합니다.
 
     특징:
     - HttpMethodHandlerContainer 자동 수집
@@ -35,7 +35,7 @@ class RouteManager(AbstractManager[RouteRegistry]):
     """
 
     registry_type = RouteRegistry
-    # entry_type은 사용하지 않음 (HttpMethodHandlerContainer에서 직접 수집)
+    # item_type은 사용하지 않음 (직접 수집 로직 사용)
 
     def __init__(self):
         super().__init__()
@@ -52,7 +52,7 @@ class RouteManager(AbstractManager[RouteRegistry]):
 
         1. RouteRegistry 검색/생성
         2. Controller prefix 수집
-        3. HttpMethodHandlerContainer들을 수집하여 RouteEntry 생성
+        3. HttpMethodHandlerContainer들을 수집하여 RouteEntry 생성 후 등록
 
         Args:
             container_manager: HttpMethodHandlerContainer와 Controller를 검색할 ContainerManager

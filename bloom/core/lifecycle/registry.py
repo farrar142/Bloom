@@ -1,32 +1,40 @@
 """LifecycleRegistry - 라이프사이클 핸들러 레지스트리
 
 ComponentContainer별로 LifecycleHandlerContainer들을 관리합니다.
+AbstractRegistry를 상속받아 Manager-Registry 패턴을 따릅니다.
 """
 
 from typing import TYPE_CHECKING
 
+from bloom.core.abstract import AbstractRegistry
 from .container import LifecycleHandlerContainer, LifecycleType
 
 if TYPE_CHECKING:
     from bloom.core.container import Container
 
 
-class LifecycleRegistry:
+class LifecycleRegistry(AbstractRegistry[LifecycleHandlerContainer]):
     """
     라이프사이클 핸들러 레지스트리
 
+    AbstractRegistry를 상속받아 Manager-Registry 패턴을 따릅니다.
     ComponentContainer별로 @PostConstruct, @PreDestroy 메서드를 관리합니다.
     캐시된 핸들러가 없으면 동적으로 탐색하여 캐싱합니다.
+
+    내부적으로 target 클래스별로 핸들러를 그룹화하여 관리합니다.
     """
 
     def __init__(self):
-        # target 클래스 -> LifecycleHandlerContainer 리스트
+        super().__init__()
+        # target 클래스 -> LifecycleHandlerContainer 리스트 (그룹화된 캐시)
         self._handlers: dict[type, list[LifecycleHandlerContainer]] = {}
         # 이미 탐색한 클래스 추적 (빈 결과도 캐싱하기 위함)
         self._scanned: set[type] = set()
 
-    def register(self, handler: LifecycleHandlerContainer) -> None:
+    def register(self, handler: LifecycleHandlerContainer) -> None:  # type: ignore[override]
         """핸들러 등록"""
+        super().register(handler)
+
         owner = handler.owner_cls
         if owner is None:
             return
@@ -39,6 +47,8 @@ class LifecycleRegistry:
 
     def unregister(self, handler: LifecycleHandlerContainer) -> bool:
         """핸들러 등록 해제"""
+        super().unregister(handler)
+
         owner = handler.owner_cls
         if owner is None or owner not in self._handlers:
             return False
