@@ -204,10 +204,11 @@ class TestLifecycleHooks:
         # __container__ 속성 확인
         assert hasattr(Service.init, "__container__")
         container = Service.init.__container__
-        # PostConstructElement가 추가되었는지 확인
-        from bloom.core.decorators import PostConstructElement
+        # LifecycleHandlerContainer인지 확인
+        from bloom.core.lifecycle import LifecycleHandlerContainer, LifecycleType
 
-        assert container.has_element(PostConstructElement)
+        assert isinstance(container, LifecycleHandlerContainer)
+        assert container.lifecycle_type == LifecycleType.POST_CONSTRUCT
 
     def test_pre_destroy_container_attribute(self, reset_container_manager):
         """@PreDestroy 메서드에 __container__ 속성이 있음"""
@@ -221,7 +222,8 @@ class TestLifecycleHooks:
         # __container__ 속성 확인
         assert hasattr(Service.cleanup, "__container__")
         container = Service.cleanup.__container__
-        # PreDestroyElement가 추가되었는지 확인
-        from bloom.core.decorators import PreDestroyElement
+        # LifecycleHandlerContainer인지 확인
+        from bloom.core.lifecycle import LifecycleHandlerContainer, LifecycleType
 
-        assert container.has_element(PreDestroyElement)
+        assert isinstance(container, LifecycleHandlerContainer)
+        assert container.lifecycle_type == LifecycleType.PRE_DESTROY

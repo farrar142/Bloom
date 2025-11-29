@@ -9,27 +9,16 @@ from bloom.core.container import (
     HandlerContainer,
 )
 from bloom.core.container.element import OrderElement
+from bloom.core.lifecycle import (
+    LifecycleHandlerContainer,
+    LifecycleType,
+    LifecycleTypeElement,
+)
 from bloom.core.manager import try_get_current_manager
 
 
 class ComponentElement[T](Element[T]):
     pass
-
-
-class PostConstructElement[T](Element[T]):
-    """@PostConstruct 메서드를 나타내는 Element"""
-
-    def __init__(self):
-        super().__init__()
-        self.metadata["lifecycle"] = "post_construct"
-
-
-class PreDestroyElement[T](Element[T]):
-    """@PreDestroy 메서드를 나타내는 Element"""
-
-    def __init__(self):
-        super().__init__()
-        self.metadata["lifecycle"] = "pre_destroy"
 
 
 class HandlerKeyElement[T](Element[T]):
@@ -108,7 +97,7 @@ def PostConstruct[**P, R](method: Callable[P, R]) -> Callable[P, R]:
 
     의존성 주입이 완료된 후 초기화 로직을 실행합니다.
     비동기 메서드도 지원합니다.
-    HandlerContainer 기반으로 구현되어 __container__ 속성만 사용합니다.
+    LifecycleHandlerContainer 기반으로 구현됩니다.
 
     사용 예시:
         @Component
@@ -120,8 +109,8 @@ def PostConstruct[**P, R](method: Callable[P, R]) -> Callable[P, R]:
                 self.connection = create_connection(self.config.db_url)
                 print("Database connected")
     """
-    container = HandlerContainer.get_or_create(method)
-    container.add_element(PostConstructElement())
+    container = LifecycleHandlerContainer.get_or_create(method)
+    container.add_element(LifecycleTypeElement(LifecycleType.POST_CONSTRUCT))
     return method
 
 
@@ -131,7 +120,7 @@ def PreDestroy[**P, R](method: Callable[P, R]) -> Callable[P, R]:
 
     리소스 정리, 연결 해제 등의 정리 작업을 수행합니다.
     비동기 메서드도 지원합니다.
-    HandlerContainer 기반으로 구현되어 __container__ 속성만 사용합니다.
+    LifecycleHandlerContainer 기반으로 구현됩니다.
 
     사용 예시:
         @Component
@@ -141,8 +130,8 @@ def PreDestroy[**P, R](method: Callable[P, R]) -> Callable[P, R]:
                 self.connection.close()
                 print("Database disconnected")
     """
-    container = HandlerContainer.get_or_create(method)
-    container.add_element(PreDestroyElement())
+    container = LifecycleHandlerContainer.get_or_create(method)
+    container.add_element(LifecycleTypeElement(LifecycleType.PRE_DESTROY))
     return method
 
 
