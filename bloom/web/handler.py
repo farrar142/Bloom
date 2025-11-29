@@ -55,10 +55,8 @@ class HttpMethodHandlerContainer[**P, R](HandlerContainer[P, R]):
     def __init__(
         self,
         handler_method: Callable[P, R],
-        handler_key: tuple[str, str] | None = None,
     ):
         super().__init__(handler_method)
-        self.handler_key = handler_key
 
     def __repr__(self) -> str:
         response_type = self.get_metadata("response_type")
@@ -115,9 +113,7 @@ def _create_http_method_decorator(http_method: str):
                 path = f"/{func.__name__}"
             else:
                 path = __path_or_func if __path_or_func else f"/{func.__name__}"
-            container = HttpMethodHandlerContainer.get_or_create(
-                func, (http_method, path)
-            )
+            container = HttpMethodHandlerContainer.get_or_create(func)
             setattr(func, "__container__", container)
             container.add_elements(MethodElement(http_method))
             container.add_elements(PathElement(path))

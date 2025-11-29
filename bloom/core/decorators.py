@@ -32,6 +32,14 @@ class PreDestroyElement[T](Element[T]):
         self.metadata["lifecycle"] = "pre_destroy"
 
 
+class HandlerKeyElement[T](Element[T]):
+    """@Handler의 key를 담는 Element"""
+
+    def __init__(self, key: Any):
+        super().__init__()
+        self.metadata["handler_key"] = key
+
+
 def _scan_child_containers(cls: type) -> None:
     """클래스의 메서드에서 Factory/Handler 컨테이너를 찾아 owner_cls 설정"""
     from .container.base import Container
@@ -87,7 +95,8 @@ def Handler[**P, R](key: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
 
     def decorator(method: Callable[P, R]) -> Callable[P, R]:
-        HandlerContainer.get_or_create(method, key)
+        container = HandlerContainer.get_or_create(method)
+        container.add_element(HandlerKeyElement(key))
         return method
 
     return decorator
@@ -111,7 +120,7 @@ def PostConstruct[**P, R](method: Callable[P, R]) -> Callable[P, R]:
                 self.connection = create_connection(self.config.db_url)
                 print("Database connected")
     """
-    container = HandlerContainer.get_or_create(method, "__post_construct__")
+    container = HandlerContainer.get_or_create(method)
     container.add_element(PostConstructElement())
     return method
 
@@ -132,7 +141,7 @@ def PreDestroy[**P, R](method: Callable[P, R]) -> Callable[P, R]:
                 self.connection.close()
                 print("Database disconnected")
     """
-    container = HandlerContainer.get_or_create(method, "__pre_destroy__")
+    container = HandlerContainer.get_or_create(method)
     container.add_element(PreDestroyElement())
     return method
 
@@ -186,9 +195,24 @@ def Order(order: int):
     """
 
     def decorator[**P, R](method: Callable[P, R]) -> Callable[P, R]:
-        # Factory 메서드에 OrderElement 추가
-        factory_container = FactoryContainer.get_or_create(method)
-        factory_container.add_element(OrderElement(order))
+        from .container.base import Container
+        from .container.handler import HandlerContainer
+
+        # 기존 컨테이너가 있는지 확인
+        existing = getattr(method, "__container__", None)
+
+        if existing is not None:
+            # 기존 컨테이너가 있으면 그것에 OrderElement 추가
+            existing.add_element(OrderElement(order))
+        else:
+            # 기존 컨테이너가 없으면:
+            # - 메서드(함수)인 경우 HandlerContainer 사용 (Handler 계열)
+            # - 실제로 @Factory가 나중에 적용되면 FactoryContainer가 됨
+            #
+            # HandlerContainer를 기본으로 사용하면 @Get 등 하위 데코레이터가
+            # 나중에 HttpMethodHandlerContainer로 교체 가능
+            container = HandlerContainer.get_or_create(method)
+            container.add_element(OrderElement(order))
         return method
 
     return decorator

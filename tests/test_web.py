@@ -74,7 +74,6 @@ class TestHttpMethodHandlerContainer:
         assert isinstance(container, HttpMethodHandlerContainer)
         assert container.get_metadata("http_method") == "GET"
         assert container.get_metadata("http_path") == "/items"
-        assert container.handler_key == ("GET", "/items")
 
     def test_post_decorator(self):
         """@Post 데코레이터"""

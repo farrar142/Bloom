@@ -11,7 +11,7 @@ from ..manager import try_get_current_manager
 from .base import Container
 
 
-class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
+class HandlerContainer[**P, R](Container[Callable[P, R]]):
     """
     메서드를 핸들러로 등록하는 컨테이너
 
@@ -31,26 +31,18 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
     호출 시: container(...) 또는 container.invoke(...) 로 실제 메서드 실행
     """
 
-    def __init__(
-        self,
-        handler_method: Callable[P, R],
-        handler_key: Any = None,
-    ):
+    def __init__(self, handler_method: Callable[P, R]):
         self.handler_method = handler_method
-        self.handler_key = handler_key  # ex: ValueError, ("GET", "/users")
         self._bound_method: Callable[P, R] | None = None
         self._resolved_hints: dict | None = None
         self.owner_cls: type | None = None  # scan_components 후 주입됨
         self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
         self._is_coroutine: bool | None = None  # 캐싱된 코루틴 여부
-        # target은 HandlerContainer 자신의 타입
-        super().__init__(type(self))  # type: ignore
+        # target은 handler_method 자체
+        super().__init__(handler_method)  # type: ignore
 
     def __repr__(self) -> str:
-        return (
-            f"HandlerContainer(method={self.handler_method.__name__}, "
-            # f"key={self.handler_key})"
-        )
+        return f"HandlerContainer(method={self.handler_method.__name__})"
 
     def get_type_hints(self) -> dict:
         """타입 힌트를 resolve하여 캐시 (Annotated 포함)"""
@@ -106,7 +98,7 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
             self._is_coroutine = asyncio.iscoroutinefunction(bound_method)
 
         if self._is_coroutine:
-            return await bound_method(*args, **kwargs)
+            return await bound_method(*args, **kwargs)  # type: ignore
         else:
             # 동기 함수는 그대로 호출
             return bound_method(*args, **kwargs)
@@ -119,13 +111,12 @@ class HandlerContainer[**P, R](Container["HandlerContainer[P, R]"]):
     def get_or_create(
         cls,
         handler_method: Callable[P, R],
-        handler_key: Any = None,
     ) -> Self:
-        """핸들러 메서드에 대한 컨테이너 생성"""
-        if not (container := cls.get_container(handler_method)):
-            container = cls(handler_method, handler_key)
-            setattr(handler_method, "__container__", container)
-            # 현재 활성 manager가 있으면 자동 등록
-            if manager := try_get_current_manager():
-                manager.register_container(container)
-        return container
+        """핸들러 메서드에 대한 컨테이너 생성
+
+        Container._apply_override_rules를 사용하여 오버라이드 규칙 적용
+        """
+        return cls._apply_override_rules(
+            handler_method,
+            lambda: cls(handler_method),
+        )

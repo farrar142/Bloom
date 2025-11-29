@@ -84,6 +84,14 @@ class ContainerManager:
         # Container에 manager 참조 주입
         container.manager = self
 
+    def unregister_container(self, container: "Container") -> None:
+        """컨테이너 등록 해제"""
+        containers = self.container_registry.get(container.target, [])
+        if container in containers:
+            containers.remove(container)
+            if not containers:
+                del self.container_registry[container.target]
+
     def scan_components(self, module: object) -> None:
         """모듈에서 컴포넌트 스캔"""
         from .container.base import Container as BaseContainer
@@ -222,7 +230,8 @@ class ContainerManager:
 
         instances = []
         for kls, kls_instances in self.instance_registry.items():
-            if issubclass(kls, target):
+            # kls가 클래스인 경우에만 issubclass 체크
+            if isinstance(kls, type) and issubclass(kls, target):
                 instances.extend(kls_instances)
         return instances
 

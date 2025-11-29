@@ -111,7 +111,12 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
                 for containers in manager.get_all_containers().values():
                     for container in containers:
                         kls = container.target
-                        if kls != param_type and issubclass(kls, param_type):
+                        # kls가 클래스인 경우에만 issubclass 체크
+                        if (
+                            isinstance(kls, type)
+                            and kls != param_type
+                            and issubclass(kls, param_type)
+                        ):
                             dependencies.append(kls)
             else:
                 dependencies.append(param_type)
@@ -151,14 +156,14 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
             for k, v in hints.items()
             if k != first_param_name and k != vararg_param_name
         }
-        
-        # Factory Chain의 경우, 자신의 반환 타입과 동일한 의존성은 
+
+        # Factory Chain의 경우, 자신의 반환 타입과 동일한 의존성은
         # Manager에서 이미 등록된 인스턴스를 가져옴 (무한 재귀 방지)
         kwargs = {}
         for name, dep_type in filtered_hints.items():
             if name == "return":
                 continue
-            
+
             # 자신의 반환 타입과 같은 타입을 의존성으로 가지는 경우
             # (Factory Chain의 Modifier 패턴)
             if dep_type == self.target:
@@ -166,16 +171,16 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
                 if instance is not None:
                     kwargs[name] = instance
                     continue
-            
+
             # 일반적인 의존성 주입
             kwargs[name] = manager.get_instance(dep_type)
-        
+
         return self.factory_method(owner_instance, *varargs, **kwargs)  # type: ignore
 
     def initialize_instance(self) -> R:
         """
         인스턴스 초기화 (Factory Chain을 위해 캐시 무시)
-        
+
         Factory Chain에서는 각 Factory가 독립적으로 _create_instance()를 호출해야 함.
         이전 단계의 결과를 의존성으로 받아서 수정하는 패턴이기 때문임.
         """
@@ -188,11 +193,11 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
 
     @classmethod
     def get_or_create(cls, factory_method: Callable[P, R]) -> Self:
-        """팩토리 메서드에 대한 컨테이너 생성"""
-        if not (container := cls.get_container(factory_method)):
-            container = cls(factory_method)
-            setattr(factory_method, "__container__", container)
-            # 현재 활성 manager가 있으면 자동 등록
-            if manager := try_get_current_manager():
-                manager.register_container(container)
-        return container
+        """팩토리 메서드에 대한 컨테이너 생성
+
+        Container._apply_override_rules를 사용하여 오버라이드 규칙 적용
+        """
+        return cls._apply_override_rules(
+            factory_method,
+            lambda: cls(factory_method),
+        )

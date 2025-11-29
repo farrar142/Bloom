@@ -157,7 +157,7 @@ class Router:
         wrapper.__doc__ = handler_func.__doc__
 
         # HttpMethodHandlerContainer를 동적으로 생성
-        container = HttpMethodHandlerContainer.get_or_create(wrapper, (method, path))
+        container = HttpMethodHandlerContainer.get_or_create(wrapper)
         container.add_elements(MethodElement(method))
         container.add_elements(PathElement(path))
 

@@ -1,6 +1,15 @@
 """Container 베이스 클래스"""
 
-from typing import Any, Self, Optional, cast, overload, TYPE_CHECKING, get_type_hints
+from typing import (
+    Any,
+    Callable,
+    Self,
+    Optional,
+    cast,
+    overload,
+    TYPE_CHECKING,
+    get_type_hints,
+)
 
 if TYPE_CHECKING:
     from ..manager import ContainerManager
@@ -183,6 +192,82 @@ class Container[T]:
         self._get_manager().lifecycle.invoke_post_construct(self, instance)
         return instance
 
+    def _transfer_elements_to(self, target_container: "Container") -> None:
+        """현재 컨테이너의 Element들을 target_container로 이전"""
+        for element in self.elements:
+            if not target_container.has_element(type(element)):
+                target_container.add_element(element)
+
+    @classmethod
+    def _apply_override_rules(
+        cls,
+        target: Any,
+        create_new: Callable[[], Self],
+    ) -> Self:
+        """
+        컨테이너 오버라이드 규칙을 적용하여 컨테이너를 생성하거나 반환
+
+        오버라이드 규칙:
+        1. 기존 컨테이너가 없으면: 새로 생성
+        2. 동일 타입이면: 기존 컨테이너 반환
+        3. 하위 컨테이너가 이미 존재하면: 하위 컨테이너 반환 (상위는 Element만 추가 가능)
+        4. 상위 컨테이너가 이미 존재하면: 하위 컨테이너로 교체하고 Element 이전
+
+        MRO 인덱스가 높을수록 더 구체적(하위) 타입:
+        - Container: 0
+        - HandlerContainer: 1
+        - HttpMethodHandlerContainer: 2
+
+        Args:
+            target: 컨테이너를 연결할 대상 (클래스 또는 메서드)
+            create_new: 새 컨테이너를 생성하는 함수
+
+        Returns:
+            적용된 컨테이너
+        """
+        existing_container = getattr(target, "__container__", None)
+
+        if existing_container is None:
+            # 기존 컨테이너 없음 → 새로 생성
+            container = create_new()
+            setattr(target, "__container__", container)
+            if manager := try_get_current_manager():
+                manager.register_container(container)
+            return container
+
+        # 기존 컨테이너가 있는 경우 오버라이드 규칙 적용
+        if isinstance(existing_container, cls):
+            # 동일 타입 → 기존 컨테이너 반환
+            return existing_container
+
+        if isinstance(existing_container, Container):
+            # MRO 인덱스 비교: 높을수록 더 구체적(하위) 타입
+            existing_mro_idx = type(existing_container).__mro__.index(Container)
+            cls_mro_idx = cls.__mro__.index(Container)
+
+            if existing_mro_idx > cls_mro_idx:
+                # existing_container가 cls보다 더 구체적(하위)임
+                # → 하위 컨테이너를 유지하고 반환
+                return existing_container  # type: ignore
+
+            # existing_container가 상위 타입인 경우
+            # → 하위 컨테이너로 교체하고, 상위 컨테이너의 Element들을 이전
+            new_container = create_new()
+            existing_container._transfer_elements_to(new_container)
+            setattr(target, "__container__", new_container)
+            if manager := try_get_current_manager():
+                # 기존 컨테이너 제거 후 새 컨테이너 등록
+                manager.unregister_container(existing_container)
+                manager.register_container(new_container)
+            return new_container
+
+        # 다른 타입의 객체가 있는 경우 (예상치 못한 상황)
+        container = create_new()
+        setattr(target, "__container__", container)
+        if manager := try_get_current_manager():
+            manager.register_container(container)
+        return container
+
     @classmethod
     def get_or_create(cls, kls: type[T]) -> Self:
         """
@@ -191,13 +276,7 @@ class Container[T]:
         현재 활성 manager가 있으면 자동으로 등록됨.
         없으면 나중에 scan() 시점에 등록됨.
         """
-        if not (container := cls.get_container(kls)):
-            container = cls(kls)
-            setattr(kls, "__container__", container)
-            # 현재 활성 manager가 있으면 자동 등록
-            if manager := try_get_current_manager():
-                manager.register_container(container)
-        return container
+        return cls._apply_override_rules(kls, lambda: cls(kls))
 
     def add_element(self, element: "Element[T]") -> None:
         """컨테이너에 엘리먼트 추가"""
