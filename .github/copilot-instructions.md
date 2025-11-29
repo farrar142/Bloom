@@ -755,7 +755,11 @@ bloom/
 ## 주의사항
 
 - `pydantic>=2.0` 필수 의존성 (BaseModel 파라미터 바인딩)
-- Python 3.12+ 문법 사용 (Generic `[T]` 문법, `type[T]`)
+- **Python 3.13 타입 문법 사용**:
+  - `class MyClass[T]:` 사용 (`class MyClass(Generic[T]):` ❌)
+  - `def func[T](x: T) -> T:` 사용
+  - `type Alias = int | str` 사용
+  - `Callable[Concatenate[Self, P], R]` 패턴으로 인스턴스 메서드 타이핑
 - 비동기 핸들러 지원 (`async def` 메서드 자동 감지)
 - **⚠️ 메타데이터 저장 금지 사항**: 클래스나 메서드에 `setattr`로 직접 메타데이터를 저장하지 말 것! 반드시 Container의 Element를 통해서만 저장/조회
 - **⚠️ HTTP path vs WebSocket STOMP path**: `@Controller`의 `@RequestMapping` path는 HTTP 전용이며, `@MessageMapping` 등의 STOMP path와는 완전히 별개입니다. `@MessageController`만 STOMP prefix를 제공합니다.
