@@ -22,6 +22,8 @@ Bloom은 Spring Framework에서 영감을 받은 Python DI(의존성 주입) 컨
 | `@Handler(key)`           | 키 기반 핸들러 등록 (예외 처리, 라우팅 등)   |
 | `@Controller`             | 웹 컨트롤러 (Component 확장)                 |
 | `@Get/@Post/@Put/@Delete` | HTTP 메서드 핸들러                           |
+| `@ConfigurationProperties`| 타입 안전한 설정 바인딩                      |
+| `@Order`                  | 실행 순서 지정 (낮을수록 먼저)               |
 
 ### 필드 주입 패턴
 
@@ -406,16 +408,139 @@ class GlobalErrorHandlers:
 
 우선순위: Controller 스코프 정확한 타입 → Controller 부모 타입 → 글로벌 정확한 타입 → 글로벌 부모 타입
 
+### Method Advice 패턴 (AOP)
+
+메서드 호출을 가로채어 전처리/후처리 로직을 실행하는 AOP 패턴입니다.
+
+```python
+from bloom import Component
+from bloom.core.decorators import Factory
+from bloom.core.container import HandlerContainer
+from bloom.core.container.element import Element
+from bloom.core.advice import MethodAdvice, MethodAdviceRegistry, InvocationContext
+
+# 1. 마커 Element 정의
+class TransactionalElement(Element):
+    pass
+
+# 2. 데코레이터 정의
+def Transactional(method):
+    container = HandlerContainer.get_or_create(method)
+    container.add_elements(TransactionalElement())
+    return method
+
+# 3. Advice 구현
+@Component
+class TransactionAdvice(MethodAdvice):
+    db: Database  # DI로 주입
+
+    def supports(self, container: HandlerContainer) -> bool:
+        return container.has_element(TransactionalElement)
+
+    async def before(self, context: InvocationContext) -> None:
+        tx = await self.db.begin()
+        context.set_attribute("tx", tx)
+
+    async def after(self, context: InvocationContext, result: Any) -> Any:
+        tx = context.get_attribute("tx")
+        await tx.commit()
+        return result
+
+    async def on_error(self, context: InvocationContext, error: Exception) -> Any:
+        tx = context.get_attribute("tx")
+        await tx.rollback()
+        raise error
+
+# 4. Registry 생성 (@Factory 필수!)
+@Component
+class AdviceConfig:
+    @Factory
+    def advice_registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+        registry = MethodAdviceRegistry()
+        for advice in advices:
+            registry.register(advice)
+        return registry
+
+# 5. 서비스에서 사용 (HandlerContainer가 이미 생성됨 - @Handler 불필요)
+@Component
+class OrderService:
+    @Transactional
+    async def create_order(self, order_data: dict) -> Order:
+        order = Order(**order_data)
+        await self.order_repo.save(order)
+        return order
+```
+
+**실행 흐름:**
+
+- 정상: `before()` → 핸들러 → `after()`
+- 예외: `before()` → 핸들러 [예외!] → `on_error()`
+
+자세한 내용은 `docs/method-advice-pattern.md` 참조.
+
+### ConfigurationProperties 패턴
+
+타입 안전한 설정 바인딩:
+
+```python
+from dataclasses import dataclass
+from bloom import Component
+from bloom.config import ConfigurationProperties
+
+@ConfigurationProperties("app.database")
+@dataclass
+class DatabaseConfig:
+    host: str = "localhost"
+    port: int = 5432
+    username: str = ""
+    password: str = ""
+
+@Component
+class DatabaseService:
+    config: DatabaseConfig  # 자동으로 app.database.* 설정 바인딩
+
+# Application 설정
+app = Application("myapp")
+app.load_config("config/application.yaml")
+app.scan(__name__).ready()
+```
+
+자세한 내용은 `docs/config-properties.md` 참조.
+
+### Container 오버라이드 규칙
+
+중첩 데코레이터에서 더 구체적인(하위) Container가 우선합니다. MRO 인덱스로 구체성을 판단합니다:
+
+```python
+# 상위 → 하위: 하위가 오버라이드, Element 자동 이전
+@Order(1)        # HandlerContainer + OrderElement
+@Get("/users")   # HttpMethodHandlerContainer로 교체, OrderElement 이전됨
+def handler(): pass
+
+# 하위 → 상위: 하위 유지, Element만 추가
+@Get("/users")   # HttpMethodHandlerContainer 생성
+@Order(1)        # 기존 컨테이너에 OrderElement만 추가
+def handler(): pass
+```
+
+자세한 내용은 `docs/architecture-patterns.md` 참조.
+
 ## 파일 구조 가이드
 
 ```
 bloom/
 ├── core/           # DI 컨테이너 핵심
 │   ├── abstract/   # 추상 패턴 (Entry, AbstractRegistry, AbstractManager, EntryGroup, GroupRegistry)
-│   ├── container/  # Container, Element, ComponentContainer, FactoryContainer, HandlerContainer
+│   ├── container/  # Container, Element, ComponentContainer, FactoryContainer, HandlerContainer, CallableContainer
+│   ├── advice/     # AOP (MethodAdvice, MethodAdviceRegistry, MethodInvocationManager)
 │   ├── manager.py  # ContainerManager (ContextVar 기반)
+│   ├── orchestrator.py # ContainerOrchestrator (초기화 오케스트레이션)
 │   ├── lifecycle.py # PostConstruct/PreDestroy 처리
 │   └── lazy.py     # Lazy[T] descriptor
+├── config/         # 설정 관리
+│   ├── manager.py  # ConfigManager
+│   ├── properties.py # ConfigurationProperties
+│   └── loader.py   # 설정 로더 (YAML, JSON, ENV)
 ├── web/            # ASGI 웹 레이어
 │   ├── router.py   # URL 라우팅 (Manager-Registry-Entry 패턴)
 │   ├── routing/    # RouteRegistry, RouteEntry, MethodRegistry
