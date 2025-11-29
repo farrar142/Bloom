@@ -42,7 +42,6 @@ from .context import InvocationContext
 from .registry import MethodAdviceRegistry
 from .manager import MethodInvocationManager
 from .proxy import MethodProxy
-from .builtin import Async, AsyncElement, AsyncTask, get_default_executor
 
 __all__ = [
     "MethodAdvice",
@@ -50,8 +49,4 @@ __all__ = [
     "MethodAdviceRegistry",
     "MethodInvocationManager",
     "MethodProxy",
-    "Async",
-    "AsyncElement",
-    "AsyncTask",
-    "get_default_executor",
 ]

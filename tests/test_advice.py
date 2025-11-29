@@ -13,9 +13,6 @@ from bloom.core.advice import (
     MethodInvocationManager,
     InvocationContext,
     MethodProxy,
-    Async,
-    AsyncElement,
-    AsyncTask,
 )
 
 
@@ -673,108 +670,6 @@ class TestNestedAdvice:
         # outer.before -> outer.execute -> inner.before -> inner.execute -> inner.after -> outer.after
         assert "outer:execute" in call_log
         assert "inner:execute" in call_log
-
-
-# === @Async 테스트 ===
-
-
-class TestAsyncDecorator:
-    """@Async 데코레이터 테스트"""
-
-    def test_async_returns_async_task(self):
-        """@Async 메서드는 AsyncTask를 반환"""
-        # Given
-        import concurrent.futures
-
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-
-        class AsyncAdvice(MethodAdvice):
-            def supports(self, container: HandlerContainer) -> bool:
-                return container.has_element(AsyncElement)
-
-            def invoke_sync(self, context, proceed):
-                future = executor.submit(proceed)
-                return AsyncTask(future)
-
-        @Component
-        class AdviceConfig:
-            @Factory
-            def advice_registry(self) -> MethodAdviceRegistry:
-                registry = MethodAdviceRegistry()
-                registry.register(AsyncAdvice())
-                return registry
-
-        @Component
-        class MyService:
-            @Async
-            def slow_task(self) -> str:
-                import time
-
-                time.sleep(0.1)
-                return "done"
-
-        # When
-        app = Application("test").scan(AdviceConfig, MyService).ready()
-        service = app.manager.get_instance(MyService)
-        task = service.slow_task()
-
-        # Then
-        assert isinstance(task, AsyncTask)
-        result = task.join().result()
-        assert result == "done"
-
-        executor.shutdown(wait=True)
-
-    def test_async_task_join_with_timeout(self):
-        """AsyncTask.join()에 timeout 지정"""
-        # Given
-        import concurrent.futures
-        import threading
-
-        # 작업 취소용 이벤트
-        cancel_event = threading.Event()
-
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-
-        class AsyncAdvice(MethodAdvice):
-            def supports(self, container: HandlerContainer) -> bool:
-                return container.has_element(AsyncElement)
-
-            def invoke_sync(self, context, proceed):
-                future = executor.submit(proceed)
-                return AsyncTask(future)
-
-        @Component
-        class AdviceConfig:
-            @Factory
-            def advice_registry(self) -> MethodAdviceRegistry:
-                registry = MethodAdviceRegistry()
-                registry.register(AsyncAdvice())
-                return registry
-
-        @Component
-        class MyService:
-            @Async
-            def slow_task(self) -> str:
-                # 취소 가능한 대기 (0.1초씩 체크, 최대 10초)
-                for _ in range(100):
-                    if cancel_event.is_set():
-                        return "cancelled"
-                    cancel_event.wait(0.1)
-                return "done"
-
-        # When
-        app = Application("test").scan(AdviceConfig, MyService).ready()
-        service = app.manager.get_instance(MyService)
-        task = service.slow_task()
-
-        # Then
-        with pytest.raises(concurrent.futures.TimeoutError):
-            task.join(timeout=0.1)
-
-        # 작업 취소 후 정리
-        cancel_event.set()
-        executor.shutdown(wait=True)
 
 
 # === 에러 전파 테스트 ===

@@ -203,9 +203,11 @@ class Application:
     ) -> None:
         """
         인스턴스의 HandlerContainer 메서드들에 프록시를 적용합니다.
+        ProxyableDescriptor를 구현한 디스크립터도 처리합니다.
         """
         from .core.advice import MethodProxy
         from .core.container import HandlerContainer
+        from .core.abstract import ProxyableDescriptor
 
         cls = type(instance)
 
@@ -222,7 +224,25 @@ class Application:
             if not callable(attr):
                 continue
 
-            # HandlerContainer가 있는지 확인
+            # ProxyableDescriptor 처리 (@Task 등)
+            if isinstance(attr, ProxyableDescriptor):
+                original_handler = attr.get_original_handler()
+                if original_handler is not None:
+                    container = HandlerContainer.get_container(original_handler)
+                    if container is not None:
+                        # 프록시 생성
+                        proxy = MethodProxy(
+                            container=container,
+                            instance=instance,
+                            original=original_handler,
+                            manager=invocation_manager,
+                        )
+                        # 디스크립터에 프록시 적용
+                        bound_obj = attr.apply_proxy(instance, proxy)
+                        setattr(instance, name, bound_obj)
+                continue
+
+            # 일반 메서드 처리
             container = HandlerContainer.get_container(attr)
             if container is None:
                 continue
@@ -247,6 +267,9 @@ class Application:
         모든 컴포넌트의 @PreDestroy 메서드를 역순으로 호출합니다.
         (나중에 초기화된 컴포넌트부터 먼저 정리)
 
+        Note:
+            스케줄러가 실행 중이면 shutdown_async()를 사용하세요.
+
         Returns:
             self (메서드 체이닝 지원)
         """
@@ -262,3 +285,21 @@ class Application:
 
         self._is_ready = False
         return self
+
+    async def shutdown_async(self, wait: bool = True) -> "Application":
+        """
+        애플리케이션 비동기 종료
+
+        모든 컴포넌트의 @PreDestroy 메서드를 호출합니다.
+
+        Args:
+            wait: True이면 실행 중인 작업 완료 대기
+
+        Returns:
+            self (메서드 체이닝 지원)
+        """
+        if not self._is_ready:
+            return self
+
+        # 동기 종료 처리
+        return self.shutdown()

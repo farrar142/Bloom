@@ -74,3 +74,15 @@ class MethodAdviceRegistry(AbstractRegistry["MethodAdvice"]):
         # 기본 구현: supports()가 True면 첫 번째 매칭 Element에 할당
         # 더 정확한 구현은 Advice에 target_element 속성을 추가하는 것
         return True
+
+    def has_matching_advice(self, container: "HandlerContainer") -> bool:
+        """
+        주어진 컨테이너에 적용 가능한 어드바이스가 있는지 확인합니다.
+
+        Args:
+            container: 핸들러 컨테이너
+
+        Returns:
+            적용 가능한 어드바이스가 있으면 True
+        """
+        return any(advice.supports(container) for advice in self._entries)

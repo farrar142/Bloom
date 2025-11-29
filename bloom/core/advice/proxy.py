@@ -59,13 +59,13 @@ class MethodProxy:
         메서드 호출 시 Advice 체인을 실행합니다.
 
         - 비동기 메서드: 코루틴 반환
-        - 동기 메서드: 즉시 결과 반환 (Manager가 @Async 처리 담당)
+        - 동기 메서드: 즉시 결과 반환
         """
         if self._is_async:
             # 비동기: 코루틴 반환
             return self._invoke_async(*args, **kwargs)
         else:
-            # 동기: Manager에게 위임 (@Async 포함한 모든 처리)
+            # 동기: Manager에게 위임
             return self._manager.invoke_sync(
                 self._container, self._instance, self._original, *args, **kwargs
             )

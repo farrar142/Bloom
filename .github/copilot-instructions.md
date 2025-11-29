@@ -559,7 +559,118 @@ class OrderService:
 - 정상: `before()` → 핸들러 → `after()`
 - 예외: `before()` → 핸들러 [예외!] → `on_error()`
 
+**ProxyableDescriptor 추상 클래스:**
+
+디스크립터(`@Task` 등)가 프록시 적용을 지원하기 위한 ABC입니다.
+`Application`은 구체적인 디스크립터 타입을 몰라도 이 ABC만 알면 됩니다.
+
+```python
+from abc import ABC, abstractmethod
+from bloom.core.abstract import ProxyableDescriptor
+
+class ProxyableDescriptor(ABC):
+    @abstractmethod
+    def get_original_handler(self) -> Callable | None:
+        """원본 핸들러 반환 (HandlerContainer 조회용)"""
+        ...
+
+    @abstractmethod
+    def apply_proxy(self, instance: Any, proxy: Any) -> Any:
+        """프록시를 적용하고 바인딩된 객체 반환"""
+        ...
+
+# 사용 예: TaskDescriptor가 ProxyableDescriptor를 상속
+class TaskDescriptor(ProxyableDescriptor, Generic[T]):
+    def get_original_handler(self) -> Callable[..., T]:
+        return self._handler
+
+    def apply_proxy(self, instance: Any, proxy: Any) -> BoundTask[T]:
+        bound_task = self.__get__(instance, type(instance))
+        bound_task._proxy = proxy
+        bound_task._use_proxy = True
+        return bound_task
+```
+
 자세한 내용은 `docs/method-advice-pattern.md` 참조.
+
+### Task 패턴 (@Task) - Celery 스타일
+
+`@Task` 데코레이터로 메서드를 비동기 태스크로 정의합니다. Celery와 유사한 인터페이스를 제공합니다:
+
+```python
+from bloom import Component
+from bloom.core.decorators import Factory
+from bloom.task import (
+    Task,
+    TaskBackend,
+    AsyncioTaskBackend,
+    TaskMethodAdvice,
+    TaskResult,
+    ScheduledTask,
+)
+from bloom.core.advice import MethodAdvice, MethodAdviceRegistry
+
+@Component
+class EmailService:
+    @Task
+    def send_email(self, to: str, subject: str) -> str:
+        # 이메일 전송 로직
+        return f"Sent to {to}"
+
+    @Task(name="important-email", max_retries=3)
+    async def send_important_email(self, to: str) -> str:
+        await self.send_with_retry(to)
+        return f"Important sent to {to}"
+
+@Component
+class TaskConfig:
+    @Factory
+    def task_backend(self) -> TaskBackend:
+        return AsyncioTaskBackend(max_workers=4)
+
+    @Factory
+    def task_advice(self, backend: TaskBackend) -> TaskMethodAdvice:
+        return TaskMethodAdvice(backend)
+
+    @Factory
+    def advice_registry(
+        self,
+        task_advice: TaskMethodAdvice,
+        *advices: MethodAdvice,
+    ) -> MethodAdviceRegistry:
+        registry = MethodAdviceRegistry()
+        registry.register(task_advice)
+        for advice in advices:
+            registry.register(advice)
+        return registry
+
+# 사용법:
+service = app.manager.get_instance(EmailService)
+
+# 1. 직접 호출 (동기)
+result = service.send_email("user@example.com", "Hello")
+
+# 2. 백그라운드 실행 (비동기)
+task_result: TaskResult = service.send_email.delay("user@example.com", "Hello")
+value = task_result.get()           # 결과 대기
+task_result.ready()                 # 완료 여부
+task_result.successful()            # 성공 여부
+
+# 3. 스케줄 등록
+scheduled: ScheduledTask = service.send_email.schedule(
+    fixed_rate=60,                  # 60초마다
+    args=("admin@example.com", "Report"),
+)
+scheduled.pause()   # 일시정지
+scheduled.resume()  # 재개
+scheduled.cancel()  # 취소
+```
+
+**스케줄 트리거:**
+
+- `fixed_rate`: 시작 시점 기준 고정 간격 (초)
+- `fixed_delay`: 완료 시점 기준 고정 지연 (초)
+- `cron`: cron 표현식 (분 시 일 월 요일)
 
 ### ConfigurationProperties 패턴
 
@@ -624,6 +735,13 @@ bloom/
 │   ├── manager.py  # ConfigManager
 │   ├── properties.py # ConfigurationProperties
 │   └── loader.py   # 설정 로더 (YAML, JSON, ENV)
+├── task/           # 태스크 시스템 (Celery 스타일)
+│   ├── __init__.py # 패키지 exports
+│   ├── trigger.py  # Trigger, CronTrigger, FixedRateTrigger, FixedDelayTrigger
+│   ├── result.py   # TaskResult, AsyncTaskResult, ScheduledTask
+│   ├── backend.py  # TaskBackend, AsyncioTaskBackend
+│   ├── decorator.py # @Task, TaskElement, BoundTask
+│   └── advice.py   # TaskMethodAdvice
 ├── web/            # ASGI 웹 레이어
 │   ├── router.py   # URL 라우팅 (Manager-Registry-Entry 패턴)
 │   ├── routing/    # RouteRegistry, RouteEntry, MethodRegistry

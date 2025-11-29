@@ -8,10 +8,12 @@ from .group import EntryGroup
 from .group_registry import GroupRegistry
 from .registry import AbstractRegistry
 from .manager import AbstractManager
+from .proxyable import ProxyableDescriptor
 
 __all__ = [
     "EntryGroup",
     "GroupRegistry",
     "AbstractRegistry",
     "AbstractManager",
+    "ProxyableDescriptor",
 ]
