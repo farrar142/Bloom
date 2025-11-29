@@ -170,7 +170,7 @@ class TestHandlerIntegration:
         class UserController:
             repo: UserRepository
 
-            @Handler(("GET", "/users"))
+            @Handler
             def list_users(self) -> list[str]:
                 return self.repo.get_all()
 
@@ -188,15 +188,15 @@ class TestHandlerIntegration:
 
         @Component
         class MultiController:
-            @Handler(("GET", "/a"))
+            @Handler
             def handle_a(self) -> str:
                 return "A"
 
-            @Handler(("GET", "/b"))
+            @Handler
             def handle_b(self) -> str:
                 return "B"
 
-            @Handler(("POST", "/c"))
+            @Handler
             def handle_c(self) -> str:
                 return "C"
 

@@ -42,15 +42,15 @@ class Configuration:
 class HandlerTestController:
     """Handler 메서드를 포함하는 컨트롤러 (테스트용)"""
 
-    @Handler(("GET", "/users"))
+    @Handler
     def get_users(self) -> list[str]:
         return ["user1", "user2"]
 
-    @Handler(ValueError)
+    @Handler
     def handle_error(self, e: ValueError) -> str:
         return str(e)
 
-    @Handler("test_key")
+    @Handler
     def do_something(self) -> str:
         return "done"
 

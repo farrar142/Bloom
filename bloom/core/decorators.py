@@ -21,14 +21,6 @@ class ComponentElement[T](Element[T]):
     pass
 
 
-class HandlerKeyElement[T](Element[T]):
-    """@Handler의 key를 담는 Element"""
-
-    def __init__(self, key: Any):
-        super().__init__()
-        self.metadata["handler_key"] = key
-
-
 def _scan_child_containers(cls: type) -> None:
     """클래스의 메서드에서 Factory/Handler 컨테이너를 찾아 owner_cls 설정"""
     from .container.base import Container
@@ -66,7 +58,7 @@ def Factory[**P, R](method: Callable[P, R]) -> Callable[P, R]:
     return method
 
 
-def Handler[**P, R](key: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
+def Handler[**P, R](method: Callable[P, R]) -> Callable[P, R]:
     """
     Handler 데코레이터: 메서드를 핸들러로 등록
     해당 메서드가 속한 클래스가 @Component로 등록되어 있어야 함
@@ -74,21 +66,16 @@ def Handler[**P, R](key: Any) -> Callable[[Callable[P, R]], Callable[P, R]]:
     사용 예시:
         @Component
         class MyController:
-            @Handler(("GET", "/users"))
+            @Handler
             def get_users(self) -> list[User]:
                 return []
 
-            @Handler(ValueError)
+            @Handler
             def handle_error(self, error: ValueError) -> Response:
                 return Response(400, str(error))
     """
-
-    def decorator(method: Callable[P, R]) -> Callable[P, R]:
-        container = HandlerContainer.get_or_create(method)
-        container.add_element(HandlerKeyElement(key))
-        return method
-
-    return decorator
+    HandlerContainer.get_or_create(method)
+    return method
 
 
 def PostConstruct[**P, R](method: Callable[P, R]) -> Callable[P, R]:

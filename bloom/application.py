@@ -154,7 +154,10 @@ class Application:
         else:
             self._initialize_containers()
 
-        # 3. 라우터 초기화
+        # 3. 메서드 프록시 적용 (Advice 체인 지원)
+        self._apply_method_proxies()
+
+        # 4. 라우터 초기화
         self.router.collect_routes()
 
         # 4. WebSocket 초기화 (@EnableWebSocket 감지)
@@ -166,6 +169,67 @@ class Application:
     def _bind_configuration_properties(self) -> None:
         """ConfigurationProperties를 바인딩하여 인스턴스 생성"""
         self._config_manager.bind_configuration_properties(self.manager)
+
+    def _apply_method_proxies(self) -> None:
+        """
+        HandlerContainer가 있는 모든 메서드에 프록시를 적용합니다.
+
+        MethodInvocationManager가 등록되어 있으면, 해당 Manager를 통해
+        Advice 체인을 실행하도록 메서드를 프록시로 감쌉니다.
+        """
+        from .core.advice import MethodInvocationManager, MethodProxy
+        from .core.container import HandlerContainer
+        import inspect
+
+        # MethodInvocationManager 인스턴스 조회 (없으면 프록시 적용 안 함)
+        invocation_manager = self.manager.get_instance(
+            MethodInvocationManager, raise_exception=False
+        )
+        if invocation_manager is None:
+            return
+
+        # 모든 인스턴스를 순회하며 프록시 적용
+        for instances in self.manager.get_all_instances().values():
+            for instance in instances:
+                self._apply_proxies_to_instance(instance, invocation_manager)
+
+    def _apply_proxies_to_instance(
+        self, instance: Any, invocation_manager: Any
+    ) -> None:
+        """
+        인스턴스의 HandlerContainer 메서드들에 프록시를 적용합니다.
+        """
+        from .core.advice import MethodProxy
+        from .core.container import HandlerContainer
+
+        cls = type(instance)
+
+        for name in dir(cls):
+            if name.startswith("_"):
+                continue
+
+            try:
+                attr = getattr(cls, name)
+            except AttributeError:
+                continue
+
+            # 메서드인지 확인
+            if not callable(attr):
+                continue
+
+            # HandlerContainer가 있는지 확인
+            container = HandlerContainer.get_container(attr)
+            if container is None:
+                continue
+
+            # 프록시 생성 및 적용
+            proxy = MethodProxy(
+                container=container,
+                instance=instance,
+                original=attr,
+                manager=invocation_manager,
+            )
+            setattr(instance, name, proxy)
 
     def _initialize_websocket(self) -> None:
         """WebSocket 초기화 (@EnableWebSocket 컴포넌트가 있는 경우)"""

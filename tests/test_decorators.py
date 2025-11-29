@@ -57,14 +57,15 @@ class TestHandler:
         assert hasattr(HandlerTestController.get_users, "__container__")
         container = HandlerTestController.get_users.__container__
         assert isinstance(container, HandlerContainer)
-        # handler_key는 이제 Element의 metadata에 저장됨
-        assert container.get_metadata("handler_key") == ("GET", "/users")
 
-    def test_handler_with_exception_key(self):
-        """예외 타입을 키로 사용"""
-        container = HandlerTestController.handle_error.__container__
-        # handler_key는 이제 Element의 metadata에 저장됨
-        assert container.get_metadata("handler_key") is ValueError
+    def test_handler_multiple_methods(self):
+        """여러 Handler 메서드가 각각 HandlerContainer를 가짐"""
+        container1 = HandlerTestController.get_users.__container__
+        container2 = HandlerTestController.handle_error.__container__
+        container3 = HandlerTestController.do_something.__container__
+
+        assert container1 is not container2
+        assert container2 is not container3
 
     @pytest.mark.asyncio
     async def test_handler_callable(self, reset_container_manager):
