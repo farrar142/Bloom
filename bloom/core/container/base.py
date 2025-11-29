@@ -144,11 +144,19 @@ class Container[T]:
     def _inject_dependencies(self, annotations: dict[str, type]) -> dict[str, Any]:
         """어노테이션 기반으로 의존성을 주입하여 kwargs 반환"""
         from ..lazy import LazyProxy, is_lazy_component
+        from ...config.env import is_env_type, resolve_env_value
 
         manager = self._get_manager()
         kwargs = {}
         for name, dep_type in annotations.items():
             if name == "return":
+                continue
+
+            # 환경변수 타입 처리 (Env[Literal["KEY"]])
+            if is_env_type(dep_type):
+                env_value = resolve_env_value(dep_type)
+                if env_value is not None:
+                    kwargs[name] = env_value
                 continue
 
             # 먼저 이미 등록된 인스턴스가 있는지 확인
