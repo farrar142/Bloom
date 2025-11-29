@@ -132,8 +132,8 @@ class UploadedFile:
 
 
 # 런타임 alias (RequestBodyType을 RequestBody로 사용)
-RequestBody = RequestBodyType
-
 if TYPE_CHECKING:
     # 타입 체커용 더 정확한 타입
     type RequestBody[T] = Annotated[T, RequestBodyType[T]]
+else:
+    RequestBody = RequestBodyType

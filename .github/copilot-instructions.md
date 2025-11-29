@@ -68,6 +68,89 @@ uv run pytest -k "lifecycle"     # 특정 패턴 테스트
 - 새 컴포넌트 정의 시 테스트 내부에서 `Application("test").ready()` 호출 필요
 - 비동기 테스트는 `@pytest.mark.asyncio` 데코레이터 사용
 
+### TestCase 클래스 (Django 스타일)
+
+`bloom.testing.TestCase`는 Django처럼 모든 테스트 기능을 하나의 클래스에 통합합니다:
+
+```python
+from bloom import Component
+from bloom.web import Controller, Get
+from bloom.testing import TestCase
+
+@Component
+class UserRepository:
+    def get_users(self) -> list[str]:
+        return ["alice", "bob"]
+
+@Component
+class UserService:
+    repository: UserRepository
+
+@Controller
+class UserController:
+    service: UserService
+
+    @Get("/users")
+    def list_users(self) -> list[str]:
+        return self.service.repository.get_users()
+
+class TestUserController(TestCase):
+    # 클래스 속성으로 설정
+    app_name = "test"
+    components = [UserRepository, UserService, UserController]
+    config = {"debug": True}  # 선택적 설정
+
+    def test_get_users(self):
+        # DI 인스턴스 조회
+        service = self.get_instance(UserService)
+        self.assert_instance_of(service, UserService)
+
+        # 필드 주입 검증
+        repo = self.assert_injected(service, "repository", UserRepository)
+
+    def test_http_request(self):
+        # HTTP 요청 (동기)
+        response = self.get("/users")
+        self.assert_success(response)
+        self.assert_json_equal(response, ["alice", "bob"])
+
+    def test_with_mock(self):
+        # Mock 오버라이드
+        class FakeRepository:
+            def get_users(self): return ["fake"]
+
+        with self.override(UserRepository, FakeRepository()):
+            repo = self.get_instance(UserRepository)
+            self.assertEqual(repo.get_users(), ["fake"])
+```
+
+#### TestCase 주요 메서드
+
+| 카테고리      | 메서드                                                                                                    |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| **DI**        | `get_instance(type)`, `get_instances(type)`, `has_instance(type)`                                         |
+| **HTTP**      | `get()`, `post()`, `put()`, `delete()`, `patch()`                                                         |
+| **Mock**      | `override(type, instance)`, `override_factory(type, factory)`                                             |
+| **Assertion** | `assert_instance_of()`, `assert_injected()`, `assert_status()`, `assert_success()`, `assert_json_equal()` |
+| **디버깅**    | `print_container_tree()`, `get_container_info()`                                                          |
+
+#### AsyncTestCase (비동기)
+
+```python
+from bloom.testing import AsyncTestCase
+import pytest
+
+class TestAsyncService(AsyncTestCase):
+    components = [AsyncService]
+
+    @pytest.mark.asyncio
+    async def test_async_method(self):
+        response = await self.async_get("/api/data")
+        self.assert_success(response)
+```
+
+자세한 내용은 `docs/testing-testcase.md` 참조.
+
 ### 서버 실행
 
 ```bash
