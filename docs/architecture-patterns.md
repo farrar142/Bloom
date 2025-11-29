@@ -87,6 +87,132 @@ container = ComponentContainer.get_or_create(cls)
 container.add_element(MyElement(value))
 ```
 
+## 중첩 데코레이터와 Container 오버라이드
+
+### 데코레이터 실행 순서
+
+Python에서 중첩 데코레이터는 **아래에서 위로** 실행됩니다:
+
+```python
+@Order(1)        # 3번째 실행
+@Get("/users")   # 2번째 실행
+def handler():   # 1번째: 함수 정의
+    pass
+```
+
+실제 실행 순서:
+1. `handler` 함수 정의
+2. `@Get("/users")` → `HttpMethodHandlerContainer` 생성
+3. `@Order(1)` → 기존 컨테이너에 `OrderElement` 추가
+
+### Container 계층 구조
+
+Container는 상속 계층을 가집니다:
+
+```
+Container (base)
+    └── HandlerContainer
+            └── HttpMethodHandlerContainer
+            └── ErrorHandlerContainer
+```
+
+### 오버라이드 규칙
+
+**핵심 원칙**: 더 구체적인(하위) Container가 우선합니다.
+
+```python
+# 시나리오 1: 상위 → 하위 (하위가 오버라이드)
+@Order(1)        # HandlerContainer 생성
+@Get("/users")   # HttpMethodHandlerContainer로 교체, OrderElement 이전
+def handler(): pass
+
+# 결과: HttpMethodHandlerContainer (OrderElement 포함)
+
+
+# 시나리오 2: 하위 → 상위 (하위 유지)
+@Get("/users")   # HttpMethodHandlerContainer 생성
+@Order(1)        # 기존 컨테이너에 OrderElement만 추가
+def handler(): pass
+
+# 결과: HttpMethodHandlerContainer (OrderElement 포함)
+```
+
+### MRO 기반 구체성 판단
+
+Python의 Method Resolution Order(MRO)를 사용하여 어떤 Container가 더 구체적인지 판단합니다:
+
+```python
+# HttpMethodHandlerContainer.__mro__
+# [HttpMethodHandlerContainer, HandlerContainer, Container, object]
+#          index: 0                   1              2        3
+
+# MRO 인덱스가 낮을수록 더 구체적 (하위 클래스)
+```
+
+### _apply_override_rules 동작
+
+`Container.get_or_create()` 호출 시 `_apply_override_rules`가 자동 적용됩니다:
+
+```python
+@classmethod
+def _apply_override_rules(cls, target, create_new: Callable[[], Self]) -> Self:
+    existing = cls.get_container(target)
+    
+    if existing is None:
+        # 기존 컨테이너 없음 → 새로 생성
+        new_container = create_new()
+        return new_container
+    
+    # MRO 인덱스 비교 (낮을수록 구체적)
+    existing_idx = cls._get_mro_index(type(existing))
+    new_idx = cls._get_mro_index(cls)
+    
+    if new_idx < existing_idx:
+        # 새 컨테이너가 더 구체적 → 교체
+        new_container = create_new()
+        existing._transfer_elements_to(new_container)  # Element 이전
+        return new_container
+    else:
+        # 기존 컨테이너가 더 구체적 → 유지
+        return existing
+```
+
+### Element 이전
+
+상위 컨테이너가 하위 컨테이너로 교체될 때, 기존 Element들이 자동으로 이전됩니다:
+
+```python
+@Order(1)        # HandlerContainer + OrderElement(1)
+@Get("/users")   # HttpMethodHandlerContainer 생성
+                 # OrderElement(1)이 자동 이전됨
+def handler(): pass
+
+container = handler.__container__
+assert isinstance(container, HttpMethodHandlerContainer)
+assert container.get_metadata("order") == 1      # ✅ 이전된 Element
+assert container.get_metadata("http_method") == "GET"
+```
+
+### 실제 사용 예시
+
+```python
+@Controller
+class UserController:
+    @Order(1)              # 순서 지정
+    @Get("/users")         # HTTP GET 핸들러
+    def list_users(self):
+        return []
+    
+    @ErrorHandler(ValueError, KeyError)  # 여러 예외 처리
+    def handle_errors(self, error: Exception):
+        return {"error": str(error)}
+```
+
+각 데코레이터의 역할:
+- `@Order(1)`: `OrderElement` 추가
+- `@Get("/users")`: `HttpMethodHandlerContainer` + `MethodElement` + `PathElement`
+- `@ErrorHandler(...)`: `ErrorHandlerContainer` + 여러 `ExceptionTypeElement`
+
 ## 추상 클래스 (core/abstract)
 
 Manager는 ContainerManager에서 Registry를 검색하고, 없으면 Entry들을 수집하여 자동으로 Registry를 생성합니다.
