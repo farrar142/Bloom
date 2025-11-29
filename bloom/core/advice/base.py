@@ -1,7 +1,7 @@
 """MethodAdvice - 메서드 어드바이스 인터페이스"""
 
 from abc import ABC, abstractmethod
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..container import HandlerContainer
@@ -70,6 +70,48 @@ class MethodAdvice(ABC):
             True면 이 어드바이스 적용, False면 스킵
         """
         ...
+
+    def invoke_sync(
+        self,
+        context: "InvocationContext",
+        proceed: Callable[[], Any],
+    ) -> Any | None:
+        """
+        동기 호출을 가로챕니다.
+
+        이 메서드가 None이 아닌 값을 반환하면 그 값이 최종 결과가 됩니다.
+        None을 반환하면 다음 Advice로 진행하거나 기본 실행을 수행합니다.
+
+        Args:
+            context: 호출 컨텍스트
+            proceed: 나머지 Advice 체인 + 핸들러를 실행하는 함수
+
+        Returns:
+            None: 가로채지 않음 (다음으로 진행)
+            Any: 가로챔 (이 값이 최종 결과)
+        """
+        return None
+
+    async def invoke_async(
+        self,
+        context: "InvocationContext",
+        proceed: Callable[[], Any],
+    ) -> Any | None:
+        """
+        비동기 호출을 가로챕니다.
+
+        이 메서드가 None이 아닌 값을 반환하면 그 값이 최종 결과가 됩니다.
+        None을 반환하면 다음 Advice로 진행하거나 기본 실행을 수행합니다.
+
+        Args:
+            context: 호출 컨텍스트
+            proceed: 나머지 Advice 체인 + 핸들러를 실행하는 함수
+
+        Returns:
+            None: 가로채지 않음 (다음으로 진행)
+            Any: 가로챔 (이 값이 최종 결과)
+        """
+        return None
 
     # === 비동기 버전 ===
 

@@ -22,16 +22,6 @@ class TestApplication:
         assert service is not None
         assert isinstance(service.repository, conftest.Repository)
 
-    def test_scan_and_initialize_legacy(self):
-        """하위 호환: scan_components/initialize_components"""
-        app = Application("test_app")
-        app.scan_components(conftest)
-        app.initialize_components()
-
-        service = app.manager.get_instance(conftest.Service)
-        assert service is not None
-        assert isinstance(service.repository, conftest.Repository)
-
     def test_factory_initialization(self):
         """팩토리를 통한 인스턴스 생성"""
         app = Application("test_app").scan(conftest).ready()

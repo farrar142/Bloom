@@ -3,10 +3,14 @@ Advice 모듈
 
 메서드 호출 시 Element 기반으로 before/after/on_error 훅을 실행하는 AOP 패턴입니다.
 
-사용 예시:
-    from bloom.core.advice import MethodAdvice, MethodAdviceRegistry, MethodInvocationManager
+- MethodAdvice: @Component로 등록
+- MethodAdviceRegistry: @Factory로 생성하여 Advice들을 수집
+- MethodInvocationManager: Application에서 생성, Registry를 조회하여 사용
 
-    # 1. Advice 정의
+사용 예시:
+    from bloom.core.advice import MethodAdvice, MethodAdviceRegistry
+
+    # 1. Advice 정의 (@Component로 등록)
     @Component
     class TransactionAdvice(MethodAdvice):
         db: Database
@@ -22,19 +26,15 @@ Advice 모듈
             await context.get_attribute("tx").commit()
             return result
 
-        async def on_error(self, context: InvocationContext, error: Exception) -> Any:
-            await context.get_attribute("tx").rollback()
-            raise error
-
-    # 2. Registry/Manager 설정 (자동 주입)
+    # 2. Registry 생성 (@Factory로 Advice들 수집)
     @Component
     class AdviceConfig:
         @Factory
-        def invocation_manager(self, *advices: MethodAdvice) -> MethodInvocationManager:
+        def advice_registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
             registry = MethodAdviceRegistry()
             for advice in advices:
                 registry.register(advice)
-            return MethodInvocationManager(registry)
+            return registry
 """
 
 from .base import MethodAdvice
@@ -42,6 +42,7 @@ from .context import InvocationContext
 from .registry import MethodAdviceRegistry
 from .manager import MethodInvocationManager
 from .proxy import MethodProxy
+from .builtin import Async, AsyncElement, AsyncTask, get_default_executor
 
 __all__ = [
     "MethodAdvice",
@@ -49,4 +50,8 @@ __all__ = [
     "MethodAdviceRegistry",
     "MethodInvocationManager",
     "MethodProxy",
+    "Async",
+    "AsyncElement",
+    "AsyncTask",
+    "get_default_executor",
 ]

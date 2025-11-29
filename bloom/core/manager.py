@@ -92,7 +92,7 @@ class ContainerManager:
             if not containers:
                 del self.container_registry[container.target]
 
-    def scan_components(self, module: object) -> None:
+    def scan(self, module: object) -> None:
         """모듈에서 컴포넌트 스캔"""
         from .container.base import Container as BaseContainer
 

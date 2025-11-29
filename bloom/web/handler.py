@@ -114,7 +114,7 @@ def _create_http_method_decorator(http_method: str):
             else:
                 path = __path_or_func if __path_or_func else f"/{func.__name__}"
             container = HttpMethodHandlerContainer.get_or_create(func)
-            setattr(func, "__container__", container)
+            # setattr(func, "__container__", container)
             container.add_elements(MethodElement(http_method))
             container.add_elements(PathElement(path))
             if response:

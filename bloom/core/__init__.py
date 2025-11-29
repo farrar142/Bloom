@@ -33,6 +33,7 @@ from .abstract import (
     AbstractRegistry,
     AbstractManager,
 )
+from .orchestrator import ContainerOrchestrator
 
 __all__ = [
     "ContainerManager",
@@ -62,4 +63,6 @@ __all__ = [
     # Abstract patterns
     "AbstractRegistry",
     "AbstractManager",
+    # Orchestrator
+    "ContainerOrchestrator",
 ]

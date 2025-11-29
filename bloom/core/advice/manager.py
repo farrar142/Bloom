@@ -1,19 +1,24 @@
 """MethodInvocationManager - 메서드 호출 관리자"""
 
 import asyncio
-from typing import Any, Callable, Awaitable, TYPE_CHECKING
+from typing import Any, Callable, TYPE_CHECKING
 
 from .context import InvocationContext
+from ..abstract import AbstractManager
 
 if TYPE_CHECKING:
     from .base import MethodAdvice
     from .registry import MethodAdviceRegistry
     from ..container import HandlerContainer
+    from ..manager import ContainerManager
 
 
-class MethodInvocationManager:
+class MethodInvocationManager(AbstractManager["MethodAdviceRegistry"]):
     """
     메서드 호출 시 Advice 체인을 관리하는 Manager
+
+    Application에서 생성되며, ContainerManager에서 MethodAdviceRegistry를
+    조회하여 사용합니다. Registry가 없으면 프록시를 적용하지 않습니다.
 
     Container의 Element 순서에 따라 Advice를 실행합니다.
 
@@ -27,23 +32,56 @@ class MethodInvocationManager:
             → handler()
           → Transactional.after()
         → Cacheable.after()
-
-    Example:
-        @Component
-        class AppConfig:
-            @Factory
-            def invocation_manager(
-                self,
-                *advices: MethodAdvice
-            ) -> MethodInvocationManager:
-                registry = MethodAdviceRegistry()
-                for advice in advices:
-                    registry.register(advice)
-                return MethodInvocationManager(registry)
     """
 
-    def __init__(self, registry: "MethodAdviceRegistry"):
-        self._registry = registry
+    def __init__(self, registry: "MethodAdviceRegistry | None" = None):
+        """
+        MethodInvocationManager 초기화
+
+        Args:
+            registry: MethodAdviceRegistry (테스트용 직접 주입)
+        """
+        super().__init__()
+        self._advice_registry: "MethodAdviceRegistry | None" = None
+
+        if registry is not None:
+            # 테스트 편의용: Registry 직접 전달
+            self._advice_registry = registry
+            self._initialized = True
+
+    @property
+    def registry(self) -> "MethodAdviceRegistry":
+        """MethodAdviceRegistry 반환"""
+        if self._advice_registry is None:
+            raise RuntimeError(
+                "MethodInvocationManager is not initialized. Call initialize() first."
+            )
+        return self._advice_registry
+
+    def initialize(self, container_manager: "ContainerManager | None" = None) -> None:
+        """
+        Manager 초기화
+
+        ContainerManager에서 Factory로 생성된 MethodAdviceRegistry를 검색하여 사용합니다.
+
+        Args:
+            container_manager: Registry를 검색할 ContainerManager
+        """
+        if self._initialized:
+            return
+
+        if container_manager is None:
+            self._initialized = True
+            return
+
+        from .registry import MethodAdviceRegistry
+
+        # Factory로 생성된 MethodAdviceRegistry 검색
+        registries = container_manager.get_sub_instances(MethodAdviceRegistry)
+        if registries:
+            self._advice_registry = registries[0]
+
+        self._initialized = True
 
     async def invoke(
         self,
@@ -66,8 +104,12 @@ class MethodInvocationManager:
         Returns:
             핸들러 실행 결과 (Advice에 의해 수정될 수 있음)
         """
+        # Registry가 없으면 직접 호출
+        if self._advice_registry is None:
+            return await self._call_handler(handler, instance, *args, **kwargs)
+
         # 적용 가능한 Advice 수집 (Element 순서대로)
-        advices = self._registry.find_applicable(container)
+        advices = self._advice_registry.find_applicable(container)
 
         if not advices:
             # Advice가 없으면 직접 호출
@@ -77,6 +119,17 @@ class MethodInvocationManager:
         context = InvocationContext(
             container=container, instance=instance, args=args, kwargs=kwargs
         )
+
+        # Advice의 invoke_async 확인 - 값을 반환하면 그대로 반환
+        for advice in advices:
+            result = await advice.invoke_async(
+                context,
+                lambda: self._execute_chain(
+                    [a for a in advices if a is not advice], context, handler
+                ),
+            )
+            if result is not None:
+                return result
 
         return await self._execute_chain(advices, context, handler)
 
@@ -99,9 +152,13 @@ class MethodInvocationManager:
                 await advice.before(context)
                 executed_advices.append(advice)
 
-            # 핸들러 실행
+            # 핸들러 실행 (context 전달하여 @Async 처리)
             result = await self._call_handler(
-                handler, context.instance, *context.args, **context.kwargs
+                handler,
+                context.instance,
+                *context.args,
+                context=context,
+                **context.kwargs,
             )
 
             # after 훅 실행 (역순)
@@ -125,17 +182,42 @@ class MethodInvocationManager:
             raise error
 
     async def _call_handler(
-        self, handler: Callable[..., Any], instance: Any, *args: Any, **kwargs: Any
+        self,
+        handler: Callable[..., Any],
+        instance: Any,
+        *args: Any,
+        context: InvocationContext | None = None,
+        **kwargs: Any,
     ) -> Any:
-        """핸들러를 호출합니다 (동기/비동기 모두 지원)"""
-        if instance is not None:
-            result = handler(instance, *args, **kwargs)
-        else:
-            result = handler(*args, **kwargs)
+        """
+        핸들러를 호출합니다 (동기/비동기 모두 지원).
 
-        if asyncio.iscoroutine(result):
-            return await result
-        return result
+        @Async가 적용된 동기 메서드는 ThreadPoolExecutor에서 실행됩니다.
+        """
+        # 동기 메서드인지 확인
+        is_coroutine_func = asyncio.iscoroutinefunction(handler)
+
+        if instance is not None:
+            call = lambda: handler(instance, *args, **kwargs)
+        else:
+            call = lambda: handler(*args, **kwargs)
+
+        if is_coroutine_func:
+            # 비동기 메서드: 직접 await
+            return await call()
+
+        # 동기 메서드: @Async 여부 확인
+        if context is not None:
+            executor = context.get_attribute("_async_executor", None)
+            should_offload = context.get_attribute("_async_should_offload", False)
+
+            if should_offload:
+                # ThreadPoolExecutor에서 실행
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(executor, call)
+
+        # 일반 동기 메서드: 직접 호출
+        return call()
 
     # === 동기 버전 ===
 
@@ -151,6 +233,7 @@ class MethodInvocationManager:
         동기 메서드용 Advice 체인 실행.
 
         before_sync, after_sync, on_error_sync를 호출합니다.
+        Advice가 invoke_sync에서 값을 반환하면 그 값을 그대로 반환합니다.
 
         Args:
             container: 핸들러 컨테이너
@@ -162,8 +245,12 @@ class MethodInvocationManager:
         Returns:
             핸들러 실행 결과 (Advice에 의해 수정될 수 있음)
         """
+        # Registry가 없으면 직접 호출
+        if self._advice_registry is None:
+            return self._call_handler_sync(handler, instance, *args, **kwargs)
+
         # 적용 가능한 Advice 수집 (Element 순서대로)
-        advices = self._registry.find_applicable(container)
+        advices = self._advice_registry.find_applicable(container)
 
         if not advices:
             # Advice가 없으면 직접 호출
@@ -173,6 +260,17 @@ class MethodInvocationManager:
         context = InvocationContext(
             container=container, instance=instance, args=args, kwargs=kwargs
         )
+
+        # Advice의 invoke_sync 확인 - 값을 반환하면 그대로 반환
+        for advice in advices:
+            result = advice.invoke_sync(
+                context,
+                lambda: self._execute_chain_sync(
+                    [a for a in advices if a is not advice], context, handler
+                ),
+            )
+            if result is not None:
+                return result
 
         return self._execute_chain_sync(advices, context, handler)
 

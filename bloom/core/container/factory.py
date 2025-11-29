@@ -42,7 +42,7 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
         self._resolved_hints: dict | None = None
         self._target: type | None = None
         self.elements = list()
-        self.owner_cls: type | None = None  # scan_components 후 주입됨
+        self.owner_cls: type | None = None  # scan 후 주입됨
         self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
         # Factory Chain에서 중간 단계인지 여부 (True면 인스턴스 등록 스킵)
         self._is_chain_intermediate: bool = False
@@ -68,7 +68,7 @@ class FactoryContainer[**P, R](Container[Callable[P, R]]):
         return hints.get("return", type(None))
 
     def _get_owner_type(self) -> type | None:
-        """owner 타입 반환 (scan_components에서 주입됨)"""
+        """owner 타입 반환 (scan에서 주입됨)"""
         return self.owner_cls
 
     def __repr__(self) -> str:

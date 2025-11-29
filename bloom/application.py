@@ -1,17 +1,15 @@
 """bloom Application"""
 
-import asyncio
-import concurrent.futures
 from typing import TYPE_CHECKING, Any
 from pathlib import Path
 
 if TYPE_CHECKING:
-    from .core.container import Container, FactoryContainer
+    from .core.container import Container
+    from .core.advice import MethodInvocationManager
     from .web.messaging.manager import WebSocketManager
 
-from .core.exceptions import CircularDependencyError
 from .core.manager import ContainerManager, set_current_manager, try_get_current_manager
-from .core.utils import topological_sort, group_by_dependency_level
+from .core.orchestrator import ContainerOrchestrator
 from .web.router import Router
 from .web.asgi import ASGIApplication
 from .config.manager import ConfigManager
@@ -32,22 +30,27 @@ class Application:
 
     def __init__(self, name: str, manager: "ContainerManager | None" = None):
         self.name = name
-        # 외부에서 manager를 전달받거나, 현재 활성 manager 사용, 또는 새로 생성
-        if manager is not None:
-            self.manager = manager
-        elif existing := try_get_current_manager():
-            self.manager = existing
-            self.manager.app_name = name  # 이름 업데이트
-        else:
-            self.manager = ContainerManager(name)
+        self.manager = self._resolve_manager(name, manager)
         self._router: Router | None = None
         self._asgi: ASGIApplication | None = None
         self._is_ready = False
         self._config_manager = ConfigManager()
         self._websocket_manager: "WebSocketManager | None" = None
         self._initialized_containers: list["Container"] = []
+        self._invocation_manager: "MethodInvocationManager | None" = None
         # 생성 시점에 현재 매니저로 설정 (데코레이터 자동 등록 지원)
         set_current_manager(self.manager)
+
+    def _resolve_manager(
+        self, name: str, manager: "ContainerManager | None"
+    ) -> ContainerManager:
+        """ContainerManager 결정: 전달받거나, 현재 활성 manager 사용, 또는 새로 생성"""
+        if manager is not None:
+            return manager
+        if existing := try_get_current_manager():
+            existing.app_name = name
+            return existing
+        return ContainerManager(name)
 
     @property
     def router(self) -> Router:
@@ -121,7 +124,7 @@ class Application:
         # 스캔 중 현재 매니저 설정
         set_current_manager(self.manager)
         for module in modules:
-            self.manager.scan_components(module)
+            self.manager.scan(module)
         return self
 
     def ready(self, parallel: bool = False) -> "Application":
@@ -148,11 +151,9 @@ class Application:
         # 1. ConfigurationProperties 바인딩
         self._bind_configuration_properties()
 
-        # 2. 컨테이너 초기화
-        if parallel:
-            self._initialize_containers_parallel()
-        else:
-            self._initialize_containers()
+        # 2. 컨테이너 초기화 (Orchestrator 사용)
+        orchestrator = ContainerOrchestrator(self.manager)
+        self._initialized_containers = orchestrator.initialize(parallel=parallel)
 
         # 3. 메서드 프록시 적용 (Advice 체인 지원)
         self._apply_method_proxies()
@@ -160,7 +161,7 @@ class Application:
         # 4. 라우터 초기화
         self.router.collect_routes()
 
-        # 4. WebSocket 초기화 (@EnableWebSocket 감지)
+        # 5. WebSocket 초기화 (@EnableWebSocket 감지)
         self._initialize_websocket()
 
         self._is_ready = True
@@ -174,24 +175,28 @@ class Application:
         """
         HandlerContainer가 있는 모든 메서드에 프록시를 적용합니다.
 
-        MethodInvocationManager가 등록되어 있으면, 해당 Manager를 통해
-        Advice 체인을 실행하도록 메서드를 프록시로 감쌉니다.
+        MethodInvocationManager를 생성하고, ContainerManager에서 Registry를 조회합니다.
+        Registry가 없거나 Advice가 없으면 프록시를 적용하지 않습니다.
         """
         from .core.advice import MethodInvocationManager, MethodProxy
         from .core.container import HandlerContainer
         import inspect
 
-        # MethodInvocationManager 인스턴스 조회 (없으면 프록시 적용 안 함)
-        invocation_manager = self.manager.get_instance(
-            MethodInvocationManager, raise_exception=False
-        )
-        if invocation_manager is None:
+        # MethodInvocationManager 생성 및 초기화 (ContainerManager에서 Registry 조회)
+        self._invocation_manager = MethodInvocationManager()
+        self._invocation_manager.initialize(self.manager)
+
+        # Registry가 없거나 Advice가 없으면 프록시 적용 안 함
+        if (
+            self._invocation_manager._advice_registry is None
+            or len(self._invocation_manager._advice_registry) == 0
+        ):
             return
 
         # 모든 인스턴스를 순회하며 프록시 적용
         for instances in self.manager.get_all_instances().values():
             for instance in instances:
-                self._apply_proxies_to_instance(instance, invocation_manager)
+                self._apply_proxies_to_instance(instance, self._invocation_manager)
 
     def _apply_proxies_to_instance(
         self, instance: Any, invocation_manager: Any
@@ -235,164 +240,6 @@ class Application:
         """WebSocket 초기화 (@EnableWebSocket 컴포넌트가 있는 경우)"""
         self.websocket_manager.initialize(self.manager)
 
-    def _validate_factory_chains(self, all_containers: list["Container"]) -> None:
-        """
-        Factory Chain 유효성 검증 및 중간 Factory 마킹
-
-        1. Ambiguous Provider 패턴 감지 → 에러
-        2. Factory Chain의 중간 Factory들을 마킹 (마지막 Factory만 PostConstruct 호출)
-        """
-        from bloom.core.container import FactoryContainer
-        from bloom.core.utils import detect_factory_chains, validate_factory_chains
-
-        # Factory Chain 감지
-        chains = detect_factory_chains(all_containers)
-
-        # Ambiguous Provider 검증 (에러 발생 가능)
-        validate_factory_chains(chains)
-
-        # Factory Chain의 중간 Factory들을 마킹
-        # 마지막 Factory를 제외한 나머지는 intermediate
-        for target_type, factory_chain in chains.items():
-            if len(factory_chain) > 1:
-                for factory in factory_chain[:-1]:
-                    factory._is_chain_intermediate = True
-
-    def _initialize_containers(self) -> None:
-        """모든 컨테이너를 토폴로지컬 순서로 초기화 (순차적)
-
-        1. 모든 컨테이너를 의존성 그래프로 토폴로지 정렬
-        2. 같은 타입의 Factory가 여러 개면 @Order 또는 의존성으로 순서 결정
-        3. 정렬된 순서대로 초기화 - Factory Chain은 자동으로 처리됨
-
-        순환 의존성이 감지되면 의존성 그래프를 파일로 저장합니다.
-        """
-        from bloom.core.lazy import is_lazy_component
-
-        # 모든 컨테이너를 리스트로 변환
-        all_containers: list["Container"] = []
-        for containers in self.manager.get_all_containers().values():
-            all_containers.extend(containers)
-
-        # Factory Chain 유효성 검증 (Ambiguous Provider 감지)
-        self._validate_factory_chains(all_containers)
-
-        # 모든 컨테이너를 토폴로지컬 정렬 (Factory Chain 포함)
-        # topological_sort가 같은 타입 내에서 @Order로 정렬
-        try:
-            sorted_containers = topological_sort(all_containers)
-        except CircularDependencyError as e:
-            # 순환 의존성 발생 시 그래프 저장
-            self._save_circular_dependency_graph(e)
-            raise
-
-        # 정렬된 순서로 초기화 (초기화 순서 저장)
-        self._initialized_containers = []
-
-        for container in sorted_containers:
-            # @Lazy 컴포넌트는 즉시 초기화하지 않음 (접근 시 LazyProxy가 초기화)
-            if is_lazy_component(container):
-                continue
-
-            instance = container.initialize_instance()
-            self.manager.set_instance(container.target, instance)
-            self._initialized_containers.append(container)
-
-    def _save_circular_dependency_graph(self, error: CircularDependencyError) -> None:
-        """순환 의존성 발생 시 의존성 그래프를 파일로 저장
-
-        Args:
-            error: CircularDependencyError 예외 객체
-        """
-        from datetime import datetime
-        from bloom.logging.graph import generate_dependency_graph
-
-        # 파일명 생성: circular-dependency-{timestamp}.txt
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"circular-dependency-{timestamp}.txt"
-
-        # 그래프 생성
-        graph_content = generate_dependency_graph(
-            self.manager, filename, include_cycle_info=True, cycle_error=error
-        )
-
-        # 파일 저장
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(graph_content)
-
-        # 예외에 저장 경로 기록
-        error.graph_saved_path = filename
-
-        print(f"\n{'=' * 60}")
-        print("⚠️  CIRCULAR DEPENDENCY DETECTED")
-        print("=" * 60)
-        print(f"\nDependency graph saved to: {filename}")
-        print("\n" + error.get_cycle_info())
-        print("=" * 60 + "\n")
-
-    def _initialize_containers_parallel(self) -> None:
-        """
-        모든 컨테이너를 레벨별로 병렬 초기화
-
-        의존성 레벨이 같은 컨테이너들을 ThreadPoolExecutor로 동시 초기화합니다.
-        - Level 0: 의존성 없는 컨테이너들 (동시 초기화)
-        - Level 1: Level 0 완료 후, Level 0에만 의존하는 컨테이너들 (동시 초기화)
-        - ...
-
-        Note: Factory Chain의 경우 같은 타입의 Factory들이 순차적으로 실행됩니다.
-              병렬 초기화에서는 Factory Chain이 올바르게 동작하지 않을 수 있습니다.
-              복잡한 Factory Chain이 있는 경우 순차 초기화(parallel=False)를 권장합니다.
-
-        순환 의존성이 감지되면 의존성 그래프를 파일로 저장합니다.
-        """
-        from bloom.core.lazy import is_lazy_component
-
-        # 모든 컨테이너를 리스트로 변환
-        all_containers: list["Container"] = []
-        for containers in self.manager.get_all_containers().values():
-            all_containers.extend(containers)
-
-        # Factory Chain 유효성 검증
-        self._validate_factory_chains(all_containers)
-
-        # 레벨별로 그룹화 (순환 의존성 시 그래프 저장)
-        try:
-            levels = group_by_dependency_level(all_containers)
-        except CircularDependencyError as e:
-            self._save_circular_dependency_graph(e)
-            raise
-
-        # 초기화 순서 저장 (PreDestroy용)
-        self._initialized_containers = []
-
-        def init_container(
-            container: "Container",
-        ) -> tuple["Container", Any] | None:
-            """단일 컨테이너 초기화 (ThreadPool에서 실행)"""
-            if is_lazy_component(container):
-                return None
-            instance = container.initialize_instance()
-            return (container, instance)
-
-        # 레벨별로 병렬 초기화
-        for level_containers in levels:
-            if not level_containers:
-                continue
-
-            # ThreadPoolExecutor로 같은 레벨 컨테이너들 동시 초기화
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = {
-                    executor.submit(init_container, container): container
-                    for container in level_containers
-                }
-
-                for future in concurrent.futures.as_completed(futures):
-                    result = future.result()
-                    if result:
-                        container, instance = result
-                        self._initialized_containers.append(container)
-                        self.manager.set_instance(container.target, instance)
-
     def shutdown(self) -> "Application":
         """
         애플리케이션 종료
@@ -415,12 +262,3 @@ class Application:
 
         self._is_ready = False
         return self
-
-    # 하위 호환성을 위한 메서드들
-    def scan_components(self, module: object) -> None:
-        """@deprecated: scan() 사용 권장"""
-        self.scan(module)
-
-    def initialize_components(self) -> None:
-        """@deprecated: ready() 사용 권장"""
-        self._initialize_containers()

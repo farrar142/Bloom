@@ -35,7 +35,7 @@ class HandlerContainer[**P, R](Container[Callable[P, R]]):
         self.handler_method = handler_method
         self._bound_method: Callable[P, R] | None = None
         self._resolved_hints: dict | None = None
-        self.owner_cls: type | None = None  # scan_components 후 주입됨
+        self.owner_cls: type | None = None  # scan 후 주입됨
         self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
         self._is_coroutine: bool | None = None  # 캐싱된 코루틴 여부
         # target은 handler_method 자체
@@ -59,7 +59,7 @@ class HandlerContainer[**P, R](Container[Callable[P, R]]):
         return self._resolved_hints  # type: ignore
 
     def _get_owner_type(self) -> type | None:
-        """owner 타입 반환 (scan_components에서 주입됨)"""
+        """owner 타입 반환 (scan에서 주입됨)"""
         return self.owner_cls
 
     def get_dependencies(self) -> list[type]:
