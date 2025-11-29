@@ -20,7 +20,7 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-class TaskBackend(ABC):
+class TaskBackend[**P, T](ABC):
     """
     태스크 실행 백엔드 추상 인터페이스
 
@@ -36,9 +36,9 @@ class TaskBackend(ABC):
     @abstractmethod
     def submit(
         self,
-        fn: Callable[..., T],
-        *args: Any,
-        **kwargs: Any,
+        fn: Callable[P, T],
+        *args: P.args,
+        **kwargs: P.kwargs,
     ) -> TaskResult[T]:
         """
         태스크를 백그라운드에서 실행합니다.
@@ -56,9 +56,9 @@ class TaskBackend(ABC):
     @abstractmethod
     async def submit_async(
         self,
-        fn: Callable[..., T],
-        *args: Any,
-        **kwargs: Any,
+        fn: Callable[P, T],
+        *args: P.args,
+        **kwargs: P.kwargs,
     ) -> AsyncTaskResult[T]:
         """
         태스크를 비동기로 실행합니다.
@@ -115,7 +115,7 @@ class TaskBackend(ABC):
         ...
 
 
-class AsyncioTaskBackend(TaskBackend):
+class AsyncioTaskBackend[**P, T](TaskBackend):
     """
     asyncio 기반 태스크 백엔드
 
@@ -154,9 +154,9 @@ class AsyncioTaskBackend(TaskBackend):
 
     def submit(
         self,
-        fn: Callable[..., T],
-        *args: Any,
-        **kwargs: Any,
+        fn: Callable[P, T],
+        *args: P.args,
+        **kwargs: P.kwargs,
     ) -> TaskResult[T]:
         """태스크를 백그라운드에서 실행"""
         if self._executor is None:
@@ -181,9 +181,9 @@ class AsyncioTaskBackend(TaskBackend):
 
     async def submit_async(
         self,
-        fn: Callable[..., T],
-        *args: Any,
-        **kwargs: Any,
+        fn: Callable[P, T],
+        *args: P.args,
+        **kwargs: P.kwargs,
     ) -> AsyncTaskResult[T]:
         """태스크를 비동기로 실행"""
 

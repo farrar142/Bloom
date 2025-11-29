@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Callable, Concatenate, Generic, TypeVar, overload
 
 from bloom.core.abstract import ProxyableDescriptor
 from bloom.core.container import HandlerContainer
@@ -74,7 +74,7 @@ class TaskElement(Element):
         return self.metadata.get("retry_delay", 1.0)
 
 
-class BoundTask(Generic[T]):
+class BoundTask[T, **P, R]:
     """
     인스턴스에 바인딩된 태스크
 
@@ -83,7 +83,7 @@ class BoundTask(Generic[T]):
 
     def __init__(
         self,
-        handler: Callable[..., T],
+        handler: Callable[Concatenate[T, P], R],
         instance: Any,
         backend: TaskBackend | None = None,
         element: TaskElement | None = None,
@@ -128,7 +128,7 @@ class BoundTask(Generic[T]):
 
         return None
 
-    def __call__(self, *args: Any, **kwargs: Any) -> T:
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """직접 호출 - 프록시가 있으면 프록시를 통해 실행"""
         # 프록시가 적용되어 있으면 프록시를 통해 호출
         if self._use_proxy and self._proxy is not None:
@@ -137,7 +137,7 @@ class BoundTask(Generic[T]):
         # 프록시가 없으면 직접 호출
         return self._call_direct(*args, **kwargs)
 
-    def _call_direct(self, *args: Any, **kwargs: Any) -> T:
+    def _call_direct(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """Advice 없이 직접 호출"""
         result = self._handler(self._instance, *args, **kwargs)
         if asyncio.iscoroutine(result):
@@ -150,7 +150,7 @@ class BoundTask(Generic[T]):
                 return asyncio.run(result)
         return result
 
-    def delay(self, *args: Any, **kwargs: Any) -> TaskResult[T]:
+    def delay(self, *args: P.args, **kwargs: P.kwargs) -> TaskResult[R]:
         """백그라운드에서 실행 (동기 결과)"""
         backend = self._get_backend()
         if backend is None:
@@ -158,7 +158,7 @@ class BoundTask(Generic[T]):
                 "TaskBackend is not configured. Use @Factory to provide TaskBackend."
             )
 
-        def execute() -> T:
+        def execute() -> R:
             # 프록시가 있으면 프록시를 통해 실행 (Advice 적용)
             if self._use_proxy and self._proxy is not None:
                 return self._proxy(*args, **kwargs)
@@ -174,7 +174,9 @@ class BoundTask(Generic[T]):
 
         return backend.submit(execute)
 
-    async def delay_async(self, *args: Any, **kwargs: Any) -> AsyncTaskResult[T]:
+    async def delay_async(
+        self, *args: P.args, **kwargs: P.kwargs
+    ) -> AsyncTaskResult[R]:
         """백그라운드에서 실행 (비동기 결과)"""
         backend = self._get_backend()
         if backend is None:
@@ -182,7 +184,7 @@ class BoundTask(Generic[T]):
                 "TaskBackend is not configured. Use @Factory to provide TaskBackend."
             )
 
-        async def execute() -> T:
+        async def execute() -> R:
             # 프록시가 있으면 프록시를 통해 실행 (Advice 적용)
             if self._use_proxy and self._proxy is not None:
                 result = self._proxy(*args, **kwargs)
@@ -206,7 +208,7 @@ class BoundTask(Generic[T]):
         initial_delay: float = 0,
         args: tuple = (),
         kwargs: dict | None = None,
-    ) -> ScheduledTask[T]:
+    ) -> ScheduledTask[R]:
         """
         스케줄에 등록
 
@@ -250,7 +252,9 @@ class BoundTask(Generic[T]):
 
         # ScheduledTask 생성
         # 프록시가 있으면 프록시를 전달하여 Advice가 적용되도록 함
-        handler_to_use = self._proxy if (self._use_proxy and self._proxy) else self._handler
+        handler_to_use = (
+            self._proxy if (self._use_proxy and self._proxy) else self._handler
+        )
         task = ScheduledTask(
             name=self._name,
             handler=handler_to_use,
@@ -264,7 +268,7 @@ class BoundTask(Generic[T]):
         return backend.schedule(task)
 
 
-class TaskDescriptor(ProxyableDescriptor, Generic[T]):
+class TaskDescriptor[T, **P, R](ProxyableDescriptor):
     """
     태스크 디스크립터
 
@@ -274,18 +278,18 @@ class TaskDescriptor(ProxyableDescriptor, Generic[T]):
 
     def __init__(
         self,
-        handler: Callable[..., T],
+        handler: Callable[Concatenate[T, P], R],
         element: TaskElement,
     ):
         self._handler = handler
         self._element = element
-        functools.update_wrapper(self, handler)
+        functools.update_wrapper(self, handler)  # type:ignore
 
-    def get_original_handler(self) -> Callable[..., T]:
+    def get_original_handler(self) -> Callable[Concatenate[T, P], R]:
         """ProxyableDescriptor: 원본 핸들러 반환"""
         return self._handler
 
-    def apply_proxy(self, instance: Any, proxy: Any) -> BoundTask[T]:
+    def apply_proxy(self, instance: Any, proxy: Any) -> BoundTask[T, P, R]:
         """ProxyableDescriptor: 프록시를 적용하고 BoundTask 반환"""
         bound_task = self.__get__(instance, type(instance))
         bound_task._proxy = proxy
@@ -293,14 +297,14 @@ class TaskDescriptor(ProxyableDescriptor, Generic[T]):
         return bound_task
 
     @overload
-    def __get__(self, instance: None, owner: type) -> TaskDescriptor[T]: ...
+    def __get__(self, instance: None, owner: type) -> TaskDescriptor[T, P, R]: ...
 
     @overload
-    def __get__(self, instance: object, owner: type) -> BoundTask[T]: ...
+    def __get__(self, instance: T, owner: type) -> BoundTask[T, P, R]: ...
 
     def __get__(
-        self, instance: object | None, owner: type
-    ) -> TaskDescriptor[T] | BoundTask[T]:
+        self, instance: T | None, owner: type
+    ) -> TaskDescriptor[T, P, R] | BoundTask[T, P, R]:
         if instance is None:
             return self
 
@@ -316,27 +320,30 @@ class TaskDescriptor(ProxyableDescriptor, Generic[T]):
 
 
 @overload
-def Task(fn: Callable[..., T]) -> TaskDescriptor[T]: ...
+def Task[T, **P, R](fn: Callable[Concatenate[T, P], R]) -> TaskDescriptor[T, P, R]: ...
 
 
 @overload
-def Task(
+def Task[T, **P, R](
     *,
     name: str | None = None,
     bind: bool = False,
     max_retries: int = 0,
     retry_delay: float = 1.0,
-) -> Callable[[Callable[..., T]], TaskDescriptor[T]]: ...
+) -> Callable[[Callable[Concatenate[T, P], R]], TaskDescriptor[T, P, R]]: ...
 
 
-def Task(
-    fn: Callable[..., T] | None = None,
+def Task[T, **P, R](
+    fn: Callable[Concatenate[T, P], R] | None = None,
     *,
     name: str | None = None,
     bind: bool = False,
     max_retries: int = 0,
     retry_delay: float = 1.0,
-) -> TaskDescriptor[T] | Callable[[Callable[..., T]], TaskDescriptor[T]]:
+) -> (
+    TaskDescriptor[T, P, R]
+    | Callable[[Callable[Concatenate[T, P], R]], TaskDescriptor[T, P, R]]
+):
     """
     메서드를 태스크로 정의
 
@@ -358,7 +365,7 @@ def Task(
         retry_delay: 재시도 간격 (초)
     """
 
-    def decorator(fn: Callable[..., T]) -> TaskDescriptor[T]:
+    def decorator(fn: Callable[Concatenate[T, P], R]) -> TaskDescriptor[T, P, R]:
         element = TaskElement(
             name=name or fn.__name__,
             bind=bind,
