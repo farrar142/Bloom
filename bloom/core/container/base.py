@@ -199,6 +199,30 @@ class Container[T]:
                 target_container.add_element(element)
 
     @classmethod
+    def _get_mro_index(cls, container_type: type["Container"]) -> int:
+        """
+        Container 클래스로부터의 MRO 인덱스 반환
+
+        MRO 인덱스가 높을수록 더 구체적(하위) 타입입니다.
+        - Container: 0
+        - CallableContainer: 1
+        - HandlerContainer: 2
+        - HttpMethodHandlerContainer: 3
+        """
+        return container_type.__mro__.index(Container)
+
+    @classmethod
+    def _is_more_specific_than(cls, other: type["Container"]) -> bool:
+        """
+        현재 클래스가 other보다 더 구체적(하위)인지 확인
+
+        사용 예:
+            HandlerContainer._is_more_specific_than(Container)  # True
+            Container._is_more_specific_than(HandlerContainer)  # False
+        """
+        return cls._get_mro_index(cls) > cls._get_mro_index(other)
+
+    @classmethod
     def _apply_override_rules(
         cls,
         target: Any,
@@ -241,25 +265,22 @@ class Container[T]:
             return existing_container
 
         if isinstance(existing_container, Container):
-            # MRO 인덱스 비교: 높을수록 더 구체적(하위) 타입
-            existing_mro_idx = type(existing_container).__mro__.index(Container)
-            cls_mro_idx = cls.__mro__.index(Container)
+            existing_type = type(existing_container)
 
-            if existing_mro_idx > cls_mro_idx:
-                # existing_container가 cls보다 더 구체적(하위)임
+            if cls._is_more_specific_than(existing_type):
+                # cls가 existing보다 더 구체적(하위)임
+                # → 하위 컨테이너로 교체하고, 상위 컨테이너의 Element들을 이전
+                new_container = create_new()
+                existing_container._transfer_elements_to(new_container)
+                setattr(target, "__container__", new_container)
+                if manager := try_get_current_manager():
+                    manager.unregister_container(existing_container)
+                    manager.register_container(new_container)
+                return new_container
+            else:
+                # existing_container가 cls보다 더 구체적(하위)이거나 동등
                 # → 하위 컨테이너를 유지하고 반환
                 return existing_container  # type: ignore
-
-            # existing_container가 상위 타입인 경우
-            # → 하위 컨테이너로 교체하고, 상위 컨테이너의 Element들을 이전
-            new_container = create_new()
-            existing_container._transfer_elements_to(new_container)
-            setattr(target, "__container__", new_container)
-            if manager := try_get_current_manager():
-                # 기존 컨테이너 제거 후 새 컨테이너 등록
-                manager.unregister_container(existing_container)
-                manager.register_container(new_container)
-            return new_container
 
         # 다른 타입의 객체가 있는 경우 (예상치 못한 상황)
         container = create_new()

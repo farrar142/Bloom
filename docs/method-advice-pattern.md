@@ -326,13 +326,11 @@ class AdviceConfig:
 
 ```python
 from bloom import Component
-from bloom.core.decorators import Handler
 
 @Component
 class OrderService:
     
-    @Transactional
-    @Handler
+    @Transactional  # HandlerContainer가 이미 생성됨 - @Handler 불필요
     async def create_order(self, order_data: dict) -> Order:
         """트랜잭션 내에서 주문 생성"""
         # TransactionAdvice가 자동으로 적용됨
@@ -528,17 +526,21 @@ class Application:
         self._invocation_manager.initialize(self.manager)
 ```
 
-### 4. @Handler가 없으면 Advice 미적용
+### 4. HandlerContainer가 없으면 Advice 미적용
 
-Advice는 `HandlerContainer`가 있는 메서드에만 적용됩니다.
+Advice는 `HandlerContainer`가 있는 메서드에만 적용됩니다.  
+`@Handler`, `@Transactional` 등 HandlerContainer를 생성하는 데코레이터를 사용해야 합니다.
 
 ```python
 @Component
 class MyService:
     @Handler  # HandlerContainer 생성됨
-    def with_advice(self): ...  # Advice 적용 ✅
+    def with_handler(self): ...  # Advice 적용 ✅
     
-    def without_advice(self): ...  # Advice 미적용 ❌
+    @Transactional  # HandlerContainer 생성됨 (get_or_create)
+    def with_transactional(self): ...  # Advice 적용 ✅
+    
+    def plain_method(self): ...  # HandlerContainer 없음 → Advice 미적용 ❌
 ```
 
 ---

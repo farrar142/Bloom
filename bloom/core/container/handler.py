@@ -8,10 +8,10 @@ if TYPE_CHECKING:
     from ..manager import ContainerManager
 
 from ..manager import try_get_current_manager
-from .base import Container
+from .callable import CallableContainer
 
 
-class HandlerContainer[**P, R](Container[Callable[P, R]]):
+class HandlerContainer[**P, R](CallableContainer[P, R]):
     """
     메서드를 핸들러로 등록하는 컨테이너
 

@@ -7,10 +7,10 @@ if TYPE_CHECKING:
     from ..manager import ContainerManager
 
 from ..manager import try_get_current_manager
-from .base import Container
+from .callable import CallableContainer
 
 
-class FactoryContainer[**P, R](Container[Callable[P, R]]):
+class FactoryContainer[**P, R](CallableContainer[P, R]):
     """
     팩토리 컴포넌트 컨테이너
     @Component

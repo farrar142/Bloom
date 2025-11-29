@@ -729,6 +729,10 @@ class TestAsyncDecorator:
         """AsyncTask.join()에 timeout 지정"""
         # Given
         import concurrent.futures
+        import threading
+
+        # 작업 취소용 이벤트
+        cancel_event = threading.Event()
 
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
@@ -751,22 +755,26 @@ class TestAsyncDecorator:
         @Component
         class MyService:
             @Async
-            def very_slow_task(self) -> str:
-                import time
-
-                time.sleep(10)
+            def slow_task(self) -> str:
+                # 취소 가능한 대기 (0.1초씩 체크, 최대 10초)
+                for _ in range(100):
+                    if cancel_event.is_set():
+                        return "cancelled"
+                    cancel_event.wait(0.1)
                 return "done"
 
         # When
         app = Application("test").scan(AdviceConfig, MyService).ready()
         service = app.manager.get_instance(MyService)
-        task = service.very_slow_task()
+        task = service.slow_task()
 
         # Then
         with pytest.raises(concurrent.futures.TimeoutError):
             task.join(timeout=0.1)
 
-        executor.shutdown(wait=False)
+        # 작업 취소 후 정리
+        cancel_event.set()
+        executor.shutdown(wait=True)
 
 
 # === 에러 전파 테스트 ===
