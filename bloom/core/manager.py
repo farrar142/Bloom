@@ -6,6 +6,7 @@ from typing import Any, Literal, overload, TYPE_CHECKING
 if TYPE_CHECKING:
     from .container import Container
     from .lifecycle import LifecycleManager
+    from .events import SystemEventBus
 
 
 # 현재 활성 매니저를 저장하는 ContextVar
@@ -58,12 +59,25 @@ class ContainerManager:
         self.instance_registry: dict[type, list[Any]] = {}
         # 라이프사이클 관리자 (lazy initialization)
         self._lifecycle: "LifecycleManager | None" = None
+        # 시스템 이벤트 버스 (lazy initialization)
+        self._system_events: "SystemEventBus | None" = None
 
     def reset(self) -> None:
         """모든 레지스트리 초기화 (테스트 또는 재시작 용도)"""
         self.container_registry.clear()
         self.instance_registry.clear()
         self._lifecycle = None
+        if self._system_events:
+            self._system_events.clear()
+        self._system_events = None
+
+    @property
+    def system_events(self) -> "SystemEventBus":
+        """시스템 이벤트 버스 반환 (lazy initialization)"""
+        if self._system_events is None:
+            from .events import SystemEventBus
+            self._system_events = SystemEventBus()
+        return self._system_events
 
     @property
     def lifecycle(self) -> "LifecycleManager":

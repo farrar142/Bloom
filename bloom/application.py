@@ -171,24 +171,94 @@ class Application:
         # 현재 매니저 설정
         set_current_manager(self.manager)
 
-        # 1. ConfigurationProperties 바인딩
+        # 1. 이벤트 버스 등록 (DI 컨테이너에 인스턴스로 등록)
+        self._register_event_buses()
+
+        # 2. ConfigurationProperties 바인딩
         self._bind_configuration_properties()
 
-        # 2. 컨테이너 초기화 (Orchestrator 사용)
+        # 3. 컨테이너 초기화 (Orchestrator 사용)
         orchestrator = ContainerOrchestrator(self.manager)
         self._initialized_containers = orchestrator.initialize(parallel=parallel)
 
-        # 3. 메서드 프록시 적용 (Advice 체인 지원)
+        # 4. @EventListener 바인딩
+        self._bind_event_listeners()
+
+        # 5. 메서드 프록시 적용 (Advice 체인 지원)
         self._apply_method_proxies()
 
-        # 4. 라우터 초기화
+        # 6. 라우터 초기화
         self.router.collect_routes()
 
-        # 5. WebSocket 초기화 (@EnableWebSocket 감지)
+        # 7. WebSocket 초기화 (@EnableWebSocket 감지)
         self._initialize_websocket()
 
         self._is_ready = True
         return self
+
+    def _register_event_buses(self) -> None:
+        """이벤트 버스들을 DI 컨테이너에 등록 (사용자 정의가 없는 경우에만)"""
+        from .core.events import SystemEventBus, ApplicationEventBus
+
+        # SystemEventBus - ContainerManager에서 가져와서 인스턴스 등록
+        # (시스템 이벤트 버스는 항상 프레임워크가 관리)
+        # 이미 등록되어 있으면 스킵
+        if not self.manager.get_instances(SystemEventBus):
+            self.manager.set_instance(SystemEventBus, self.manager.system_events)
+
+        # ApplicationEventBus - 사용자가 @Factory/@Component로 등록했으면 스킵
+        # 이미 인스턴스가 있거나 컨테이너가 있으면 스킵
+        if (
+            self.manager.get_container(ApplicationEventBus) is None
+            and not self.manager.get_instances(ApplicationEventBus)
+        ):
+            app_event_bus = ApplicationEventBus()
+            self.manager.set_instance(ApplicationEventBus, app_event_bus)
+
+    def _bind_event_listeners(self) -> None:
+        """@EventListener 데코레이터가 붙은 메서드들을 ApplicationEventBus에 바인딩"""
+        from .core.events import (
+            ApplicationEventBus,
+            is_event_listener,
+            get_event_listener_type,
+        )
+
+        # ApplicationEventBus 인스턴스 가져오기
+        event_bus = self.manager.get_instance(ApplicationEventBus, raise_exception=False)
+        if event_bus is None:
+            return
+
+        # 모든 인스턴스를 순회하며 @EventListener 메서드 찾기
+        for instances in self.manager.get_all_instances().values():
+            for instance in instances:
+                self._bind_instance_event_listeners(instance, event_bus)
+
+    def _bind_instance_event_listeners(
+        self, instance: Any, event_bus: Any
+    ) -> None:
+        """인스턴스의 @EventListener 메서드들을 이벤트 버스에 바인딩"""
+        from .core.events import is_event_listener, get_event_listener_type
+
+        cls = type(instance)
+
+        for name in dir(cls):
+            if name.startswith("_"):
+                continue
+
+            try:
+                attr = getattr(cls, name)
+            except AttributeError:
+                continue
+
+            if not callable(attr):
+                continue
+
+            if is_event_listener(attr):
+                event_type = get_event_listener_type(attr)
+                if event_type:
+                    # 바운드 메서드로 구독
+                    bound_method = getattr(instance, name)
+                    event_bus.subscribe(event_type, bound_method)
 
     def _bind_configuration_properties(self) -> None:
         """ConfigurationProperties를 바인딩하여 인스턴스 생성"""
