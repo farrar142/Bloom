@@ -595,26 +595,21 @@ class TaskDescriptor(ProxyableDescriptor, Generic[T]):
 
 ### Task 패턴 (@Task) - Celery 스타일
 
-`@Task` 데코레이터로 메서드를 비동기 태스크로 정의합니다. Celery와 유사한 인터페이스를 제공합니다:
+`@Task` 데코레이터로 메서드를 비동기 태스크로 정의합니다. Celery와 유사한 인터페이스를 제공합니다.
+
+#### 로컬 태스크 (AsyncioTaskBackend)
+
+단일 프로세스 내에서 비동기로 태스크를 실행합니다:
 
 ```python
 from bloom import Component
 from bloom.core.decorators import Factory
-from bloom.task import (
-    Task,
-    TaskBackend,
-    AsyncioTaskBackend,
-    TaskMethodAdvice,
-    TaskResult,
-    ScheduledTask,
-)
-from bloom.core.advice import MethodAdvice, MethodAdviceRegistry
+from bloom.task import Task, AsyncioTaskBackend, TaskResult, ScheduledTask
 
 @Component
 class EmailService:
     @Task
     def send_email(self, to: str, subject: str) -> str:
-        # 이메일 전송 로직
         return f"Sent to {to}"
 
     @Task(name="important-email", max_retries=3)
@@ -625,24 +620,8 @@ class EmailService:
 @Component
 class TaskConfig:
     @Factory
-    def task_backend(self) -> TaskBackend:
+    def task_backend(self) -> AsyncioTaskBackend:
         return AsyncioTaskBackend(max_workers=4)
-
-    @Factory
-    def task_advice(self, backend: TaskBackend) -> TaskMethodAdvice:
-        return TaskMethodAdvice(backend)
-
-    @Factory
-    def advice_registry(
-        self,
-        task_advice: TaskMethodAdvice,
-        *advices: MethodAdvice,
-    ) -> MethodAdviceRegistry:
-        registry = MethodAdviceRegistry()
-        registry.register(task_advice)
-        for advice in advices:
-            registry.register(advice)
-        return registry
 
 # 사용법:
 service = app.manager.get_instance(EmailService)
@@ -666,11 +645,82 @@ scheduled.resume()  # 재개
 scheduled.cancel()  # 취소
 ```
 
+#### 분산 태스크 (DistributedTaskBackend)
+
+Redis 등 브로커를 통해 여러 워커 프로세스에서 태스크를 분산 처리합니다:
+
+```python
+from bloom import Application, Component
+from bloom.core.decorators import Factory
+from bloom.task import Task, DistributedTaskBackend, RedisBroker, InMemoryBroker
+
+@Component
+class EmailService:
+    @Task(name="send_email")
+    def send_email(self, to: str, subject: str) -> str:
+        return f"Sent to {to}: {subject}"
+
+@Component
+class TaskConfig:
+    @Factory
+    def task_backend(self) -> DistributedTaskBackend:
+        # 프로덕션: Redis 브로커
+        broker = RedisBroker("redis://localhost:6379/0")
+        # 개발: 인메모리 브로커
+        # broker = InMemoryBroker()
+        return DistributedTaskBackend(broker)
+
+app = Application("myapp").scan(__name__).ready()
+```
+
+**워커 실행:**
+
+```bash
+# uvicorn으로 웹 서버 실행
+uvicorn main:app.asgi --reload
+
+# 별도 터미널에서 워커 실행
+bloom worker main:app.queue
+bloom worker main:app.queue --concurrency 4
+bloom worker main:app.queue -c 8
+
+# Python -m 으로 실행
+python -m bloom worker main:app.queue
+```
+
+**아키텍처:**
+
+```
+┌─────────────────┐          ┌─────────────────┐
+│  Web Server     │          │  Worker         │
+│  (uvicorn)      │          │  (bloom worker) │
+│                 │          │                 │
+│  app.asgi       │          │  app.queue      │
+│  HTTP 요청 처리 │          │  태스크 처리    │
+└────────┬────────┘          └────────┬────────┘
+         │                            │
+         │  delay() 호출              │  태스크 실행
+         ▼                            ▼
+    ┌────────────────────────────────────┐
+    │          Redis Broker              │
+    │   (InMemoryBroker for dev)         │
+    └────────────────────────────────────┘
+```
+
+**브로커 종류:**
+
+| 브로커           | 용도               | 특징                          |
+| ---------------- | ------------------ | ----------------------------- |
+| `InMemoryBroker` | 개발/테스트        | 단일 프로세스, 재시작 시 소실 |
+| `RedisBroker`    | 프로덕션 분산 환경 | 멀티 프로세스, 영속성 지원    |
+
 **스케줄 트리거:**
 
 - `fixed_rate`: 시작 시점 기준 고정 간격 (초)
 - `fixed_delay`: 완료 시점 기준 고정 지연 (초)
 - `cron`: cron 표현식 (분 시 일 월 요일)
+
+자세한 내용은 `docs/task-system.md` 참조.
 
 ### ConfigurationProperties 패턴
 
@@ -724,7 +774,7 @@ def handler(): pass
 ```
 bloom/
 ├── core/           # DI 컨테이너 핵심
-│   ├── abstract/   # 추상 패턴 (Entry, AbstractRegistry, AbstractManager, EntryGroup, GroupRegistry)
+│   ├── abstract/   # 추상 패턴 (Entry, AbstractRegistry, AbstractManager, EntryGroup, GroupRegistry, ProxyableDescriptor)
 │   ├── container/  # Container, Element, ComponentContainer, FactoryContainer, HandlerContainer, CallableContainer
 │   ├── advice/     # AOP (MethodAdvice, MethodAdviceRegistry, MethodInvocationManager)
 │   ├── manager.py  # ContainerManager (ContextVar 기반)
@@ -740,8 +790,16 @@ bloom/
 │   ├── trigger.py  # Trigger, CronTrigger, FixedRateTrigger, FixedDelayTrigger
 │   ├── result.py   # TaskResult, AsyncTaskResult, ScheduledTask
 │   ├── backend.py  # TaskBackend, AsyncioTaskBackend
-│   ├── decorator.py # @Task, TaskElement, BoundTask
-│   └── advice.py   # TaskMethodAdvice
+│   ├── decorator.py # @Task, TaskElement, TaskDescriptor, BoundTask
+│   ├── advice.py   # TaskMethodAdvice
+│   ├── distributed.py # DistributedTaskBackend (분산 처리)
+│   ├── registry.py # TaskRegistry (태스크 이름-핸들러 매핑)
+│   ├── message.py  # TaskMessage, TaskState (직렬화용)
+│   ├── queue_app.py # QueueApplication (워커 앱)
+│   └── broker/     # 메시지 브로커
+│       ├── base.py   # Broker ABC
+│       ├── memory.py # InMemoryBroker (개발용)
+│       └── redis.py  # RedisBroker (프로덕션용)
 ├── web/            # ASGI 웹 레이어
 │   ├── router.py   # URL 라우팅 (Manager-Registry-Entry 패턴)
 │   ├── routing/    # RouteRegistry, RouteEntry, MethodRegistry
@@ -750,6 +808,8 @@ bloom/
 │   ├── builtin/    # 내장 미들웨어 (CorsMiddleware, ErrorHandlerMiddleware)
 │   ├── auth/       # 인증/인가
 │   └── error/      # 에러 핸들링
+├── __main__.py     # CLI 엔트리포인트 (bloom worker 등)
+└── application.py  # Application 클래스 (asgi, queue 프로퍼티)
 ```
 
 ## 주의사항

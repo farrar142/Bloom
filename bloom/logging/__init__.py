@@ -55,6 +55,7 @@ def configure_logging(
     logger.handlers.clear()
     logger.addHandler(handler)
     logger.setLevel(level)
+    logger.propagate = False  # root 로거로 전파 방지 (중복 출력 방지)
 
 
 def get_logger(name: str) -> logging.Logger:

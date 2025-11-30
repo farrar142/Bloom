@@ -8,16 +8,17 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Coroutine, TypeVar
+
+from bloom.logging import get_logger
 
 from .result import AsyncTaskResult, ScheduledTask, TaskResult
 from .trigger import Trigger
 
 T = TypeVar("T")
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TaskBackend[**P, T](ABC):
@@ -165,33 +166,53 @@ class AsyncioTaskBackend[**P, T](TaskBackend):
                 thread_name_prefix="task-worker",
             )
 
+        task_name = getattr(fn, "__name__", str(fn))
+        logger.info(f"[Task SUBMITTED] {task_name} | local")
+
         def execute() -> T:
-            result = fn(*args, **kwargs)
-            # 코루틴이면 이벤트 루프에서 실행
-            if asyncio.iscoroutine(result):
-                loop = asyncio.new_event_loop()
-                try:
-                    return loop.run_until_complete(result)
-                finally:
-                    loop.close()
-            return result
+            logger.info(f"[Task STARTED] {task_name} | local")
+            start_time = datetime.now()
+            try:
+                result = fn(*args, **kwargs)
+                elapsed = (datetime.now() - start_time).total_seconds()
+                logger.info(f"[Task SUCCESS] {task_name} | elapsed={elapsed:.3f}s")
+                return result
+            except Exception as e:
+                elapsed = (datetime.now() - start_time).total_seconds()
+                logger.error(
+                    f"[Task FAILED] {task_name} | "
+                    f"elapsed={elapsed:.3f}s | error={e}"
+                )
+                raise
 
         future = self._executor.submit(execute)
         return TaskResult(future, self._executor)
 
     async def submit_async(
         self,
-        fn: Callable[P, T],
+        fn: Callable[P, Coroutine[Any, Any, T]],
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> AsyncTaskResult[T]:
         """태스크를 비동기로 실행"""
+        task_name = getattr(fn, "__name__", str(fn))
+        logger.info(f"[Task SUBMITTED] {task_name} | async")
 
         async def execute() -> T:
-            result = fn(*args, **kwargs)
-            if asyncio.iscoroutine(result):
-                return await result
-            return result
+            logger.info(f"[Task STARTED] {task_name} | async")
+            start_time = datetime.now()
+            try:
+                result = await fn(*args, **kwargs)
+                elapsed = (datetime.now() - start_time).total_seconds()
+                logger.info(f"[Task SUCCESS] {task_name} | elapsed={elapsed:.3f}s")
+                return result
+            except Exception as e:
+                elapsed = (datetime.now() - start_time).total_seconds()
+                logger.error(
+                    f"[Task FAILED] {task_name} | "
+                    f"elapsed={elapsed:.3f}s | error={e}"
+                )
+                raise
 
         task = asyncio.create_task(execute())
         return AsyncTaskResult(task)
@@ -276,8 +297,17 @@ class AsyncioTaskBackend[**P, T](TaskBackend):
 
     async def _execute_scheduled_task(self, task: ScheduledTask) -> None:
         """스케줄된 태스크 실행"""
+        logger.info(f"[Scheduled Task STARTED] {task.name}")
+        start_time = datetime.now()
         try:
             await task.execute()
-            logger.debug(f"Scheduled task executed: {task.name}")
+            elapsed = (datetime.now() - start_time).total_seconds()
+            logger.info(
+                f"[Scheduled Task SUCCESS] {task.name} | elapsed={elapsed:.3f}s"
+            )
         except Exception as e:
-            logger.error(f"Scheduled task failed: {task.name} - {e}")
+            elapsed = (datetime.now() - start_time).total_seconds()
+            logger.error(
+                f"[Scheduled Task FAILED] {task.name} | "
+                f"elapsed={elapsed:.3f}s | error={e}"
+            )

@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from .core.container import Container
     from .core.advice import MethodInvocationManager
     from .web.messaging.manager import WebSocketManager
+    from .task.queue_app import QueueApplication
 
 from .core.manager import ContainerManager, set_current_manager, try_get_current_manager
 from .core.orchestrator import ContainerOrchestrator
@@ -33,6 +34,7 @@ class Application:
         self.manager = self._resolve_manager(name, manager)
         self._router: Router | None = None
         self._asgi: ASGIApplication | None = None
+        self._queue: "QueueApplication | None" = None
         self._is_ready = False
         self._config_manager = ConfigManager()
         self._websocket_manager: "WebSocketManager | None" = None
@@ -74,6 +76,27 @@ class Application:
         if self._asgi is None:
             self._asgi = ASGIApplication(self.router, application=self)
         return self._asgi
+
+    @property
+    def queue(self) -> "QueueApplication":
+        """
+        Queue Worker 애플리케이션 반환 (bloom worker에서 사용)
+
+        DistributedTaskBackend가 등록되어 있어야 합니다.
+        @Factory로 DistributedTaskBackend를 생성하세요.
+
+        사용 예시:
+            app = Application("my_app").scan(module).ready()
+            # bloom worker main:app.queue --concurrency 4
+
+            # 또는 직접 실행
+            asyncio.run(app.queue.run())
+        """
+        if self._queue is None:
+            from .task.queue_app import QueueApplication
+
+            self._queue = QueueApplication(application=self)
+        return self._queue
 
     @property
     def websocket_manager(self) -> "WebSocketManager":
@@ -178,9 +201,7 @@ class Application:
         MethodInvocationManager를 생성하고, ContainerManager에서 Registry를 조회합니다.
         Registry가 없거나 Advice가 없으면 프록시를 적용하지 않습니다.
         """
-        from .core.advice import MethodInvocationManager, MethodProxy
-        from .core.container import HandlerContainer
-        import inspect
+        from .core.advice import MethodInvocationManager
 
         # MethodInvocationManager 생성 및 초기화 (ContainerManager에서 Registry 조회)
         self._invocation_manager = MethodInvocationManager()

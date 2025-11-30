@@ -1,5 +1,6 @@
 """TaskResult - 태스크 실행 결과
 
+AbstractTaskResult: 태스크 결과 추상 인터페이스
 TaskResult: 동기 실행 결과 (ThreadPoolExecutor 기반)
 AsyncTaskResult: 비동기 실행 결과 (asyncio.Task 기반)
 ScheduledTask: 스케줄된 태스크 제어
@@ -9,8 +10,17 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Concatenate,
+    Coroutine,
+    Generic,
+    TypeVar,
+)
 
 if TYPE_CHECKING:
     from .trigger import Trigger
@@ -18,7 +28,45 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
-class TaskResult(Generic[T]):
+class AbstractTaskResult[T](ABC):
+    """
+    태스크 결과 추상 인터페이스
+
+    TaskResult, AsyncTaskResult, DistributedTaskResult가 공유하는 공통 인터페이스입니다.
+
+    주요 메서드:
+        - task_id: 태스크 고유 ID
+        - get(): 결과 반환 (완료까지 대기)
+        - ready(): 완료 여부 확인
+        - successful(): 성공 여부 확인
+        - failed(): 실패 여부 확인
+        - revoke(): 태스크 취소
+
+    Note:
+        동기/비동기 구현에 따라 get(), ready() 등의 시그니처가 다를 수 있습니다.
+        - TaskResult: 동기 메서드
+        - AsyncTaskResult/DistributedTaskResult: 비동기 메서드 (async)
+    """
+
+    @property
+    @abstractmethod
+    def task_id(self) -> str:
+        """태스크 고유 ID"""
+        ...
+
+    @abstractmethod
+    def revoke(self) -> bool:
+        """
+        태스크 취소를 시도합니다.
+
+        Returns:
+            True: 취소 성공
+            False: 이미 실행 중이거나 완료됨
+        """
+        ...
+
+
+class TaskResult[T](AbstractTaskResult[T]):
     """
     태스크 실행 결과 (동기)
 
@@ -147,7 +195,7 @@ class TaskResult(Generic[T]):
         return f"<TaskResult: {self.task_id} ({status})>"
 
 
-class AsyncTaskResult(Generic[T]):
+class AsyncTaskResult[T](AbstractTaskResult[T]):
     """
     태스크 실행 결과 (비동기)
 
@@ -207,7 +255,7 @@ class AsyncTaskResult(Generic[T]):
         return f"<AsyncTaskResult: {self.task_id} ({status})>"
 
 
-class ScheduledTask(Generic[T]):
+class ScheduledTask[T, **P, R]:
     """
     스케줄된 태스크
 
@@ -226,7 +274,7 @@ class ScheduledTask(Generic[T]):
     def __init__(
         self,
         name: str,
-        handler: Callable[..., T],
+        handler: Callable[Concatenate[T, P], R],
         trigger: Trigger,
         args: tuple = (),
         kwargs: dict | None = None,
@@ -242,7 +290,7 @@ class ScheduledTask(Generic[T]):
         self._enabled = True
         self._execution_count = 0
         self._last_execution: datetime | None = None
-        self._last_result: T | None = None
+        self._last_result: R | None = None
         self._last_error: Exception | None = None
         self._asyncio_task: asyncio.Task | None = None
 
@@ -267,12 +315,32 @@ class ScheduledTask(Generic[T]):
         return self._last_execution
 
     @property
-    def last_result(self) -> T | None:
+    def last_result(self) -> R | None:
         return self._last_result
 
     @property
     def last_error(self) -> Exception | None:
         return self._last_error
+
+    @property
+    def handler(self) -> Callable[Concatenate[T, P], R]:
+        """핸들러 함수"""
+        return self._handler
+
+    @property
+    def args(self) -> tuple:
+        """위치 인자"""
+        return self._args
+
+    @property
+    def kwargs(self) -> dict:
+        """키워드 인자"""
+        return self._kwargs
+
+    @property
+    def instance(self) -> Any:
+        """바인딩된 인스턴스"""
+        return self._instance
 
     def pause(self) -> None:
         """스케줄 일시정지"""
@@ -290,7 +358,7 @@ class ScheduledTask(Generic[T]):
             return True
         return False
 
-    async def execute(self) -> T:
+    async def execute(self) -> R | Coroutine[Any, Any, R]:
         """태스크를 즉시 실행합니다."""
         self._last_execution = datetime.now()
         self._execution_count += 1
@@ -312,7 +380,7 @@ class ScheduledTask(Generic[T]):
             self._last_error = e
             raise
 
-    def run(self) -> TaskResult[T]:
+    def run(self) -> TaskResult[R]:
         """
         태스크를 즉시 실행하고 TaskResult를 반환합니다 (스케줄과 별개)
         """
@@ -320,7 +388,7 @@ class ScheduledTask(Generic[T]):
 
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="task-run")
 
-        def execute_sync() -> T:
+        def execute_sync() -> R:
             if self._instance is not None:
                 return self._handler(self._instance, *self._args, **self._kwargs)
             return self._handler(*self._args, **self._kwargs)

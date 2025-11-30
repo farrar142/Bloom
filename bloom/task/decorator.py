@@ -30,7 +30,7 @@ from bloom.core.abstract import ProxyableDescriptor
 from bloom.core.container import HandlerContainer
 from bloom.core.container.element import Element
 
-from .result import AsyncTaskResult, ScheduledTask, TaskResult
+from .result import AbstractTaskResult, AsyncTaskResult, ScheduledTask, TaskResult
 from .trigger import CronTrigger, FixedDelayTrigger, FixedRateTrigger, Trigger
 
 if TYPE_CHECKING:
@@ -92,7 +92,12 @@ class BoundTask[T, **P, R]:
         self._instance = instance
         self._backend = backend
         self._element = element
-        self._name = element.name if element and element.name else handler.__name__
+        # 태스크 이름: @Task(name=...)으로 지정한 이름 또는 ClassName.method_name
+        if element and element.name:
+            self._name = element.name
+        else:
+            class_name = type(instance).__name__
+            self._name = f"{class_name}.{handler.__name__}"
         # 프록시 지원
         self._proxy: Any = None
         self._use_proxy: bool = False
@@ -150,7 +155,7 @@ class BoundTask[T, **P, R]:
                 return asyncio.run(result)
         return result
 
-    def delay(self, *args: P.args, **kwargs: P.kwargs) -> TaskResult[R]:
+    def delay(self, *args: P.args, **kwargs: P.kwargs) -> AbstractTaskResult[R]:
         """백그라운드에서 실행 (동기 결과)"""
         backend = self._get_backend()
         if backend is None:
@@ -158,6 +163,17 @@ class BoundTask[T, **P, R]:
                 "TaskBackend is not configured. Use @Factory to provide TaskBackend."
             )
 
+        # DistributedTaskBackend인 경우: 태스크 이름으로 제출
+        from .distributed import DistributedTaskBackend
+
+        if isinstance(backend, DistributedTaskBackend):
+            return backend.submit_by_name(
+                task_name=self._name,
+                args=args,
+                kwargs=kwargs,
+            )
+
+        # AsyncioTaskBackend인 경우: 로컬 함수로 제출
         def execute() -> R:
             # 프록시가 있으면 프록시를 통해 실행 (Advice 적용)
             if self._use_proxy and self._proxy is not None:
@@ -176,7 +192,7 @@ class BoundTask[T, **P, R]:
 
     async def delay_async(
         self, *args: P.args, **kwargs: P.kwargs
-    ) -> AsyncTaskResult[R]:
+    ) -> AbstractTaskResult[R]:
         """백그라운드에서 실행 (비동기 결과)"""
         backend = self._get_backend()
         if backend is None:
@@ -184,6 +200,17 @@ class BoundTask[T, **P, R]:
                 "TaskBackend is not configured. Use @Factory to provide TaskBackend."
             )
 
+        # DistributedTaskBackend인 경우: 태스크 이름으로 제출
+        from .distributed import DistributedTaskBackend
+
+        if isinstance(backend, DistributedTaskBackend):
+            return await backend.submit_by_name_async(
+                task_name=self._name,
+                args=args,
+                kwargs=kwargs,
+            )
+
+        # AsyncioTaskBackend인 경우: 로컬 함수로 제출
         async def execute() -> R:
             # 프록시가 있으면 프록시를 통해 실행 (Advice 적용)
             if self._use_proxy and self._proxy is not None:
@@ -208,7 +235,7 @@ class BoundTask[T, **P, R]:
         initial_delay: float = 0,
         args: tuple = (),
         kwargs: dict | None = None,
-    ) -> ScheduledTask[R]:
+    ) -> ScheduledTask[T, P, R]:
         """
         스케줄에 등록
 
@@ -367,7 +394,7 @@ def Task[T, **P, R](
 
     def decorator(fn: Callable[Concatenate[T, P], R]) -> TaskDescriptor[T, P, R]:
         element = TaskElement(
-            name=name or fn.__name__,
+            name=name,  # None이면 레지스트리에서 ClassName.method_name 사용
             bind=bind,
             max_retries=max_retries,
             retry_delay=retry_delay,
