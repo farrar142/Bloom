@@ -203,22 +203,33 @@ class Container[T]:
                         if inner_scope in (ScopeEnum.PROTOTYPE, ScopeEnum.REQUEST)
                         else None
                     )
+                    # prototype_mode 정보 가져오기
+                    from .element import PrototypeMode
+
+                    inner_prototype_mode = PrototypeMode.DEFAULT
+                    for elem in inner_container.elements if inner_container else []:
+                        if isinstance(elem, ScopeElement):
+                            inner_prototype_mode = elem.prototype_mode
+                            break
                     kwargs[name] = LazyFieldProxy(
                         make_resolver(manager, inner_type, inner_scope),
                         inner_type,
                         inner_scope,
                         lifecycle_container,
+                        inner_prototype_mode,
                     )
                 continue
 
             # 모든 필드는 기본적으로 LazyFieldProxy로 주입 (기본 Lazy 동작)
             if dep_container := manager.get_container(dep_type):
-                from .element import Scope as ScopeEnum, ScopeElement
+                from .element import Scope as ScopeEnum, ScopeElement, PrototypeMode
 
                 scope = ScopeEnum.SINGLETON  # 기본값
+                prototype_mode = PrototypeMode.DEFAULT  # 기본값
                 for elem in dep_container.elements:
                     if isinstance(elem, ScopeElement):
                         scope = elem.scope
+                        prototype_mode = elem.prototype_mode
                         break
 
                 # SINGLETON만 캐시된 인스턴스 사용 (PROTOTYPE/REQUEST는 LazyFieldProxy에서 처리)
@@ -268,6 +279,7 @@ class Container[T]:
                     dep_type,
                     scope,
                     lifecycle_container,
+                    prototype_mode,
                 )
             else:
                 # 컨테이너가 없으면 기존 인스턴스 확인

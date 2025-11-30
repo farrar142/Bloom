@@ -4,10 +4,10 @@
 
 Bloom은 두 가지 이벤트 버스를 제공합니다:
 
-| 이벤트 버스 | 용도 | 이벤트 타입 | 커스터마이징 |
-|------------|------|-------------|--------------|
-| `SystemEventBus` | 프레임워크 내부 | `SystemEvent` | 불가 (내부용) |
-| `ApplicationEventBus` | 비즈니스 로직 | `DomainEvent` | `@Factory` 가능 |
+| 이벤트 버스           | 용도            | 이벤트 타입   | 커스터마이징    |
+| --------------------- | --------------- | ------------- | --------------- |
+| `SystemEventBus`      | 프레임워크 내부 | `SystemEvent` | 불가 (내부용)   |
+| `ApplicationEventBus` | 비즈니스 로직   | `DomainEvent` | `@Factory` 가능 |
 
 ## ApplicationEventBus (도메인 이벤트)
 
@@ -49,7 +49,7 @@ class UserService:
     def create_user(self, username: str) -> str:
         user_id = f"user-{id(username)}"
         # 비즈니스 로직...
-        
+
         # 이벤트 발행
         self.event_bus.publish(UserCreatedEvent(
             user_id=user_id,
@@ -110,7 +110,7 @@ class RedisEventBus(ApplicationEventBus):
     def __init__(self, redis_url: str):
         super().__init__()
         self.redis = Redis.from_url(redis_url)
-    
+
     def publish(self, event):
         # Redis에 이벤트 발행
         self.redis.publish(type(event).__name__, event.to_json())
@@ -217,17 +217,17 @@ Event (ABC)
 class InMemoryEventBus(EventBus):
     """
     메모리 기반 동기 이벤트 버스
-    
+
     - 이벤트 발행 시 등록된 리스너를 순차 실행
     - async 리스너는 asyncio.create_task()로 실행
     """
-    
+
     def subscribe(self, event_type: type[E], handler: EventHandler[E]) -> None:
         """이벤트 타입에 핸들러 등록"""
-        
+
     def unsubscribe(self, event_type: type[E], handler: EventHandler[E]) -> None:
         """핸들러 등록 해제"""
-        
+
     def publish(self, event: Event) -> None:
         """이벤트 발행 - 등록된 핸들러들 실행"""
 ```
@@ -239,20 +239,20 @@ from bloom.core.events import EventBus, Event, EventHandler
 
 class AsyncQueueEventBus(EventBus):
     """비동기 큐 기반 이벤트 버스 예시"""
-    
+
     def __init__(self):
         self._queue = asyncio.Queue()
         self._handlers: dict[type, list[EventHandler]] = {}
-        
+
     def subscribe(self, event_type, handler):
         if event_type not in self._handlers:
             self._handlers[event_type] = []
         self._handlers[event_type].append(handler)
-    
+
     def publish(self, event):
         # 큐에 이벤트 추가 (비동기 처리)
         asyncio.create_task(self._queue.put(event))
-    
+
     async def process_events(self):
         """백그라운드에서 이벤트 처리"""
         while True:
@@ -327,7 +327,7 @@ class EmailService:
     def on_user_created(self, event: UserCreatedEvent):
         # ❌ 오래 걸리는 작업을 동기로 실행
         # send_email(event.username)
-        
+
         # ✅ 백그라운드 태스크로 위임
         self.send_welcome_email.delay(event.username)
 
@@ -389,7 +389,7 @@ class ServiceB:
 # bloom/core/events/application.py
 class EventListenerElement(Element):
     """@EventListener 메타데이터를 담는 Element"""
-    
+
     key = "event_listener"
 
     def __init__(self, event_types: tuple[type[DomainEvent], ...]):

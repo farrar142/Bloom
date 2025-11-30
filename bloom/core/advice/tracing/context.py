@@ -34,6 +34,12 @@ _prototype_instances: ContextVar[dict[int, list[tuple[Any, "Container"]]]] = Con
     "bloom_prototype_instances", default={}
 )
 
+# CALL_SCOPED PROTOTYPE 캐시 (frame_id -> {component_type: instance})
+# 같은 핸들러 호출(frame_id) 내에서 같은 타입 요청 시 캐시된 인스턴스 반환
+_scoped_prototype_cache: ContextVar[dict[str, dict[type, Any]]] = ContextVar(
+    "bloom_scoped_prototype_cache", default={}
+)
+
 
 def get_trace_id() -> str:
     """현재 추적 ID 반환 (없으면 빈 문자열)"""
@@ -155,6 +161,7 @@ def clear_stack() -> None:
     _call_stack.set(())
     _trace_id.set("")
     _prototype_instances.set({})
+    _scoped_prototype_cache.set({})
 
 
 # =============================================================================
@@ -200,10 +207,14 @@ def cleanup_prototypes_at_depth(depth: int) -> None:
     """
     instances = _prototype_instances.get()
     if depth not in instances:
+        # 캐시도 정리
+        _cleanup_scoped_cache_at_depth(depth)
         return
 
     prototypes = instances[depth]
     if not prototypes:
+        # 캐시도 정리
+        _cleanup_scoped_cache_at_depth(depth)
         return
 
     # 라이프사이클 매니저를 통해 PreDestroy 호출
@@ -223,6 +234,9 @@ def cleanup_prototypes_at_depth(depth: int) -> None:
     new_instances = dict(instances)
     del new_instances[depth]
     _prototype_instances.set(new_instances)
+
+    # 캐시도 정리
+    _cleanup_scoped_cache_at_depth(depth)
 
 
 def get_prototype_count_at_depth(depth: int) -> int:
@@ -272,3 +286,88 @@ def _summarize_value(value: Any, max_len: int = 20) -> str:
         return f"dict[{len(value)}]"
 
     return f"<{type_name}>"
+
+
+# =============================================================================
+# CALL_SCOPED PROTOTYPE 캐시
+# =============================================================================
+
+
+def get_current_frame_id() -> str | None:
+    """현재 콜스택의 최상위 핸들러 frame_id 반환"""
+    stack = _call_stack.get()
+    if not stack:
+        return None
+    # 최상위 핸들러(depth=0)의 frame_id 사용
+    return stack[0].frame_id
+
+
+def get_scoped_prototype(component_type: type) -> Any | None:
+    """
+    현재 핸들러 호출 내에서 캐시된 PROTOTYPE 인스턴스 조회
+
+    CALL_SCOPED 스코프의 컴포넌트가 같은 핸들러 호출 내에서
+    동일한 인스턴스를 반환받기 위해 사용됩니다.
+
+    Args:
+        component_type: 컴포넌트 타입
+
+    Returns:
+        캐시된 인스턴스 또는 None
+    """
+    frame_id = get_current_frame_id()
+    if frame_id is None:
+        return None
+
+    cache = _scoped_prototype_cache.get()
+    frame_cache = cache.get(frame_id)
+    if frame_cache is None:
+        return None
+
+    return frame_cache.get(component_type)
+
+
+def set_scoped_prototype(component_type: type, instance: Any) -> None:
+    """
+    현재 핸들러 호출에 PROTOTYPE 인스턴스 캐싱
+
+    Args:
+        component_type: 컴포넌트 타입
+        instance: 캐시할 인스턴스
+    """
+    frame_id = get_current_frame_id()
+    if frame_id is None:
+        return
+
+    cache = _scoped_prototype_cache.get()
+    new_cache = dict(cache)
+
+    if frame_id not in new_cache:
+        new_cache[frame_id] = {}
+    else:
+        new_cache[frame_id] = dict(new_cache[frame_id])
+
+    new_cache[frame_id][component_type] = instance
+    _scoped_prototype_cache.set(new_cache)
+
+
+def _cleanup_scoped_cache_at_depth(depth: int) -> None:
+    """
+    특정 depth의 scoped PROTOTYPE 캐시 정리
+
+    depth=0일 때만 캐시 정리 (핸들러 호출 종료 시)
+    """
+    if depth != 0:
+        return
+
+    frame_id = get_current_frame_id()
+    if frame_id is None:
+        return
+
+    cache = _scoped_prototype_cache.get()
+    if frame_id not in cache:
+        return
+
+    new_cache = dict(cache)
+    del new_cache[frame_id]
+    _scoped_prototype_cache.set(new_cache)

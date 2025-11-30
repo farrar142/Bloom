@@ -300,9 +300,10 @@ class Application:
         from .core.advice import MethodProxy, MethodAdvice, MethodAdviceRegistry
         from .core.container import HandlerContainer
         from .core.abstract import ProxyableDescriptor
+        from .core.events.base import EventBus
 
-        # MethodAdvice 및 관련 인프라 클래스는 프록시 적용 제외 (무한 재귀 방지)
-        if isinstance(instance, (MethodAdvice, MethodAdviceRegistry)):
+        # MethodAdvice/EventBus 및 관련 인프라 클래스는 프록시 적용 제외 (무한 재귀 방지)
+        if isinstance(instance, (MethodAdvice, MethodAdviceRegistry, EventBus)):
             return
 
         cls = type(instance)

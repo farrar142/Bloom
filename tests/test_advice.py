@@ -103,18 +103,29 @@ class LogAdvice(MethodAdvice):
 # === 테스트용 Mock Container ===
 
 
+def _mock_handler():
+    """Mock 핸들러 함수"""
+    pass
+
+
 class MockHandlerContainer(HandlerContainer):
     """테스트용 핸들러 컨테이너"""
 
     def __init__(self):
         self.elements: list[Element] = []
         self.handler = None
+        self.target = _mock_handler  # CallStackTraceAdvice에서 필요
+        self.manager = None  # CallStackTraceAdvice 이벤트 발행에 필요
 
     def add_elements(self, *elements: Element) -> None:
         self.elements.extend(elements)
 
     def has_element(self, element_type: type) -> bool:
         return any(isinstance(e, element_type) for e in self.elements)
+
+    def _get_manager(self):
+        """Mock manager 반환"""
+        return self.manager
 
 
 # === 단위 테스트: MethodAdvice ===
@@ -328,11 +339,12 @@ class TestMethodAdviceRegistry:
         applicable = registry.find_applicable(container)
 
         # Then
-        assert len(applicable) == 1
-        assert applicable[0] is tx_advice
+        # CallStackTraceAdvice(기본) + TransactionAdvice
+        assert len(applicable) == 2
+        assert tx_advice in applicable
 
     def test_find_applicable_returns_empty_when_no_match(self):
-        """매칭되는 어드바이스가 없으면 빈 리스트"""
+        """매칭되는 어드바이스가 없어도 기본 CallStackTraceAdvice는 포함"""
         # Given
         tx_advice = TransactionAdvice()
         registry = MethodAdviceRegistry()
@@ -345,7 +357,11 @@ class TestMethodAdviceRegistry:
         applicable = registry.find_applicable(container)
 
         # Then
-        assert applicable == []
+        # CallStackTraceAdvice는 항상 supports() True
+        assert len(applicable) == 1
+        from bloom.core.advice import CallStackTraceAdvice
+
+        assert isinstance(applicable[0], CallStackTraceAdvice)
 
 
 # === 단위 테스트: InvocationContext ===
@@ -473,16 +489,15 @@ class TestAdviceWithDI:
         # Given
         call_log: list[str] = []
 
-        class LoggingAdvice(MethodAdvice):
-            def supports(self, container: HandlerContainer) -> bool:
-                return True
+        # CallStackTraceAdvice를 상속하여 기본 tracing advice를 교체
+        from bloom.core.advice import CallStackTraceAdvice, CallFrame
 
-            def before_sync(self, context: InvocationContext) -> None:
+        class LoggingAdvice(CallStackTraceAdvice):
+            def on_enter(self, frame: CallFrame) -> None:
                 call_log.append("advice:before")
 
-            def after_sync(self, context: InvocationContext, result: Any) -> Any:
+            def on_exit(self, frame: CallFrame, duration_ms: float) -> None:
                 call_log.append("advice:after")
-                return result
 
         @Component
         class AdviceConfig:
@@ -502,6 +517,9 @@ class TestAdviceWithDI:
         # When
         app = Application("test").scan(AdviceConfig, MyService).ready()
         service = app.manager.get_instance(MyService)
+
+        # 핸들러 호출 직전에 로그 초기화 (초기화 시 호출되는 로그 제외)
+        call_log.clear()
         result = service.do_something()
 
         # Then
@@ -575,17 +593,16 @@ class TestAdviceWithDI:
         # Given
         call_log: list[str] = []
 
-        @Component
-        class LoggingAdvice(MethodAdvice):
-            def supports(self, container: HandlerContainer) -> bool:
-                return True
+        # CallStackTraceAdvice를 상속하여 기본 tracing advice를 교체
+        from bloom.core.advice import CallStackTraceAdvice, CallFrame
 
-            def before_sync(self, context: InvocationContext) -> None:
+        @Component
+        class LoggingAdvice(CallStackTraceAdvice):
+            def on_enter(self, frame: CallFrame) -> None:
                 call_log.append("advice:before")
 
-            def after_sync(self, context: InvocationContext, result: Any) -> Any:
+            def on_exit(self, frame: CallFrame, duration_ms: float) -> None:
                 call_log.append("advice:after")
-                return result
 
         @Component
         class AdviceConfig:
@@ -606,6 +623,9 @@ class TestAdviceWithDI:
         # When
         app = Application("test").scan(LoggingAdvice, AdviceConfig, MyService).ready()
         service = app.manager.get_instance(MyService)
+
+        # 핸들러 호출 직전에 로그 초기화 (초기화 시 호출되는 로그 제외)
+        call_log.clear()
         result = service.do_something()
 
         # Then

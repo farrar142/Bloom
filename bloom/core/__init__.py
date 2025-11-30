@@ -23,7 +23,7 @@ from .decorators import (
     Order,
     Scope,
 )
-from .container.element import Scope as ScopeEnum
+from .container.element import Scope as ScopeEnum, PrototypeMode
 from .exceptions import (
     BloomException,
     CircularDependencyError,
@@ -65,6 +65,7 @@ __all__ = [
     "Order",
     "Scope",
     "ScopeEnum",
+    "PrototypeMode",
     # Exceptions
     "BloomException",
     "CircularDependencyError",

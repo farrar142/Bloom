@@ -33,6 +33,7 @@ from .context import (
     get_call_stack,
     get_current_frame,
     get_call_depth,
+    get_current_frame_id,
     push_frame,
     pop_frame,
     get_trace_id,
@@ -40,6 +41,8 @@ from .context import (
     register_prototype,
     cleanup_prototypes_at_depth,
     get_prototype_count_at_depth,
+    get_scoped_prototype,
+    set_scoped_prototype,
 )
 from .advice import CallStackTraceAdvice
 
@@ -48,6 +51,7 @@ __all__ = [
     "get_call_stack",
     "get_current_frame",
     "get_call_depth",
+    "get_current_frame_id",
     "push_frame",
     "pop_frame",
     "get_trace_id",
@@ -55,5 +59,7 @@ __all__ = [
     "register_prototype",
     "cleanup_prototypes_at_depth",
     "get_prototype_count_at_depth",
+    "get_scoped_prototype",
+    "set_scoped_prototype",
     "CallStackTraceAdvice",
 ]

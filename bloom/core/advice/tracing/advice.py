@@ -16,7 +16,7 @@ class CallStackTraceAdvice(MethodAdvice):
     """
     콜스택을 추적하는 기본 어드바이스
 
-    모든 핸들러 메서드에 적용되어 콜스택을 기록합니다.
+    DI 컨테이너로 생성된 클래스의 모든 메서드에 적용되어 콜스택을 기록합니다.
     상속하여 on_enter/on_exit 훅을 오버라이드하면
     로깅, 메트릭 수집, 분산 트레이싱 등을 구현할 수 있습니다.
 
@@ -39,7 +39,15 @@ class CallStackTraceAdvice(MethodAdvice):
     include_args: bool = False
 
     def supports(self, container: "HandlerContainer") -> bool:
-        """모든 핸들러에 적용"""
+        """
+        모든 핸들러에 적용 (MethodAdvice 하위 클래스는 무한 재귀 방지를 위해 제외)
+        """
+        from ..base import MethodAdvice
+
+        # MethodAdvice 서브클래스의 메서드는 제외 (무한 재귀 방지)
+        owner_cls = getattr(container, "owner_cls", None)
+        if owner_cls is not None and issubclass(owner_cls, MethodAdvice):
+            return False
         return True
 
     # =========================================================================

@@ -1,6 +1,6 @@
 """Component 데코레이터"""
 
-from typing import Any, Callable, overload
+from typing import Any, Callable, overload, TYPE_CHECKING
 
 from bloom.core.container import (
     ComponentContainer,
@@ -8,7 +8,12 @@ from bloom.core.container import (
     FactoryContainer,
     HandlerContainer,
 )
-from bloom.core.container.element import OrderElement, ScopeElement, Scope as ScopeEnum
+from bloom.core.container.element import (
+    OrderElement,
+    ScopeElement,
+    Scope as ScopeEnum,
+    PrototypeMode,
+)
 from bloom.core.lifecycle import (
     LifecycleHandlerContainer,
     LifecycleType,
@@ -180,7 +185,7 @@ def Order(order: int):
     return decorator
 
 
-def Scope(scope: ScopeEnum):
+def Scope(scope: ScopeEnum, mode: PrototypeMode | None = None):
     """
     Scope 데코레이터: 컴포넌트의 인스턴스 생명주기 범위 지정
 
@@ -188,9 +193,15 @@ def Scope(scope: ScopeEnum):
     - PROTOTYPE: 주입될 때마다 새 인스턴스 생성
     - REQUEST: HTTP 요청마다 새 인스턴스 (웹 컨텍스트에서만)
 
+    Args:
+        scope: 스코프 유형
+        mode: PROTOTYPE 스코프의 캐싱 모드 (PrototypeMode)
+            - DEFAULT: 매번 새 인스턴스 생성
+            - CALL_SCOPED: 같은 핸들러 호출 내에서 같은 인스턴스 반환
+
     사용 예시:
         from bloom.core.decorators import Scope
-        from bloom.core.container.element import Scope as ScopeEnum
+        from bloom.core.container.element import Scope as ScopeEnum, PrototypeMode
 
         @Component
         @Scope(ScopeEnum.PROTOTYPE)
@@ -199,15 +210,22 @@ def Scope(scope: ScopeEnum):
             pass
 
         @Component
+        @Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        class ScopedResource:
+            # 같은 핸들러 호출 내에서는 같은 인스턴스 반환
+            pass
+
+        @Component
         @Scope(ScopeEnum.SINGLETON)  # 기본값
         class DatabasePool:
             # 단일 인스턴스
             pass
     """
+    actual_mode = mode if mode is not None else PrototypeMode.DEFAULT
 
     def decorator[T](cls: type[T]) -> type[T]:
         container = ComponentContainer.get_or_create(cls)
-        container.add_element(ScopeElement(scope))
+        container.add_element(ScopeElement(scope, actual_mode))
         return cls
 
     return decorator

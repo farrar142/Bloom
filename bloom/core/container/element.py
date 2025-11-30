@@ -67,6 +67,17 @@ class Scope(Enum):
     REQUEST = "request"
 
 
+class PrototypeMode(Enum):
+    """PROTOTYPE 스코프의 인스턴스 캐싱 모드
+
+    - DEFAULT: 매번 새 인스턴스 생성 (Spring 동일)
+    - CALL_SCOPED: 같은 핸들러 호출 내에서는 같은 인스턴스 반환
+    """
+
+    DEFAULT = "default"
+    CALL_SCOPED = "call_scoped"
+
+
 class ScopeElement(Element):
     """
     컴포넌트의 Scope를 지정하는 Element
@@ -76,12 +87,29 @@ class ScopeElement(Element):
         @Scope(Scope.PROTOTYPE)
         class MyService:
             pass
+
+        # 같은 핸들러 호출 내에서는 같은 인스턴스 반환
+        @Component
+        @Scope(Scope.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        class ScopedResource:
+            pass
     """
 
-    def __init__(self, scope: Scope):
+    def __init__(self, scope: Scope, mode: PrototypeMode = PrototypeMode.DEFAULT):
         super().__init__()
         self.metadata["scope"] = scope
+        self.metadata["prototype_mode"] = mode
 
     @property
     def scope(self) -> Scope:
         return self.metadata.get("scope", Scope.SINGLETON)
+
+    @property
+    def prototype_mode(self) -> PrototypeMode:
+        """
+        PROTOTYPE 스코프의 캐싱 모드
+
+        - DEFAULT: 매번 새 인스턴스 생성
+        - CALL_SCOPED: 같은 핸들러 호출 내에서 같은 인스턴스 반환
+        """
+        return self.metadata.get("prototype_mode", PrototypeMode.DEFAULT)

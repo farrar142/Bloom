@@ -1,7 +1,8 @@
 """CallFrame - 콜스택 프레임 정의"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
+import uuid
 from typing import Any
 
 
@@ -20,6 +21,7 @@ class CallFrame:
         trace_id: 요청별 고유 추적 ID
         depth: 콜스택 깊이 (0부터 시작)
         args_summary: 인자 요약 (디버깅용, 선택적)
+        frame_id: 프레임 고유 ID (CALL_SCOPED 캐싱용)
     """
 
     instance_type: str
@@ -28,6 +30,7 @@ class CallFrame:
     trace_id: str
     depth: int
     args_summary: str = ""
+    frame_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
 
     @property
     def elapsed_ms(self) -> float:

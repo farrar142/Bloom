@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING
 
 from ..abstract import AbstractRegistry
+from .tracing import CallStackTraceAdvice
 
 if TYPE_CHECKING:
     from ..container import HandlerContainer
@@ -14,7 +15,37 @@ class MethodAdviceRegistry(AbstractRegistry["MethodAdvice"]):
     MethodAdvice를 수집하고 조회하는 Registry
 
     모든 등록된 Advice 중에서 특정 Container에 적용 가능한 것들을 찾습니다.
+
+    기본적으로 CallStackTraceAdvice가 포함되어 있으며,
+    CallStackTraceAdvice를 상속한 커스텀 Advice를 등록하면 자동으로 교체됩니다.
     """
+
+    def __init__(self):
+        super().__init__()
+        # 기본 CallStackTraceAdvice 등록
+        self._default_tracing_advice = CallStackTraceAdvice()
+        self._entries.append(self._default_tracing_advice)
+
+    def register(self, item: "MethodAdvice") -> None:
+        """
+        항목 등록
+
+        CallStackTraceAdvice를 상속한 Advice가 등록되면
+        기본 CallStackTraceAdvice를 제거하고 새 Advice로 교체합니다.
+        """
+        # CallStackTraceAdvice 상속 클래스인지 확인
+        if isinstance(item, CallStackTraceAdvice):
+            # 기본 tracing advice가 있으면 제거
+            if self._default_tracing_advice in self._entries:
+                self._entries.remove(self._default_tracing_advice)
+            # 기존에 등록된 다른 CallStackTraceAdvice 상속 클래스도 제거
+            self._entries = [
+                e
+                for e in self._entries
+                if not isinstance(e, CallStackTraceAdvice) or e is item
+            ]
+
+        self._entries.append(item)
 
     def find_applicable(self, container: "HandlerContainer") -> list["MethodAdvice"]:
         """

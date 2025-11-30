@@ -6,29 +6,53 @@
 
 #### Core DI Container
 
-| 기능                             | 상태 | 설명                         |
-| -------------------------------- | ---- | ---------------------------- |
-| `@Component`                     | ✅   | 클래스 컴포넌트 등록         |
-| `@Factory`                       | ✅   | 메서드 기반 인스턴스 생성    |
-| `@Handler`                       | ✅   | 키 기반 핸들러 등록          |
-| 필드 주입                        | ✅   | 타입 어노테이션 기반 DI      |
-| 토폴로지컬 정렬                  | ✅   | 순환 의존성 감지             |
-| `@PostConstruct` / `@PreDestroy` | ✅   | 라이프사이클 훅              |
-| `LifecycleManager`               | ✅   | 컨테이너 라이프사이클 관리   |
-| ContextVar 기반 매니저           | ✅   | 스레드 안전한 컨테이너 관리  |
-| `Lazy[T]`                        | ✅   | 순환 의존성 해결용 지연 주입 |
-| 의존성 그래프 초기화             | ✅   | DAG 기반 병렬 초기화         |
-| Factory Chain                    | ✅   | 동일 타입 Factory 체이닝     |
+| 기능                             | 상태 | 설명                              |
+| -------------------------------- | ---- | --------------------------------- |
+| `@Component`                     | ✅   | 클래스 컴포넌트 등록              |
+| `@Factory`                       | ✅   | 메서드 기반 인스턴스 생성         |
+| `@Handler`                       | ✅   | 키 기반 핸들러 등록               |
+| 필드 주입                        | ✅   | 타입 어노테이션 기반 DI           |
+| 토폴로지컬 정렬                  | ✅   | 순환 의존성 감지                  |
+| `@PostConstruct` / `@PreDestroy` | ✅   | 라이프사이클 훅                   |
+| `LifecycleManager`               | ✅   | 컨테이너 라이프사이클 관리        |
+| ContextVar 기반 매니저           | ✅   | 스레드 안전한 컨테이너 관리       |
+| `Lazy[T]`                        | ✅   | 순환 의존성 해결용 지연 주입      |
+| 의존성 그래프 초기화             | ✅   | DAG 기반 병렬 초기화              |
+| Factory Chain                    | ✅   | 동일 타입 Factory 체이닝          |
+| `@Scope(SINGLETON)`              | ✅   | 싱글톤 스코프 (기본값)            |
+| `@Scope(PROTOTYPE)`              | ✅   | 프로토타입 스코프                 |
+| `PrototypeMode.DEFAULT`          | ✅   | 매번 새 인스턴스 생성             |
+| `PrototypeMode.CALL_SCOPED`      | ✅   | 핸들러 호출 내 동일 인스턴스 공유 |
+| PROTOTYPE 자동 정리              | ✅   | 콜스택 기반 @PreDestroy 자동 호출 |
 
 #### AOP (Aspect-Oriented Programming)
 
-| 기능                            | 상태 | 설명                          |
-| ------------------------------- | ---- | ----------------------------- |
-| `MethodAdvice`                  | ✅   | 메서드 어드바이스 추상 클래스 |
-| `MethodAdviceRegistry`          | ✅   | 어드바이스 레지스트리         |
-| `InvocationContext`             | ✅   | 호출 컨텍스트 (속성 저장)     |
-| `before` / `after` / `on_error` | ✅   | 전처리/후처리/에러 훅         |
-| `MethodProxy`                   | ✅   | 메서드 프록시 래퍼            |
+| 기능                            | 상태 | 설명                                      |
+| ------------------------------- | ---- | ----------------------------------------- |
+| `MethodAdvice`                  | ✅   | 메서드 어드바이스 추상 클래스             |
+| `MethodAdviceRegistry`          | ✅   | 어드바이스 레지스트리 (기본 Tracing 포함) |
+| `InvocationContext`             | ✅   | 호출 컨텍스트 (속성 저장)                 |
+| `before` / `after` / `on_error` | ✅   | 전처리/후처리/에러 훅                     |
+| `MethodProxy`                   | ✅   | 메서드 프록시 래퍼                        |
+| `CallStackTraceAdvice`          | ✅   | 콜스택 추적 어드바이스 (기본 제공)        |
+| `CallFrame`                     | ✅   | 콜스택 프레임 (불변)                      |
+| 자동 프록시 적용                | ✅   | 모든 컴포넌트 메서드에 자동 적용          |
+| 무한 재귀 방지                  | ✅   | MethodAdvice/EventBus 하위 클래스 제외    |
+
+#### Event System
+
+| 기능                   | 상태 | 설명                        |
+| ---------------------- | ---- | --------------------------- |
+| `EventBus`             | ✅   | 이벤트 버스 ABC             |
+| `InMemoryEventBus`     | ✅   | 인메모리 이벤트 버스        |
+| `SystemEventBus`       | ✅   | 시스템 이벤트 버스 (내부용) |
+| `ApplicationEventBus`  | ✅   | 애플리케이션 이벤트 버스    |
+| `DomainEvent`          | ✅   | 도메인 이벤트 베이스 클래스 |
+| `@EventListener`       | ✅   | 이벤트 리스너 데코레이터    |
+| `MethodEnteredEvent`   | ✅   | 메서드 진입 시스템 이벤트   |
+| `MethodExitedEvent`    | ✅   | 메서드 종료 시스템 이벤트   |
+| `MethodErrorEvent`     | ✅   | 메서드 에러 시스템 이벤트   |
+| `InstanceCreatedEvent` | ✅   | 인스턴스 생성 시스템 이벤트 |
 
 #### Configuration
 
@@ -98,12 +122,16 @@
 
 #### 문서화
 
-| 기능                       | 상태 | 설명                 |
-| -------------------------- | ---- | -------------------- |
-| `copilot-instructions.md`  | ✅   | AI 코딩 가이드       |
-| `architecture-patterns.md` | ✅   | 아키텍처 패턴 문서   |
-| `config-properties.md`     | ✅   | 설정 바인딩 문서     |
-| `testing-testcase.md`      | ✅   | TestCase 클래스 문서 |
+| 기능                       | 상태 | 설명                    |
+| -------------------------- | ---- | ----------------------- |
+| `copilot-instructions.md`  | ✅   | AI 코딩 가이드          |
+| `architecture-patterns.md` | ✅   | 아키텍처 패턴 문서      |
+| `config-properties.md`     | ✅   | 설정 바인딩 문서        |
+| `testing-testcase.md`      | ✅   | TestCase 클래스 문서    |
+| `method-advice-pattern.md` | ✅   | AOP 패턴 문서           |
+| `tracing-system.md`        | ✅   | 콜스택 추적 시스템 문서 |
+| `prototype-scope.md`       | ✅   | PROTOTYPE 스코프 문서   |
+| `event-system.md`          | ✅   | 이벤트 시스템 문서      |
 
 #### 테스팅
 
@@ -125,7 +153,7 @@
 
 #### 테스트 현황
 
-- **514개 테스트** 작성 완료
+- **576개 테스트** 작성 완료
 - 모든 테스트 통과 ✅
 
 ---
@@ -161,9 +189,11 @@
 
 #### 🔧 DI 확장
 
-- [ ] `@Scope("prototype")` - 호출마다 새 인스턴스
+- [x] `@Scope("prototype")` - 호출마다 새 인스턴스 ✅
+- [x] `PrototypeMode.CALL_SCOPED` - 핸들러 호출 내 공유 ✅
 - [x] `Lazy[T]` - 지연 초기화 ✅
 - [x] `@PostConstruct` / `@PreDestroy` - 라이프사이클 훅 ✅
+- [x] PROTOTYPE 자동 정리 - 콜스택 기반 @PreDestroy ✅
 - [ ] 조건부 빈 등록 (`@ConditionalOnProperty`)
 
 #### 🌐 Web 확장
@@ -186,7 +216,8 @@
 
 #### 📊 모니터링
 
-- [ ] Request Logging 미들웨어
+- [x] Request Logging 미들웨어 (CallStackTraceAdvice 기반) ✅
+- [x] Event System (시스템/도메인 이벤트) ✅
 - [ ] Metrics 수집 (Prometheus 형식)
 - [ ] Health Check 엔드포인트
 - [ ] Distributed Tracing 지원
@@ -202,11 +233,16 @@
 - [ ] 트랜잭션 관리 (`@Transactional`)
 - [ ] Connection Pool 관리
 
-#### 🔄 비동기 작업
+#### 🔄 비동기 작업 (Task)
 
-- [ ] Background Tasks
-- [ ] `bloom-celery` - Celery 통합
-- [ ] 스케줄링 (`@Scheduled`)
+- [x] `@Task` 데코레이터 (Celery 스타일) ✅
+- [x] `AsyncioTaskBackend` (로컬 비동기 실행) ✅
+- [x] `DistributedTaskBackend` (분산 처리) ✅
+- [x] `TaskResult` / `ScheduledTask` ✅
+- [x] 스케줄링 트리거 (`fixed_rate`, `fixed_delay`, `cron`) ✅
+- [x] `bloom worker` CLI 명령어 ✅
+- [x] `InMemoryBroker` (개발용) ✅
+- [x] `RedisBroker` (프로덕션용) ✅
 
 #### 🧪 테스팅
 
@@ -282,9 +318,9 @@
 
 | 항목          | 수치                                     |
 | ------------- | ---------------------------------------- |
-| Python 파일   | ~70개                                    |
-| 테스트 케이스 | 514개                                    |
-| 코드 라인     | ~10,000줄 (추정)                         |
+| Python 파일   | ~80개                                    |
+| 테스트 케이스 | 576개                                    |
+| 코드 라인     | ~12,000줄 (추정)                         |
 | 외부 의존성   | 4개 (pydantic, uvicorn, pyyaml, aiohttp) |
 
 ---

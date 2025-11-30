@@ -19,7 +19,7 @@ Lazy[T] 타입을 명시적으로 사용하면 순환 의존성 해결에 유용
 
 from typing import Annotated, Any, Callable, TYPE_CHECKING, get_origin, get_args
 
-from .container.element import Scope
+from .container.element import Scope, PrototypeMode
 
 if TYPE_CHECKING:
     from .lifecycle import LifecycleHandlerContainer
@@ -37,7 +37,8 @@ class LazyFieldProxy[T]:
     모든 필드 주입은 기본적으로 이 프록시로 래핑됩니다.
     접근 시점에 실제 인스턴스를 해결하며, Scope에 따라 동작이 다릅니다:
     - SINGLETON: 최초 접근 시 한 번만 resolve (캐시)
-    - PROTOTYPE: 매 접근마다 새 인스턴스 생성 (Spring과 동일하게 PreDestroy 미호출)
+    - PROTOTYPE: 매 접근마다 새 인스턴스 생성
+    - PROTOTYPE (CALL_SCOPED): 같은 핸들러 호출 내에서는 같은 인스턴스 반환
     - REQUEST: HTTP 요청 컨텍스트마다 새 인스턴스
 
     사용법:
@@ -57,6 +58,7 @@ class LazyFieldProxy[T]:
         "_lfp_target_type",
         "_lfp_scope",
         "_lfp_container",
+        "_lfp_prototype_mode",
     )
 
     def __init__(
@@ -65,6 +67,7 @@ class LazyFieldProxy[T]:
         target_type: type[T] | None = None,
         scope: Scope = Scope.SINGLETON,
         container: Any = None,
+        prototype_mode: PrototypeMode = PrototypeMode.DEFAULT,
     ):
         object.__setattr__(self, "_lfp_resolver", resolver)
         object.__setattr__(self, "_lfp_instance", None)
@@ -72,6 +75,7 @@ class LazyFieldProxy[T]:
         object.__setattr__(self, "_lfp_target_type", target_type)
         object.__setattr__(self, "_lfp_scope", scope)
         object.__setattr__(self, "_lfp_container", container)
+        object.__setattr__(self, "_lfp_prototype_mode", prototype_mode)
 
     def _lfp_resolve(self) -> T:
         """실제 인스턴스를 해결합니다. Scope에 따라 동작이 다릅니다."""
@@ -80,9 +84,25 @@ class LazyFieldProxy[T]:
         # PROTOTYPE: 매번 새 인스턴스 생성
         # 콜스택 내에서 생성되면 메서드 종료 시 자동으로 @PreDestroy 호출
         if scope == Scope.PROTOTYPE:
-            resolver = object.__getattribute__(self, "_lfp_resolver")
+            prototype_mode = object.__getattribute__(self, "_lfp_prototype_mode")
+            target_type = object.__getattribute__(self, "_lfp_target_type")
             container = object.__getattribute__(self, "_lfp_container")
+
+            # CALL_SCOPED: 현재 핸들러 호출 내에서 캐싱
+            if prototype_mode == PrototypeMode.CALL_SCOPED and target_type is not None:
+                from .advice.tracing import get_scoped_prototype, set_scoped_prototype
+
+                cached = get_scoped_prototype(target_type)
+                if cached is not None:
+                    return cached
+
+            # 새 인스턴스 생성
+            resolver = object.__getattribute__(self, "_lfp_resolver")
             instance = resolver()
+
+            # CALL_SCOPED: 캐시에 저장
+            if prototype_mode == PrototypeMode.CALL_SCOPED and target_type is not None:
+                set_scoped_prototype(target_type, instance)
 
             # PROTOTYPE @PostConstruct 호출 - LifecycleManager 위임
             if container is not None:

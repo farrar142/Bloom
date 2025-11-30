@@ -138,14 +138,25 @@ class MethodAdvice(ABC):
 
 Advice 인스턴스들을 수집하고 조회합니다. **반드시 `@Factory`로 생성해야 합니다.**
 
+**기본적으로 `CallStackTraceAdvice`가 포함**되어 있으며, `CallStackTraceAdvice`를 상속한 커스텀 Advice를 등록하면 자동으로 교체됩니다.
+
 ```python
 from bloom.core.advice import MethodAdviceRegistry
 
 class MethodAdviceRegistry:
     """MethodAdvice를 수집하고 조회하는 Registry"""
 
+    def __init__(self):
+        # 기본 CallStackTraceAdvice 자동 등록
+        ...
+
     def register(self, advice: MethodAdvice) -> None:
-        """Advice를 등록합니다."""
+        """
+        Advice를 등록합니다.
+
+        CallStackTraceAdvice를 상속한 Advice가 등록되면
+        기본 CallStackTraceAdvice를 제거하고 새 Advice로 교체합니다.
+        """
         ...
 
     def find_applicable(self, container: HandlerContainer) -> list[MethodAdvice]:
@@ -315,10 +326,13 @@ class AdviceConfig:
         @Factory로 Registry 생성
 
         *advices: MethodAdvice - 모든 @Component MethodAdvice가 자동 주입됨
+
+        기본적으로 CallStackTraceAdvice가 포함되어 있습니다.
+        CallStackTraceAdvice를 상속한 Advice를 등록하면 기본 것이 교체됩니다.
         """
-        registry = MethodAdviceRegistry()
+        registry = MethodAdviceRegistry()  # 기본 CallStackTraceAdvice 포함
         for advice in advices:
-            registry.register(advice)
+            registry.register(advice)  # CallStackTraceAdvice 상속 시 교체
         return registry
 ```
 

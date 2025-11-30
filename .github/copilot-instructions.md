@@ -25,6 +25,8 @@ Bloom은 Spring Framework에서 영감을 받은 Python DI(의존성 주입) 컨
 | `@Get/@Post/@Put/@Delete`  | HTTP 메서드 핸들러                           |
 | `@ConfigurationProperties` | 타입 안전한 설정 바인딩                      |
 | `@Order`                   | 실행 순서 지정 (낮을수록 먼저)               |
+| `@EventListener`           | 이벤트 리스너 등록 (도메인 이벤트)           |
+| `@Task`                    | 비동기 태스크 정의 (Celery 스타일)           |
 
 ### 필드 주입 패턴
 
@@ -56,9 +58,16 @@ class Service:
 | `PROTOTYPE` | 접근할 때마다 새 인스턴스 생성     | 상태를 가진 객체, 빌더      |
 | `REQUEST`   | HTTP 요청마다 새 인스턴스 (TODO)   | 요청별 컨텍스트             |
 
+**PROTOTYPE 모드 (PrototypeMode):**
+
+| Mode          | 설명                                    | 사용 예                                     |
+| ------------- | --------------------------------------- | ------------------------------------------- |
+| `DEFAULT`     | 매번 새 인스턴스 생성 (기본값)          | 상태 없는 객체, 매번 새 컨텍스트 필요       |
+| `CALL_SCOPED` | 같은 핸들러 호출 내에서는 같은 인스턴스 | 같은 트랜잭션 내 DB 연결 공유, Unit of Work |
+
 ```python
 from bloom import Component, Scope
-from bloom.core import Scope as ScopeEnum
+from bloom.core import Scope as ScopeEnum, PrototypeMode
 
 @Component
 class SingletonService:
@@ -71,20 +80,34 @@ class PrototypeBuilder:
     state: list = []  # 인스턴스별 독립 상태
 
 @Component
-class Consumer:
-    builder: PrototypeBuilder  # 접근할 때마다 새 인스턴스 반환
+@Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+class TransactionContext:
+    """같은 핸들러 호출 내에서 공유되는 트랜잭션"""
+    tx_id: str = ""
 
+@Component
+class Consumer:
+    builder: PrototypeBuilder       # 접근할 때마다 새 인스턴스 반환
+    tx: TransactionContext          # 같은 핸들러 내에서는 같은 인스턴스
+
+    @Handler  # @Handler 필요 (콜스택 추적)
     def create_something(self):
-        b1 = self.builder  # 새 인스턴스
-        b2 = self.builder  # 또 다른 새 인스턴스
-        assert b1 is not b2  # True
+        b1 = self.builder.id  # 새 인스턴스
+        b2 = self.builder.id  # 또 다른 새 인스턴스
+        assert b1 != b2  # True
+
+        # CALL_SCOPED: 같은 핸들러 내에서는 같은 인스턴스
+        tx1 = self.tx.tx_id
+        tx2 = self.tx.tx_id
+        assert tx1 == tx2  # True
 ```
 
 **동작 원리:**
 
 1. **SINGLETON**: 최초 접근 시 인스턴스 생성 후 캐시, 이후 동일 인스턴스 반환
-2. **PROTOTYPE**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
-3. 모든 필드는 `LazyFieldProxy`로 주입되어 Scope 정보를 활용
+2. **PROTOTYPE (DEFAULT)**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
+3. **PROTOTYPE (CALL_SCOPED)**: 최상위 핸들러의 `frame_id`로 캐싱, 핸들러 종료 시 정리
+4. 모든 필드는 `LazyFieldProxy`로 주입되어 Scope/PrototypeMode 정보를 활용
 
 **스코프별 인스턴스 저장 위치:**
 
@@ -122,7 +145,7 @@ class Consumer:
 Bloom의 PROTOTYPE은 **콜스택 기반 자동 정리**를 지원합니다:
 
 - **@PostConstruct**: 인스턴스 생성 직후 호출됨 ✅
-- **@PreDestroy**: 메서드 종료 시 자동 호출됨 ✅ (TracingAdvice 필요)
+- **@PreDestroy**: 메서드 종료 시 자동 호출됨 ✅ (`MethodAdviceRegistry` 필요)
 
 ```python
 from bloom import Component
@@ -141,18 +164,20 @@ class PrototypeResource:
     def cleanup(self):
         print("리소스 정리됨")  # 메서드 종료 시 자동 호출!
 
-# TracingAdvice 필수!
+# 기본 CallStackTraceAdvice가 MethodAdviceRegistry에 포함됨
+# 커스텀 로깅이 필요하면 CallStackTraceAdvice 상속
 @Component
-class TracingAdvice(CallStackTraceAdvice):
-    pass
+class LoggingTraceAdvice(CallStackTraceAdvice):
+    def on_enter(self, frame):
+        print(f"→ {frame.full_name}")
 
 @Component
 class AdviceConfig:
     @Factory
     def registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
-        reg = MethodAdviceRegistry()
+        reg = MethodAdviceRegistry()  # 기본 CallStackTraceAdvice 포함
         for advice in advices:
-            reg.register(advice)
+            reg.register(advice)  # 상속 클래스 등록 시 기본 것 교체
         return reg
 
 @Component
@@ -169,9 +194,9 @@ class Consumer:
 **Spring과의 차이점:**
 
 - **Spring**: PROTOTYPE의 `@PreDestroy`는 호출되지 않음 (컨테이너가 추적 안 함)
-- **Bloom**: 콜스택 기반으로 `@PreDestroy` 자동 호출됨 (TracingAdvice 필요)
+- **Bloom**: 콜스택 기반으로 `@PreDestroy` 자동 호출됨 (`MethodAdviceRegistry` 필요)
 - **장점**: 리소스 누수 방지, DB 연결/파일 핸들 등 자동 정리
-- **요구사항**: `CallStackTraceAdvice` + `MethodAdviceRegistry` + `@Handler`
+- **요구사항**: `MethodAdviceRegistry` + `@Handler` (기본 `CallStackTraceAdvice` 자동 포함)
 
 자세한 내용은 `docs/prototype-scope.md` 참조.
 
@@ -738,6 +763,9 @@ class TaskDescriptor(ProxyableDescriptor, Generic[T]):
 
 모든 컴포넌트의 메서드 호출을 자동으로 추적합니다. `ContextVar` + 불변 튜플로 **async/multithread 안전**합니다.
 
+**기본 동작**: `MethodAdviceRegistry`는 기본적으로 `CallStackTraceAdvice`를 포함합니다.
+커스텀 트레이싱이 필요하면 `CallStackTraceAdvice`를 상속하여 등록하면 기본 것이 교체됩니다.
+
 ```python
 from bloom import Component
 from bloom.core.decorators import Factory
@@ -748,6 +776,7 @@ from bloom.core.advice import (
 
 @Component
 class LoggingTraceAdvice(CallStackTraceAdvice):
+    """CallStackTraceAdvice 상속 → 기본 tracing advice 교체"""
     include_args = True  # 인자 요약 포함
 
     def on_enter(self, frame: CallFrame) -> None:
@@ -762,9 +791,9 @@ class LoggingTraceAdvice(CallStackTraceAdvice):
 class AdviceConfig:
     @Factory
     def advice_registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
-        registry = MethodAdviceRegistry()
+        registry = MethodAdviceRegistry()  # 기본 CallStackTraceAdvice 포함
         for advice in advices:
-            registry.register(advice)
+            registry.register(advice)  # CallStackTraceAdvice 상속 시 기본 것 교체
         return registry
 ```
 
@@ -789,7 +818,7 @@ for frame in get_call_stack():
 ```
 
 **자동 프록시**: `@Handler` 없이도 모든 컴포넌트 메서드에 자동 적용됩니다.
-(`MethodAdvice`, `MethodAdviceRegistry`는 무한 재귀 방지를 위해 제외)
+(무한 재귀 방지를 위해 `MethodAdvice`, `MethodAdviceRegistry`, `EventBus` 하위 클래스는 제외)
 
 자세한 내용은 `docs/tracing-system.md` 참조.
 
@@ -922,6 +951,68 @@ python -m bloom worker main:app.queue
 
 자세한 내용은 `docs/task-system.md` 참조.
 
+### 이벤트 시스템 (Event System)
+
+Bloom은 두 가지 이벤트 버스를 제공합니다:
+
+| 이벤트 버스           | 용도            | 이벤트 타입   | 커스터마이징    |
+| --------------------- | --------------- | ------------- | --------------- |
+| `SystemEventBus`      | 프레임워크 내부 | `SystemEvent` | 불가 (내부용)   |
+| `ApplicationEventBus` | 비즈니스 로직   | `DomainEvent` | `@Factory` 가능 |
+
+**도메인 이벤트 사용:**
+
+```python
+from dataclasses import dataclass
+from bloom import Application, Component
+from bloom.core.events import DomainEvent, ApplicationEventBus, EventListener
+
+# 1. 도메인 이벤트 정의
+@dataclass
+class UserCreatedEvent(DomainEvent):
+    user_id: str
+    username: str
+
+# 2. 이벤트 리스너 정의
+@Component
+class NotificationService:
+    @EventListener(UserCreatedEvent)
+    def on_user_created(self, event: UserCreatedEvent):
+        print(f"새 사용자 환영 이메일 발송: {event.username}")
+
+# 3. 이벤트 발행
+@Component
+class UserService:
+    event_bus: ApplicationEventBus
+
+    def create_user(self, username: str) -> str:
+        user_id = f"user-{id(username)}"
+        self.event_bus.publish(UserCreatedEvent(user_id=user_id, username=username))
+        return user_id
+```
+
+**시스템 이벤트 종류:**
+
+| 이벤트                 | 발생 시점                        | 용도             |
+| ---------------------- | -------------------------------- | ---------------- |
+| `InstanceCreatedEvent` | PROTOTYPE/REQUEST 인스턴스 생성  | 메트릭, 추적     |
+| `MethodEnteredEvent`   | 메서드 진입 (TracingAdvice 필요) | 프로파일링, 로깅 |
+| `MethodExitedEvent`    | 메서드 종료 (정상)               | 성능 측정        |
+| `MethodErrorEvent`     | 메서드 예외 발생                 | 에러 트래킹      |
+
+**ApplicationEventBus 커스터마이징:**
+
+```python
+@Component
+class EventConfig:
+    @Factory
+    def event_bus(self) -> ApplicationEventBus:
+        # Redis 기반 이벤트 버스 등 커스텀 구현
+        return RedisEventBus("redis://localhost:6379/0")
+```
+
+자세한 내용은 `docs/event-system.md` 참조.
+
 ### ConfigurationProperties 패턴
 
 타입 안전한 설정 바인딩:
@@ -977,6 +1068,7 @@ bloom/
 │   ├── abstract/   # 추상 패턴 (Entry, AbstractRegistry, AbstractManager, EntryGroup, GroupRegistry, ProxyableDescriptor)
 │   ├── container/  # Container, Element, ComponentContainer, FactoryContainer, HandlerContainer, CallableContainer
 │   ├── advice/     # AOP (MethodAdvice, MethodAdviceRegistry, MethodInvocationManager)
+│   ├── events/     # 이벤트 시스템 (EventBus, DomainEvent, SystemEvent, @EventListener)
 │   ├── manager.py  # ContainerManager (ContextVar 기반)
 │   ├── orchestrator.py # ContainerOrchestrator (초기화 오케스트레이션)
 │   ├── lifecycle.py # PostConstruct/PreDestroy 처리

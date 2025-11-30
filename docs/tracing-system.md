@@ -5,6 +5,9 @@
 Bloom 프레임워크는 모든 컴포넌트의 메서드 호출을 자동으로 추적하는 시스템을 제공합니다.
 `ContextVar`와 불변 튜플을 사용하여 **async/multithread 환경에서 안전**합니다.
 
+**기본 동작**: `MethodAdviceRegistry`는 기본적으로 `CallStackTraceAdvice`를 포함합니다.
+커스텀 트레이싱이 필요하면 `CallStackTraceAdvice`를 상속하여 등록하면 기본 것이 자동으로 교체됩니다.
+
 ## 빠른 시작
 
 ```python
@@ -18,9 +21,10 @@ from bloom.core.advice import (
     get_call_stack,
 )
 
-# 1. 커스텀 트레이싱 Advice 정의
+# 1. 커스텀 트레이싱 Advice 정의 (CallStackTraceAdvice 상속)
 @Component
 class LoggingTraceAdvice(CallStackTraceAdvice):
+    """상속하면 기본 CallStackTraceAdvice를 교체합니다"""
     include_args = True  # 인자 요약 포함
 
     def on_enter(self, frame: CallFrame) -> None:
@@ -40,9 +44,9 @@ class LoggingTraceAdvice(CallStackTraceAdvice):
 class AdviceConfig:
     @Factory
     def advice_registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
-        registry = MethodAdviceRegistry()
+        registry = MethodAdviceRegistry()  # 기본 CallStackTraceAdvice 포함
         for advice in advices:
-            registry.register(advice)
+            registry.register(advice)  # 상속 클래스 등록 시 기본 것 교체
         return registry
 
 # 3. 앱에서 사용
@@ -184,6 +188,7 @@ setattr(instance, name, proxy)
 
 - `MethodAdvice` 및 하위 클래스
 - `MethodAdviceRegistry`
+- `EventBus` 및 하위 클래스
 
 ## 활용 사례
 
@@ -257,11 +262,11 @@ from bloom.core.advice.tracing.context import (
 
 `CallStackTraceAdvice`는 메서드 호출 시 시스템 이벤트를 발행합니다:
 
-| 시점 | 이벤트 |
-|------|--------|
+| 시점        | 이벤트               |
+| ----------- | -------------------- |
 | 메서드 진입 | `MethodEnteredEvent` |
-| 정상 종료 | `MethodExitedEvent` |
-| 예외 발생 | `MethodErrorEvent` |
+| 정상 종료   | `MethodExitedEvent`  |
+| 예외 발생   | `MethodErrorEvent`   |
 
 ```python
 from bloom.core.events import (

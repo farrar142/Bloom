@@ -316,3 +316,206 @@ class TestPrototypeLifecycleWithEvents:
 
         assert len(destroyed) == 1
         assert instance.resource_id in destroyed
+
+
+class TestCallScopedPrototype:
+    """CALL_SCOPED PROTOTYPE 테스트
+
+    CALL_SCOPED가 동작하려면 CallStackTraceAdvice가 필요합니다.
+    """
+
+    def test_call_scoped_returns_same_instance_in_handler(self):
+        """CALL_SCOPED는 같은 핸들러 호출 내에서 같은 인스턴스 반환"""
+        from bloom.core.container.element import PrototypeMode
+        from bloom.core.decorators import Handler, Factory
+        from bloom.core.advice import MethodAdvice, MethodAdviceRegistry
+        from bloom.core.advice.tracing import CallStackTraceAdvice
+
+        instance_count = 0
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        class ScopedResource:
+            def __init__(self):
+                nonlocal instance_count
+                instance_count += 1
+                self.instance_id = instance_count
+
+        @Component
+        class TracingAdvice(CallStackTraceAdvice):
+            pass
+
+        @Component
+        class AdviceConfig:
+            @Factory
+            def registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+                reg = MethodAdviceRegistry()
+                for a in advices:
+                    reg.register(a)
+                return reg
+
+        @Component
+        class Service:
+            resource: ScopedResource
+
+            @Handler
+            def do_work(self) -> list[int]:
+                """핸들러 내에서 여러 번 접근"""
+                ids = []
+                # 3번 접근해도 같은 인스턴스
+                ids.append(self.resource.instance_id)
+                ids.append(self.resource.instance_id)
+                ids.append(self.resource.instance_id)
+                return ids
+
+        app = Application("test_call_scoped")
+        app.scan(ScopedResource, TracingAdvice, AdviceConfig, Service)
+        app.ready()
+
+        service = app.manager.get_instance(Service)
+
+        # 첫 번째 핸들러 호출
+        first_call_ids = service.do_work()
+        # 모두 같은 ID
+        assert first_call_ids[0] == first_call_ids[1] == first_call_ids[2]
+        first_id = first_call_ids[0]
+
+        # 두 번째 핸들러 호출 - 새로운 인스턴스
+        second_call_ids = service.do_work()
+        assert second_call_ids[0] == second_call_ids[1] == second_call_ids[2]
+        second_id = second_call_ids[0]
+
+        # 다른 호출이므로 다른 인스턴스
+        assert first_id != second_id
+        # 총 2개의 인스턴스 생성
+        assert instance_count == 2
+
+    def test_call_scoped_different_consumers_same_instance(self):
+        """같은 핸들러 내 여러 Consumer에서도 같은 CALL_SCOPED 인스턴스"""
+        from bloom.core.container.element import PrototypeMode
+        from bloom.core.decorators import Handler, Factory
+        from bloom.core.advice import MethodAdvice, MethodAdviceRegistry
+        from bloom.core.advice.tracing import CallStackTraceAdvice
+
+        instance_count = 0
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        class SharedResource:
+            def __init__(self):
+                nonlocal instance_count
+                instance_count += 1
+                self.instance_id = instance_count
+
+        @Component
+        class TracingAdvice(CallStackTraceAdvice):
+            pass
+
+        @Component
+        class AdviceConfig:
+            @Factory
+            def registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+                reg = MethodAdviceRegistry()
+                for a in advices:
+                    reg.register(a)
+                return reg
+
+        @Component
+        class HelperService:
+            resource: SharedResource
+
+            def get_resource_id(self) -> int:
+                return self.resource.instance_id
+
+        @Component
+        class MainService:
+            resource: SharedResource
+            helper: HelperService
+
+            @Handler
+            def do_work(self) -> tuple[int, int]:
+                """메인과 헬퍼에서 같은 리소스 공유"""
+                main_id = self.resource.instance_id
+                helper_id = self.helper.get_resource_id()
+                return main_id, helper_id
+
+        app = Application("test_call_scoped_shared")
+        app.scan(
+            SharedResource, TracingAdvice, AdviceConfig, HelperService, MainService
+        )
+        app.ready()
+
+        main = app.manager.get_instance(MainService)
+
+        main_id, helper_id = main.do_work()
+
+        # 같은 핸들러 호출 내이므로 같은 인스턴스
+        assert main_id == helper_id
+        # 1개만 생성
+        assert instance_count == 1
+
+    def test_call_scoped_vs_default_prototype(self):
+        """CALL_SCOPED vs DEFAULT PROTOTYPE 비교"""
+        from bloom.core.container.element import PrototypeMode
+        from bloom.core.decorators import Handler, Factory
+        from bloom.core.advice import MethodAdvice, MethodAdviceRegistry
+        from bloom.core.advice.tracing import CallStackTraceAdvice
+
+        scoped_count = 0
+        default_count = 0
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        class ScopedService:
+            def __init__(self):
+                nonlocal scoped_count
+                scoped_count += 1
+                self.id = scoped_count
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)  # DEFAULT
+        class DefaultService:
+            def __init__(self):
+                nonlocal default_count
+                default_count += 1
+                self.id = default_count
+
+        @Component
+        class TracingAdvice(CallStackTraceAdvice):
+            pass
+
+        @Component
+        class AdviceConfig:
+            @Factory
+            def registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+                reg = MethodAdviceRegistry()
+                for a in advices:
+                    reg.register(a)
+                return reg
+
+        @Component
+        class Consumer:
+            scoped: ScopedService
+            default: DefaultService
+
+            @Handler
+            def get_ids(self) -> tuple[list[int], list[int]]:
+                scoped_ids = [self.scoped.id, self.scoped.id, self.scoped.id]
+                default_ids = [self.default.id, self.default.id, self.default.id]
+                return scoped_ids, default_ids
+
+        app = Application("test_comparison")
+        app.scan(ScopedService, DefaultService, TracingAdvice, AdviceConfig, Consumer)
+        app.ready()
+
+        consumer = app.manager.get_instance(Consumer)
+
+        scoped_ids, default_ids = consumer.get_ids()
+
+        # CALL_SCOPED: 같은 호출 내 모두 같은 ID
+        assert scoped_ids[0] == scoped_ids[1] == scoped_ids[2]
+        assert scoped_count == 1
+
+        # DEFAULT: 매번 다른 ID
+        assert default_ids[0] != default_ids[1] != default_ids[2]
+        assert default_count == 3
