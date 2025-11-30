@@ -7,7 +7,7 @@
 from dataclasses import dataclass
 from typing import Any, Callable, TYPE_CHECKING
 
-from .base import Event, InMemoryEventBus
+from .base import Event, EventMixin, InMemoryEventBus
 from ..container import HandlerContainer
 from ..container.element import Element
 
@@ -21,15 +21,24 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class DomainEvent(Event):
+class DomainEvent(EventMixin):
     """
     도메인 이벤트 베이스 클래스
 
     비즈니스 로직에서 발생하는 이벤트의 베이스입니다.
+    EventMixin을 상속하여 Event 프로토콜을 만족합니다.
 
-    사용 예시:
+    사용 예시 (dataclass):
         @dataclass
         class OrderCreatedEvent(DomainEvent):
+            order_id: str
+            customer_id: str
+            total_amount: float
+
+    사용 예시 (pydantic):
+        from pydantic import BaseModel
+
+        class OrderCreatedEvent(BaseModel):
             order_id: str
             customer_id: str
             total_amount: float

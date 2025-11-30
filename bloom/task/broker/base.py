@@ -113,6 +113,47 @@ class Broker(ABC):
         """
         ...
 
+    # =========================================================================
+    # Raw 메시지 API (이벤트 버스 등 범용 용도)
+    # =========================================================================
+
+    def enqueue_raw_sync(self, queue: str, message: str) -> None:
+        """
+        원시 문자열 메시지를 큐에 동기적으로 추가
+
+        이벤트 버스 등에서 동기 컨텍스트에서 메시지를 발행할 때 사용합니다.
+
+        Args:
+            queue: 큐 이름
+            message: JSON 문자열 메시지
+        """
+        raise NotImplementedError("Subclass must implement enqueue_raw_sync")
+
+    async def enqueue_raw(self, queue: str, message: str) -> None:
+        """
+        원시 문자열 메시지를 큐에 추가
+
+        이벤트 버스 등에서 TaskMessage가 아닌 메시지를 발행할 때 사용합니다.
+
+        Args:
+            queue: 큐 이름
+            message: JSON 문자열 메시지
+        """
+        raise NotImplementedError("Subclass must implement enqueue_raw")
+
+    async def dequeue_raw(self, queue: str, timeout: float | None = None) -> str | None:
+        """
+        큐에서 원시 문자열 메시지를 가져옴
+
+        Args:
+            queue: 큐 이름
+            timeout: 대기 시간 (초)
+
+        Returns:
+            JSON 문자열 메시지 또는 None
+        """
+        raise NotImplementedError("Subclass must implement dequeue_raw")
+
     @property
     @abstractmethod
     def is_connected(self) -> bool:

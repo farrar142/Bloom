@@ -107,6 +107,45 @@ class InMemoryBroker(Broker):
             raise RuntimeError("Broker is not connected")
         return self._queues[queue].qsize()
 
+    # =========================================================================
+    # Raw 메시지 API
+    # =========================================================================
+
+    def _get_raw_queue(self, queue: str) -> asyncio.Queue[str]:
+        """raw 큐 가져오기 (없으면 생성)"""
+        if not hasattr(self, "_raw_queues"):
+            self._raw_queues: dict[str, asyncio.Queue[str]] = defaultdict(asyncio.Queue)
+        return self._raw_queues[queue]
+
+    def enqueue_raw_sync(self, queue: str, message: str) -> None:
+        """원시 문자열 메시지를 동기적으로 큐에 추가"""
+        if not self._connected:
+            raise RuntimeError("Broker is not connected")
+        self._get_raw_queue(queue).put_nowait(message)
+
+    async def enqueue_raw(self, queue: str, message: str) -> None:
+        """원시 문자열 메시지를 큐에 추가"""
+        if not self._connected:
+            raise RuntimeError("Broker is not connected")
+        await self._get_raw_queue(queue).put(message)
+
+    async def dequeue_raw(self, queue: str, timeout: float | None = None) -> str | None:
+        """큐에서 원시 문자열 메시지를 가져옴"""
+        if not self._connected:
+            raise RuntimeError("Broker is not connected")
+
+        q = self._get_raw_queue(queue)
+        if timeout is None:
+            try:
+                return q.get_nowait()
+            except asyncio.QueueEmpty:
+                return None
+        else:
+            try:
+                return await asyncio.wait_for(q.get(), timeout=timeout)
+            except asyncio.TimeoutError:
+                return None
+
     @property
     def is_connected(self) -> bool:
         """연결 상태"""

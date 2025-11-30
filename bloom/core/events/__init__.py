@@ -35,7 +35,7 @@
             self.send_email(event.order.email)
 """
 
-from .base import Event, EventBus, InMemoryEventBus
+from .base import Event, EventBus, EventMixin, InMemoryEventBus
 from .system import (
     SystemEvent,
     SystemEventBus,
@@ -54,11 +54,17 @@ from .application import (
     is_event_listener,
     get_event_listener_type,
 )
+from .distributed import (
+    DistributedEventBus,
+    EventMessage,
+    EventTypeRegistry,
+)
 
 __all__ = [
     # Base
     "Event",
     "EventBus",
+    "EventMixin",
     "InMemoryEventBus",
     # System Events
     "SystemEvent",
@@ -76,4 +82,8 @@ __all__ = [
     "EventListenerElement",
     "is_event_listener",
     "get_event_listener_type",
+    # Distributed
+    "DistributedEventBus",
+    "EventMessage",
+    "EventTypeRegistry",
 ]

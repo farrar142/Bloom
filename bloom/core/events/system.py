@@ -5,10 +5,9 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, TYPE_CHECKING
 
-from .base import Event, InMemoryEventBus
+from .base import EventMixin, InMemoryEventBus
 
 if TYPE_CHECKING:
     from ..container import Container
@@ -22,7 +21,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class SystemEvent(Event):
+class SystemEvent(EventMixin):
     """시스템 이벤트 베이스 클래스"""
 
     pass

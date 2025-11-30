@@ -1,29 +1,116 @@
 """이벤트 시스템 베이스 클래스"""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, Callable, Generic, Protocol, TypeVar, runtime_checkable
 
 
 # =============================================================================
-# Event 베이스
+# Event Protocol
 # =============================================================================
 
 
-@dataclass
-class Event:
+@runtime_checkable
+class Event(Protocol):
     """
-    모든 이벤트의 베이스 클래스
+    이벤트 프로토콜
 
-    Attributes:
-        timestamp: 이벤트 발생 시간
+    pydantic BaseModel과 호환되는 직렬화 인터페이스를 정의합니다.
+    dataclass나 pydantic 모델 모두 이 프로토콜을 만족할 수 있습니다.
+
+    Required Methods:
+        model_dump(): dict로 변환 (pydantic v2)
+        model_validate(): dict에서 인스턴스 생성 (classmethod)
+
+    Example (pydantic):
+        class UserCreatedEvent(BaseModel):
+            user_id: str
+            username: str
+
+    Example (dataclass with mixin):
+        @dataclass
+        class UserCreatedEvent(EventMixin):
+            user_id: str
+            username: str
     """
 
-    timestamp: datetime = field(default_factory=datetime.now)
+    def model_dump(self) -> dict[str, Any]:
+        """이벤트를 dict로 변환"""
+        ...
+
+    @classmethod
+    def model_validate(cls, data: dict[str, Any]) -> "Event":
+        """dict에서 이벤트 인스턴스 생성"""
+        ...
 
 
 E = TypeVar("E", bound=Event)
+
+
+# =============================================================================
+# EventMixin (dataclass용)
+# =============================================================================
+
+
+class EventMixin:
+    """
+    dataclass용 이벤트 믹스인
+
+    dataclass에 Event 프로토콜 호환 메서드를 제공합니다.
+
+    Example:
+        from dataclasses import dataclass
+
+        @dataclass
+        class UserCreatedEvent(EventMixin):
+            user_id: str
+            username: str
+
+        event = UserCreatedEvent(user_id="123", username="alice")
+        data = event.model_dump()  # {"user_id": "123", "username": "alice"}
+        restored = UserCreatedEvent.model_validate(data)
+    """
+
+    def model_dump(self) -> dict[str, Any]:
+        """dataclass를 dict로 변환"""
+        from dataclasses import asdict, is_dataclass
+        from datetime import datetime
+
+        if not is_dataclass(self):
+            raise TypeError(f"{type(self).__name__} is not a dataclass")
+
+        result = {}
+        for key, value in asdict(self).items():
+            if isinstance(value, datetime):
+                result[key] = value.isoformat()
+            else:
+                result[key] = value
+        return result
+
+    @classmethod
+    def model_validate(cls, data: dict[str, Any]) -> "EventMixin":
+        """dict에서 dataclass 인스턴스 생성"""
+        from dataclasses import fields, is_dataclass
+        from datetime import datetime
+
+        if not is_dataclass(cls):
+            raise TypeError(f"{cls.__name__} is not a dataclass")
+
+        # datetime 필드 복원
+        converted = {}
+        field_types = {f.name: f.type for f in fields(cls)}
+
+        for key, value in data.items():
+            if key in field_types:
+                field_type = field_types[key]
+                # datetime 문자열 복원
+                if field_type is datetime and isinstance(value, str):
+                    converted[key] = datetime.fromisoformat(value)
+                else:
+                    converted[key] = value
+            else:
+                converted[key] = value
+
+        return cls(**converted)  # type: ignore[return-value]
 
 
 # =============================================================================

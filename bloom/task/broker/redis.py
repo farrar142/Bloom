@@ -182,6 +182,72 @@ class RedisBroker(Broker):
         key = f"{QUEUE_PREFIX}{queue}"
         return await self._redis.llen(key)
 
+    def enqueue_raw_sync(self, queue: str, message: str) -> None:
+        """원시 문자열 메시지를 동기적으로 큐에 추가 (LPUSH)
+
+        이벤트 버스 등에서 동기 컨텍스트에서 메시지를 발행할 때 사용합니다.
+        Redis는 별도 동기 연결이 필요하므로, 이벤트 루프가 있으면 run_coroutine_threadsafe 사용.
+        """
+        if not self._connected or self._redis is None:
+            raise RuntimeError("Broker is not connected")
+
+        import asyncio
+
+        key = f"{QUEUE_PREFIX}{queue}"
+
+        try:
+            loop = asyncio.get_running_loop()
+            # 이벤트 루프가 실행 중이면 태스크로 예약
+            future = asyncio.run_coroutine_threadsafe(
+                self._redis.lpush(key, message), loop
+            )
+            future.result(timeout=5.0)  # 동기 대기
+        except RuntimeError:
+            # 이벤트 루프가 없으면 새로 생성해서 실행
+            asyncio.run(self._redis.lpush(key, message))
+
+        logger.debug(f"Raw message enqueued (sync) to {queue}")
+
+    async def enqueue_raw(self, queue: str, message: str) -> None:
+        """원시 문자열 메시지를 큐에 추가 (LPUSH)
+
+        이벤트 버스 등에서 직렬화된 메시지를 직접 전송할 때 사용합니다.
+        """
+        if not self._connected or self._redis is None:
+            raise RuntimeError("Broker is not connected")
+
+        key = f"{QUEUE_PREFIX}{queue}"
+        await self._redis.lpush(key, message)
+        logger.debug(f"Raw message enqueued to {queue}")
+
+    async def dequeue_raw(self, queue: str, timeout: float | None = None) -> str | None:
+        """큐에서 원시 문자열 메시지를 가져옴 (BRPOP/RPOP)
+
+        이벤트 버스 등에서 직렬화된 메시지를 직접 수신할 때 사용합니다.
+        """
+        if not self._connected or self._redis is None:
+            raise RuntimeError("Broker is not connected")
+
+        key = f"{QUEUE_PREFIX}{queue}"
+
+        if timeout is None or timeout == 0:
+            # 즉시 반환 (RPOP)
+            data = await self._redis.rpop(key)
+        else:
+            # 타임아웃까지 대기 (BRPOP)
+            result = await self._redis.brpop(key, timeout=int(timeout))
+            data = result[1] if result else None
+
+        if data is None:
+            return None
+
+        # bytes -> str 변환
+        if isinstance(data, bytes):
+            data = data.decode("utf-8")
+
+        logger.debug(f"Raw message dequeued from {queue}")
+        return data
+
     @property
     def is_connected(self) -> bool:
         """연결 상태"""
