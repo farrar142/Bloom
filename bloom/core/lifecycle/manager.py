@@ -320,6 +320,17 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
 
         RequestContext.end()
 
+    async def run_pending_request_init(self) -> None:
+        """
+        대기 중인 REQUEST 스코프 인스턴스의 async @PostConstruct 실행
+
+        Router에서 미들웨어 진입 전, 핸들러 실행 전에 호출됩니다.
+        여러 번 호출해도 안전합니다 (pending이 없으면 즉시 리턴).
+        """
+        from bloom.core.request_context import RequestContextManager
+
+        await RequestContextManager.run_pending_init()
+
     async def end_request_async(self) -> None:
         """
         HTTP 요청 종료 시 호출 - REQUEST 인스턴스 정리 (비동기 버전)

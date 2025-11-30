@@ -124,7 +124,13 @@ class TestNestedConfig:
 
         app = Application("nested_config")
         app.load_config(
-            {"app": {"outer": {"middle": {"name": "custom", "inner": {"value": "custom_inner"}}}}},
+            {
+                "app": {
+                    "outer": {
+                        "middle": {"name": "custom", "inner": {"value": "custom_inner"}}
+                    }
+                }
+            },
             source_type="dict",
         )
         app.scan(Service).ready()
@@ -153,7 +159,9 @@ class TestEnvVarSubstitution:
             config: EnvConfig
 
         app = Application("env_default")
-        app.load_config({"app": {"env": {"host": "${MY_HOST:default_host}"}}}, source_type="dict")
+        app.load_config(
+            {"app": {"env": {"host": "${MY_HOST:default_host}"}}}, source_type="dict"
+        )
         app.scan(Service).ready()
 
         service = app.manager.get_instance(Service)
@@ -255,7 +263,9 @@ class TestTypeConversion:
             config: ListConfig
 
         app = Application("type_list")
-        app.load_config({"app": {"list": {"items": ["a", "b", "c"]}}}, source_type="dict")
+        app.load_config(
+            {"app": {"list": {"items": ["a", "b", "c"]}}}, source_type="dict"
+        )
         app.scan(Service).ready()
 
         service = app.manager.get_instance(Service)

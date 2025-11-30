@@ -373,7 +373,8 @@ app = Application("myapp").scan(__name__).ready()
 
 3. **같은 요청 = 같은 커넥션**: 같은 요청 내 여러 리포지토리가 `DbConnection`을 주입받으면 모두 같은 인스턴스를 공유합니다.
 
-4. **async @PostConstruct 타이밍**: 
+4. **async @PostConstruct 타이밍**:
+
    - 필드 접근 시 인스턴스 생성 + pending 등록
    - 미들웨어 진입 전에 pending 실행
    - 따라서 미들웨어에서도 완전히 초기화된 커넥션 사용 가능

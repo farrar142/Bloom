@@ -134,6 +134,7 @@ class Consumer:
    - **메서드 종료 시 자동으로 `@PreDestroy` 호출** (`pop_frame` → `cleanup_prototypes_at_depth`)
 
 3. **REQUEST** (`bloom/core/request_context.py`):
+
    - `ContextVar` 기반으로 요청(코루틴)마다 독립적인 저장소
    - `_request_instances: ContextVar[dict[type, Any]]` - 인스턴스 저장
    - `_request_containers: ContextVar[dict[type, Container]]` - 컨테이너 저장 (라이프사이클용)

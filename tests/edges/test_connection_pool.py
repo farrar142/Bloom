@@ -1,6 +1,6 @@
 """DB 커넥션 풀 + REQUEST 스코프 테스트
 
-MockDbConnectionPool을 사용하여 실제 DB 없이 
+MockDbConnectionPool을 사용하여 실제 DB 없이
 REQUEST 스코프 커넥션 관리 패턴을 테스트합니다.
 
 패턴: REQUEST 스코프 인스턴스 + SINGLETON 풀
@@ -163,9 +163,7 @@ class TestRequestScopeConnection:
             db: DbConnection
 
             def find_by_id(self, user_id: int) -> dict:
-                return self.db.conn.fetchrow(
-                    "SELECT * FROM users WHERE id = $1"
-                )
+                return self.db.conn.fetchrow("SELECT * FROM users WHERE id = $1")
 
         app = Application("test").ready()
         pool_instance = app.manager.get_instance(DbConnectionPool)

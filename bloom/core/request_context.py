@@ -326,9 +326,7 @@ class RequestContext:
         return manager.get_instance(target_type)
 
     @staticmethod
-    def set_instance(
-        target_type: type, instance: Any, container: "Container"
-    ) -> None:
+    def set_instance(target_type: type, instance: Any, container: "Container") -> None:
         """현재 요청에 인스턴스 저장"""
         manager = try_get_current_request()
         if manager is None:
