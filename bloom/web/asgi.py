@@ -191,9 +191,9 @@ class ASGIApplication:
             else:
                 await self._send_response(send, response)
         finally:
-            # REQUEST 스코프 컨텍스트 종료 (@PreDestroy 호출)
+            # REQUEST 스코프 컨텍스트 종료 (@PreDestroy 호출, async 지원)
             if self.application:
-                self.application.manager.lifecycle.end_request()
+                await self.application.manager.lifecycle.end_request_async()
 
             # 활성 요청 카운트 감소
             self._active_requests -= 1

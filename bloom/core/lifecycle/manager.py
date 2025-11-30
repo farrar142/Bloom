@@ -239,6 +239,39 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         REQUEST 스코프는 요청 내 첫 접근 시 인스턴스가 생성되며,
         LazyFieldProxy에서 인스턴스 생성 직후 이 메서드를 호출합니다.
 
+        동기 메서드는 즉시 실행되고, 비동기 메서드는 RequestContext의
+        pending 리스트에 등록되어 핸들러 실행 전에 실행됩니다.
+
+        Args:
+            instance: REQUEST 인스턴스
+            container: 컨테이너
+
+        Raises:
+            Exception: PostConstruct 실패 시 예외 전파
+        """
+        from bloom.core.request_context import RequestContext
+
+        target_cls = container.target
+        method_names = self._get_lifecycle_method_names(
+            target_cls, LifecycleType.POST_CONSTRUCT
+        )
+
+        for method_name in method_names:
+            method = getattr(instance, method_name, None)
+            if method is not None:
+                result = method()
+                # 비동기 메서드인 경우: pending에 등록
+                if inspect.iscoroutine(result):
+                    RequestContext.add_pending_init(result)
+
+    async def invoke_request_post_construct_async(
+        self, instance: Any, container: "Container"
+    ) -> None:
+        """
+        REQUEST 인스턴스의 @PostConstruct 메서드들을 비동기로 호출합니다.
+
+        동기/비동기 메서드 모두 지원합니다.
+
         Args:
             instance: REQUEST 인스턴스
             container: 컨테이너
@@ -255,13 +288,8 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
             method = getattr(instance, method_name, None)
             if method is not None:
                 result = method()
-                # 비동기 메서드인 경우 경고 (REQUEST에서는 동기만 지원)
                 if inspect.iscoroutine(result):
-                    result.close()  # 코루틴 정리
-                    raise RuntimeError(
-                        f"Async @PostConstruct is not supported for REQUEST scope: "
-                        f"{target_cls.__name__}.{method_name}"
-                    )
+                    await result
 
     # =========================================================================
     # REQUEST 컨텍스트 관리 (ASGI 레벨에서 호출)
@@ -280,14 +308,32 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
 
     def end_request(self) -> None:
         """
-        HTTP 요청 종료 시 호출 - REQUEST 인스턴스 정리
+        HTTP 요청 종료 시 호출 - REQUEST 인스턴스 정리 (동기 버전)
 
         ASGI 앱에서 요청 처리 완료 후 호출됩니다.
         모든 REQUEST 스코프 인스턴스의 @PreDestroy를 호출하고 컨텍스트를 정리합니다.
+
+        Note:
+            async @PreDestroy가 있는 경우 end_request_async()를 사용하세요.
         """
         from bloom.core.request_context import RequestContext
 
         RequestContext.end()
+
+    async def end_request_async(self) -> None:
+        """
+        HTTP 요청 종료 시 호출 - REQUEST 인스턴스 정리 (비동기 버전)
+
+        ASGI 앱에서 요청 처리 완료 후 호출됩니다.
+        pending async @PostConstruct를 실행하고,
+        모든 REQUEST 스코프 인스턴스의 @PreDestroy (async 포함)를 호출합니다.
+        """
+        from bloom.core.request_context import RequestContext
+
+        # pending async @PostConstruct 실행
+        await RequestContext.run_pending_init()
+        # async @PreDestroy 지원하는 정리
+        await RequestContext.end_async()
 
     # =========================================================================
     # PROTOTYPE 라이프사이클 수동 관리

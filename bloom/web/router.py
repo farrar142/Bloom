@@ -187,6 +187,12 @@ class Router:
         # 핸들러 먼저 찾기 (미들웨어에서 Authorize 검사에 필요)
         handler, path_params = route_manager.find_handler(request.method, request.path)
 
+        # REQUEST 스코프 인스턴스의 pending async @PostConstruct 실행
+        # 미들웨어 진입 전에 실행하여 미들웨어에서도 REQUEST 스코프 인스턴스 사용 가능
+        from bloom.core.request_context import RequestContext
+
+        await RequestContext.run_pending_init()
+
         async with middleware_chain.process(request, handler) as ctx:
             # early return 확인 (인증 실패 등)
             if ctx.early_response:
@@ -206,6 +212,9 @@ class Router:
                     resolved_params = await resolve_parameters_cached(
                         id(handler), type_hints, request, path_params
                     )
+
+                    # 미들웨어 실행 중 추가된 pending async @PostConstruct 실행
+                    await RequestContext.run_pending_init()
 
                     # 핸들러 호출 - 비동기
                     result = await handler(**resolved_params)
