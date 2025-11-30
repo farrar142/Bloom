@@ -4,7 +4,7 @@ import logging
 import sys
 from typing import Literal, TextIO
 
-from bloom.logging.graph import generate_dependency_graph
+from bloom.log.graph import generate_dependency_graph
 
 # Bloom 프레임워크 메인 로거
 logger = logging.getLogger("bloom")
@@ -33,7 +33,7 @@ def configure_logging(
         stream: 출력 스트림 (기본값: stderr)
 
     Example:
-        >>> from bloom.logging import configure_logging
+        >>> from bloom.log import configure_logging
         >>> configure_logging(level="DEBUG")
     """
     if stream is None:
@@ -69,7 +69,7 @@ def get_logger(name: str) -> logging.Logger:
         logging.Logger: 하위 로거
 
     Example:
-        >>> from bloom.logging import get_logger
+        >>> from bloom.log import get_logger
         >>> log = get_logger("web")  # bloom.web 로거
         >>> log.info("Server started")
     """

@@ -39,7 +39,7 @@ def generate_dependency_graph(
         str: 의존성 그래프 문자열
 
     Example:
-        >>> from bloom.logging.graph import generate_dependency_graph
+        >>> from bloom.log.graph import generate_dependency_graph
         >>> graph = generate_dependency_graph(app.manager, "dependency-graph.txt")
     """
     # ContainerManager -> GraphData 변환

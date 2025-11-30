@@ -9,7 +9,7 @@ import asyncio
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
-from bloom.logging import get_logger
+from bloom.log import get_logger
 from bloom.task.backend import TaskBackend
 from bloom.task.broker import Broker, InMemoryBroker, RedisBroker
 from bloom.task.message import TaskMessage, TaskState

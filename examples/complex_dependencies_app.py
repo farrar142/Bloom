@@ -20,7 +20,7 @@ from typing import Protocol
 
 from bloom import Application, Component, Controller, Get, Lazy, Post, RequestMapping
 from bloom.core.decorators import Factory, Handler, Order, PostConstruct, PreDestroy
-from bloom.logging import generate_dependency_graph
+from bloom.log import generate_dependency_graph
 from bloom.web.error import ErrorHandler
 from bloom.web.http import HttpResponse, HttpRequest
 from bloom.web.middleware import CorsMiddleware, Middleware, MiddlewareChain

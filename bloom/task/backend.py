@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Callable, Coroutine, TypeVar
 
-from bloom.logging import get_logger
+from bloom.log import get_logger
 
 from .result import AsyncTaskResult, ScheduledTask, TaskResult
 from .trigger import Trigger

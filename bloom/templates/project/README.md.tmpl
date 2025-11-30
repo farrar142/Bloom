@@ -13,7 +13,18 @@ uv sync
 ### 개발 서버 실행
 
 ```bash
+bloom server
+# 또는
 uvicorn application:application.asgi --reload
+```
+
+### 테스트 실행
+
+```bash
+bloom test
+bloom test -v              # verbose
+bloom test -x              # 첫 실패시 중단
+bloom test -k "test_user"  # 특정 테스트만
 ```
 
 ### 워커 실행
@@ -45,6 +56,10 @@ bloom db show
 │   ├── database.py     # 데이터베이스 설정
 │   ├── advice.py       # MethodAdviceRegistry 설정
 │   └── task.py         # 태스크 설정
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py     # pytest fixtures
+│   └── test_example.py # 예제 테스트
 ├── pyproject.toml
 └── README.md
 ```

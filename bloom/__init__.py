@@ -11,7 +11,7 @@ from .core import (
     Lazy,
     Scope,
 )
-from .logging import logger, get_logger, configure_logging
+from .log import logger, get_logger, configure_logging
 from .web import (
     HttpRequest,
     HttpResponse,

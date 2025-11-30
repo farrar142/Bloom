@@ -7,7 +7,7 @@ import pytest
 
 from bloom import Application, Component
 from bloom.core.decorators import Factory
-from bloom.logging import generate_dependency_graph
+from bloom.log import generate_dependency_graph
 
 
 class TestDependencyGraph:

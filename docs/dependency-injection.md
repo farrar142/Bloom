@@ -734,7 +734,7 @@ async with app:
 ### 9.1 그래프 생성
 
 ```python
-from bloom.logging.graph import generate_dependency_graph
+from bloom.log.graph import generate_dependency_graph
 
 graph = generate_dependency_graph(app.manager, "dependency-graph.txt")
 print(graph)

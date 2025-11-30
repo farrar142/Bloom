@@ -37,7 +37,7 @@ import signal
 import sys
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
-from bloom.logging import get_logger
+from bloom.log import get_logger
 
 if TYPE_CHECKING:
     from bloom.application import Application

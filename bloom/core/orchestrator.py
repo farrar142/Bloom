@@ -198,7 +198,7 @@ class ContainerOrchestrator:
             error: CircularDependencyError 예외 객체
         """
         from datetime import datetime
-        from bloom.logging.graph import generate_dependency_graph
+        from bloom.log.graph import generate_dependency_graph
 
         # 파일명 생성: circular-dependency-{timestamp}.txt
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

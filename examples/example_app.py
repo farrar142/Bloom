@@ -82,6 +82,8 @@ class AvailableInitialize:
 
 
 # 애플리케이션 생성
-import example_app as module
+import sys
 
-app = Application("example").scan(module).ready()
+_current_module = sys.modules[__name__]
+
+app = Application("example").scan(_current_module).ready()

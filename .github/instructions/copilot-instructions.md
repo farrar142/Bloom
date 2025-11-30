@@ -241,12 +241,12 @@ uv run pytest -k "lifecycle"     # 특정 패턴 테스트
 
 ### TestCase 클래스 (Django 스타일)
 
-`bloom.testing.TestCase`는 Django처럼 모든 테스트 기능을 하나의 클래스에 통합합니다:
+`bloom.tests.TestCase`는 Django처럼 모든 테스트 기능을 하나의 클래스에 통합합니다:
 
 ```python
 from bloom import Component
 from bloom.web import Controller, Get
-from bloom.testing import TestCase
+from bloom.tests import TestCase
 
 @Component
 class UserRepository:
@@ -308,7 +308,7 @@ class TestUserController(TestCase):
 #### AsyncTestCase (비동기)
 
 ```python
-from bloom.testing import AsyncTestCase
+from bloom.tests import AsyncTestCase
 import pytest
 
 class TestAsyncService(AsyncTestCase):

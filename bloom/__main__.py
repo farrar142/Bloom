@@ -88,10 +88,13 @@ def cli():
 
     \b
     Examples:
+        bloom server
+        bloom server --port 3000
         bloom worker
-        bloom worker --application=main:app.queue
+        bloom worker --application=main:app
         bloom db makemigrations
         bloom db migrate
+        bloom startproject myproject
     """
     pass
 
@@ -131,7 +134,7 @@ def worker(application: str | None, concurrency: int):
         bloom worker --application=main:app
         bloom worker -a examples.task_example_app:app -c 4
     """
-    from bloom.logging import configure_logging
+    from bloom.log import configure_logging
     from bloom.task.queue_app import QueueApplication
     from bloom import Application
 
@@ -178,6 +181,165 @@ def worker(application: str | None, concurrency: int):
 
     # 워커 실행
     queue_app.run_sync()
+
+
+# =============================================================================
+# server command
+# =============================================================================
+
+
+@cli.command()
+@click.option(
+    "-a",
+    "--application",
+    type=str,
+    default=None,
+    help="Application path (default: 'application:application')",
+)
+@click.option(
+    "-h",
+    "--host",
+    type=str,
+    default="127.0.0.1",
+    help="Host to bind (default: 127.0.0.1)",
+)
+@click.option(
+    "-p",
+    "--port",
+    type=int,
+    default=8000,
+    help="Port to bind (default: 8000)",
+)
+@click.option(
+    "--reload/--no-reload",
+    default=True,
+    help="Enable auto-reload (default: True)",
+)
+def server(application: str | None, host: str, port: int, reload: bool):
+    """Start development server
+
+    \b
+    Runs the ASGI application using uvicorn.
+    Default: application:application.asgi
+
+    \b
+    Examples:
+        bloom server
+        bloom server --port 3000
+        bloom server --host 0.0.0.0 --port 8080
+        bloom server --application=main:app --no-reload
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        raise click.ClickException(
+            "uvicorn is required for the server command.\n"
+            "Install it with: pip install uvicorn[standard]"
+        )
+
+    # 기본값: application:application
+    app_path = application or "application:application"
+
+    # ASGI 앱 경로 생성
+    asgi_path = f"{app_path}.asgi"
+
+    click.echo(f"[Bloom] Starting server at http://{host}:{port}")
+    click.echo(f"[Bloom] Application: {asgi_path}")
+    if reload:
+        click.echo("[Bloom] Auto-reload enabled")
+    click.echo()
+
+    uvicorn.run(
+        asgi_path,
+        host=host,
+        port=port,
+        reload=reload,
+    )
+
+
+# =============================================================================
+# test command
+# =============================================================================
+
+
+@cli.command()
+@click.argument("paths", nargs=-1)
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    help="Verbose output",
+)
+@click.option(
+    "-x",
+    "--exitfirst",
+    is_flag=True,
+    help="Exit on first failure",
+)
+@click.option(
+    "-k",
+    type=str,
+    default=None,
+    help="Run tests matching expression",
+)
+@click.option(
+    "--cov",
+    type=str,
+    default=None,
+    help="Coverage target (e.g., --cov=src)",
+)
+def test(
+    paths: tuple[str, ...],
+    verbose: bool,
+    exitfirst: bool,
+    k: str | None,
+    cov: str | None,
+):
+    """Run tests with pytest
+
+    \b
+    Runs pytest with common options.
+    Default: runs all tests in tests/ directory.
+
+    \b
+    Examples:
+        bloom test
+        bloom test tests/test_api.py
+        bloom test -v -x
+        bloom test -k "test_user"
+        bloom test --cov=src
+    """
+    try:
+        import pytest
+    except ImportError:
+        raise click.ClickException(
+            "pytest is required for the test command.\n"
+            "Install it with: pip install pytest"
+        )
+
+    # pytest 인자 구성
+    args = list(paths) if paths else ["tests/"]
+
+    if verbose:
+        args.append("-v")
+    if exitfirst:
+        args.append("-x")
+    if k:
+        args.extend(["-k", k])
+    if cov:
+        try:
+            import pytest_cov
+
+            args.extend([f"--cov={cov}"])
+        except ImportError:
+            click.echo("[Bloom] Warning: pytest-cov not installed, skipping coverage")
+
+    click.echo(f"[Bloom] Running: pytest {' '.join(args)}")
+    click.echo()
+
+    # pytest 실행
+    exit_code = pytest.main(args)
+    raise SystemExit(exit_code)
 
 
 # =============================================================================

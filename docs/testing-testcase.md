@@ -6,7 +6,7 @@ Bloom의 `TestCase`는 Django의 `TestCase`처럼 모든 테스트 기능을 하
 
 ```python
 from bloom import Component
-from bloom.testing import TestCase
+from bloom.tests import TestCase
 
 @Component
 class UserRepository:
@@ -263,7 +263,7 @@ def test_container_info(self):
 
 ```python
 import pytest
-from bloom.testing import AsyncTestCase
+from bloom.tests import AsyncTestCase
 
 class TestAsyncService(AsyncTestCase):
     components = [AsyncUserService]
@@ -298,7 +298,7 @@ from dataclasses import dataclass
 from bloom import Component
 from bloom.web import Controller, Get, Post
 from bloom.web.params.types import RequestBody
-from bloom.testing import TestCase
+from bloom.tests import TestCase
 
 # === 컴포넌트 정의 ===
 

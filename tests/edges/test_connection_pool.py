@@ -709,7 +709,7 @@ class TestMiddlewareWithRequestScope:
         pool = app.manager.get_instance(DbConnectionPool)
 
         # ASGI 테스트
-        from bloom.testing import TestClient
+        from bloom.tests import TestClient
 
         client = TestClient(app)
         response = await client.get("/test")

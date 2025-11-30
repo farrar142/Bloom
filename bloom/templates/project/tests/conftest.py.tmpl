@@ -1,0 +1,41 @@
+"""pytest configuration
+
+TestCase를 사용할 때는 이 파일이 필요 없습니다.
+TestCase가 자동으로 Application과 TestClient를 설정합니다.
+
+일반 pytest 스타일을 선호하면 아래 fixture를 사용하세요.
+"""
+
+import pytest
+
+from bloom import Application
+from bloom.tests import TestClient
+
+
+@pytest.fixture
+def app():
+    """테스트용 Application 인스턴스
+    
+    Usage:
+        def test_something(app):
+            service = app.manager.get_instance(MyService)
+            assert service is not None
+    """
+    import {{ project_name }}.application  # noqa: F401
+
+    application = Application("{{ project_name }}-test")
+    application.scan({{ project_name }}.application).ready()
+    return application
+
+
+@pytest.fixture
+def client(app):
+    """테스트용 HTTP 클라이언트
+    
+    Usage:
+        @pytest.mark.asyncio
+        async def test_health(client):
+            response = await client.get("/health")
+            assert response.status_code == 200
+    """
+    return TestClient(app)

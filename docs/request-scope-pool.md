@@ -260,7 +260,7 @@ async def test_async_connection(reset_container_manager):
 ### ASGI 통합 테스트
 
 ```python
-from bloom.testing import TestClient
+from bloom.tests import TestClient
 
 @pytest.mark.asyncio
 async def test_http_request(reset_container_manager):

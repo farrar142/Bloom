@@ -8,7 +8,7 @@ from bloom.web import Controller, Get, Post
 from bloom.web.http import HttpResponse
 from bloom.web.params.types import RequestBody
 
-from bloom.testing import (
+from bloom.tests import (
     TestClient,
     TestResponse,
     MockContainer,
@@ -436,7 +436,7 @@ class TestCallRecord:
 
 # === TestCase 테스트 ===
 
-from bloom.testing import TestCase, AsyncTestCase
+from bloom.tests import TestCase, AsyncTestCase
 
 
 class TestCaseBasicTest(TestCase):
