@@ -38,11 +38,11 @@ class CounterConfig:
 
 ### Creator vs Modifier
 
-| 구분 | Creator | Modifier |
-|------|---------|----------|
+| 구분     | Creator                          | Modifier                    |
+| -------- | -------------------------------- | --------------------------- |
 | **정의** | 자기 타입을 의존성으로 갖지 않음 | 자기 타입을 의존성으로 가짐 |
-| **역할** | 최초 인스턴스 생성 | 기존 인스턴스 수정 |
-| **개수** | 체인당 1개만 허용 | 여러 개 가능 |
+| **역할** | 최초 인스턴스 생성               | 기존 인스턴스 수정          |
+| **개수** | 체인당 1개만 허용                | 여러 개 가능                |
 
 ```python
 # Creator - Counter를 의존하지 않음
@@ -78,7 +78,7 @@ def get_intra_type_order(item, target_type):
     # 1. @Order가 있으면 Order 값 사용
     if has_order(item):
         return (1, order_value)
-    
+
     # 2. Order가 없으면 의존성 기반
     if target_type in item.dependencies:
         return (0, 1000)   # Modifier: 나중에
@@ -125,6 +125,7 @@ class Config:
 ```
 
 의존성 관계:
+
 ```
 Counter 체인: create_counter → add_five → transform
 Transformer 체인: create_transformer
@@ -151,13 +152,13 @@ transform → Transformer.last(create_transformer) → Counter.last(transform)
 for dep_type in item.dependencies:
     if dep_type == item.target:
         continue  # 자기 타입은 Chain 내부에서 처리됨
-    
+
     # 의존 타입의 Chain에서 eligible Factory 찾기
     eligible_deps = []
     for dep_item in dep_chain:
         if item.target not in dep_item.dependencies:
             eligible_deps.append(dep_item)
-    
+
     if eligible_deps:
         # eligible한 것들 중 마지막에 연결
         connect(eligible_deps[-1], item)
@@ -169,12 +170,14 @@ for dep_type in item.dependencies:
 #### 적용 예시
 
 `transform`이 `Transformer`에 의존:
+
 - Transformer Chain: `[create_transformer]`
 - `create_transformer`는 `Counter`를 의존
 - `Counter`는 `transform`의 타입 → eligible 아님!
 - eligible 없음 → 첫 번째(`create_transformer`)에 연결
 
 `create_transformer`가 `Counter`에 의존:
+
 - Counter Chain: `[create_counter, add_five, transform]`
 - `create_counter`: 의존 없음 → eligible ✓
 - `add_five`: `Counter` 의존 (자기 타입) → eligible ✓
@@ -183,6 +186,7 @@ for dep_type in item.dependencies:
 - 따라서 `add_five`까지만 eligible
 
 결과 그래프:
+
 ```
 Config ──→ create_counter ──→ add_five ──→ create_transformer ──→ transform
 ```
@@ -434,12 +438,15 @@ Level 4: transform
 
 ## 주의사항
 
-1. **@Lazy와 Factory Chain**: `@Lazy` 컴포넌트는 즉시 초기화되지 않으므로, Factory Chain과 함께 사용 시 주의
+1. **PROTOTYPE Scope와 Factory Chain**: `@Scope(PROTOTYPE)` 컴포넌트는 즉시 초기화되지 않으므로, Factory Chain과 함께 사용 시 주의
 
 2. **순환 의존성**: 서로 다른 타입 간의 순환 의존성은 여전히 에러 발생
+
    ```
    A → B → A  (에러!)
    ```
+
+   > 참고: Bloom에서는 모든 필드 주입이 기본 Lazy이므로, 대부분의 순환 의존성은 자동으로 해결됩니다.
 
 3. **병렬 초기화**: Factory Chain이 있는 경우, 순차 초기화(`parallel=False`) 권장
 

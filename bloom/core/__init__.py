@@ -21,7 +21,9 @@ from .decorators import (
     PostConstruct,
     PreDestroy,
     Order,
+    Scope,
 )
+from .container.element import Scope as ScopeEnum
 from .exceptions import (
     BloomException,
     CircularDependencyError,
@@ -31,9 +33,6 @@ from .lifecycle import LifecycleManager
 from .lazy import (
     Lazy,
     LazyFieldProxy,
-    LazyProxy,
-    LazyComponent,
-    is_lazy_component,
     is_lazy_wrapper_type,
     get_lazy_inner_type,
 )
@@ -60,6 +59,8 @@ __all__ = [
     "PostConstruct",
     "PreDestroy",
     "Order",
+    "Scope",
+    "ScopeEnum",
     # Exceptions
     "BloomException",
     "CircularDependencyError",
@@ -67,9 +68,6 @@ __all__ = [
     "LifecycleManager",
     "Lazy",
     "LazyFieldProxy",
-    "LazyProxy",
-    "LazyComponent",
-    "is_lazy_component",
     "is_lazy_wrapper_type",
     "get_lazy_inner_type",
     # Abstract patterns

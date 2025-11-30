@@ -8,7 +8,7 @@ from bloom.core.container import (
     FactoryContainer,
     HandlerContainer,
 )
-from bloom.core.container.element import OrderElement
+from bloom.core.container.element import OrderElement, ScopeElement, Scope as ScopeEnum
 from bloom.core.lifecycle import (
     LifecycleHandlerContainer,
     LifecycleType,
@@ -176,5 +176,38 @@ def Order(order: int):
         container = CallableContainer.get_or_create(method)
         container.add_element(OrderElement(order))
         return method
+
+    return decorator
+
+
+def Scope(scope: ScopeEnum):
+    """
+    Scope 데코레이터: 컴포넌트의 인스턴스 생명주기 범위 지정
+
+    - SINGLETON (기본값): 애플리케이션 전체에서 단일 인스턴스
+    - PROTOTYPE: 주입될 때마다 새 인스턴스 생성
+    - REQUEST: HTTP 요청마다 새 인스턴스 (웹 컨텍스트에서만)
+
+    사용 예시:
+        from bloom.core.decorators import Scope
+        from bloom.core.container.element import Scope as ScopeEnum
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class RequestHandler:
+            # 매번 새 인스턴스 생성
+            pass
+
+        @Component
+        @Scope(ScopeEnum.SINGLETON)  # 기본값
+        class DatabasePool:
+            # 단일 인스턴스
+            pass
+    """
+
+    def decorator[T](cls: type[T]) -> type[T]:
+        container = ComponentContainer.get_or_create(cls)
+        container.add_element(ScopeElement(scope))
+        return cls
 
     return decorator

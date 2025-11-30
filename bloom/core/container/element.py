@@ -45,3 +45,43 @@ class OrderElement(Element):
     @property
     def order(self) -> int:
         return self.metadata.get("order", 0)
+
+
+# =============================================================================
+# Scope 시스템
+# =============================================================================
+
+from enum import Enum
+
+
+class Scope(Enum):
+    """컴포넌트 인스턴스의 생명주기 범위
+
+    - SINGLETON: 애플리케이션 전체에서 단일 인스턴스 (기본값)
+    - PROTOTYPE: 주입될 때마다 새 인스턴스 생성
+    - REQUEST: HTTP 요청마다 새 인스턴스 (웹 컨텍스트에서만)
+    """
+
+    SINGLETON = "singleton"
+    PROTOTYPE = "prototype"
+    REQUEST = "request"
+
+
+class ScopeElement(Element):
+    """
+    컴포넌트의 Scope를 지정하는 Element
+
+    사용 예시:
+        @Component
+        @Scope(Scope.PROTOTYPE)
+        class MyService:
+            pass
+    """
+
+    def __init__(self, scope: Scope):
+        super().__init__()
+        self.metadata["scope"] = scope
+
+    @property
+    def scope(self) -> Scope:
+        return self.metadata.get("scope", Scope.SINGLETON)

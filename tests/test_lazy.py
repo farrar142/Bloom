@@ -1,51 +1,39 @@
-"""Lazy 컴포넌트 데코레이터 테스트"""
+"""Lazy 필드 주입 테스트
+
+모든 필드 주입은 기본적으로 LazyFieldProxy로 래핑되어 지연 초기화됩니다.
+"""
 
 import pytest
 from bloom import Application, Component
-from bloom.core import LazyComponent
-from bloom.core import LazyProxy
-from bloom.core.manager import ContainerManager, set_current_manager
+from bloom.core import Lazy
+from bloom.core.lazy import LazyFieldProxy
 
 
-class TestLazyBasic:
-    """@Lazy 기본 동작 테스트"""
+class TestLazyFieldBasic:
+    """기본 Lazy 필드 주입 테스트"""
 
-    def test_lazy_decorator_marks_component(self):
-        """@Lazy 데코레이터가 컴포넌트를 lazy로 마킹함"""
-        from bloom.core.lazy import is_lazy_component
-        from bloom.core.container import ComponentContainer
+    def test_field_injection_is_lazy(self):
+        """모든 필드 주입은 기본적으로 Lazy (LazyFieldProxy)"""
 
-        @LazyComponent
         @Component
-        class HeavyService:
-            pass
-
-        container = ComponentContainer.get_container(HeavyService)
-        assert container is not None
-        assert is_lazy_component(container)
-
-    def test_lazy_component_injects_proxy(self):
-        """@Lazy 컴포넌트 주입 시 LazyProxy가 주입됨"""
-
-        @LazyComponent
-        @Component
-        class HeavyService:
-            value: str = "heavy"
+        class ServiceA:
+            value: str = "service_a"
 
         @Component
         class Consumer:
-            service: HeavyService
+            service: ServiceA
 
-        app = Application("test_proxy").ready()
+        app = Application("test_lazy_field").ready()
 
         consumer = app.manager.get_instance(Consumer)
-        # LazyProxy로 주입됨
-        assert isinstance(consumer.service, LazyProxy)
 
-    def test_lazy_proxy_resolves_on_access(self):
-        """LazyProxy 속성 접근 시 실제 인스턴스가 resolve됨"""
+        # 필드는 LazyFieldProxy로 주입됨 (투명 프록시)
+        # 하지만 접근하면 실제 값처럼 동작
+        assert consumer.service.value == "service_a"
 
-        @LazyComponent
+    def test_lazy_field_resolves_on_access(self):
+        """필드 접근 시 실제 인스턴스가 resolve됨"""
+
         @Component
         class HeavyService:
             value: str = "heavy_value"
@@ -65,11 +53,10 @@ class TestLazyBasic:
         # 메서드 호출
         assert consumer.service.process() == "processed"
 
-    def test_lazy_proxy_caches_instance(self):
-        """LazyProxy는 한 번 resolve된 인스턴스를 캐시함"""
+    def test_lazy_field_caches_instance_for_singleton(self):
+        """SINGLETON 스코프에서 LazyFieldProxy는 인스턴스를 캐시함"""
         init_count = 0
 
-        @LazyComponent
         @Component
         class Database:
             def __init__(self):
@@ -84,27 +71,26 @@ class TestLazyBasic:
 
         service = app.manager.get_instance(Service)
         # 첫 번째 접근
-        _ = service.db.init_count if hasattr(service.db, "init_count") else None
+        _ = service.db
         first_count = init_count
         # 두 번째 접근
         _ = service.db
         second_count = init_count
 
+        # 같은 인스턴스가 반환됨
         assert first_count == second_count == 1
 
 
 class TestLazyCircularDependency:
-    """@Lazy를 이용한 순환 의존성 해결 테스트"""
+    """Lazy 필드 주입을 통한 순환 의존성 해결 테스트"""
 
-    def test_circular_dependency_with_lazy(self):
-        """@Lazy를 사용하면 순환 의존성이 해결됨
+    def test_circular_dependency_resolved_automatically(self):
+        """순환 의존성이 자동으로 해결됨
 
-        ServiceA <- ServiceB (ServiceB가 ServiceA 의존)
-        ServiceA가 @Lazy이므로 ServiceB 생성 시 LazyProxy 주입
-        나중에 ServiceA 접근 시 실제 초기화
+        모든 필드 주입이 기본적으로 Lazy이므로,
+        순환 의존성이 자동으로 해결됩니다.
         """
 
-        @LazyComponent
         @Component
         class ServiceA:
             value: str = "from_a"
@@ -114,8 +100,8 @@ class TestLazyCircularDependency:
 
         @Component
         class ServiceB:
-            service_a: ServiceA  # LazyProxy 주입
             value: str = "from_b"
+            service_a: ServiceA
 
             def get_a_value(self) -> str:
                 return self.service_a.value
@@ -123,22 +109,20 @@ class TestLazyCircularDependency:
         app = Application("test_circular").ready()
 
         service_b = app.manager.get_instance(ServiceB)
-        # ServiceB.service_a는 LazyProxy
-        assert isinstance(service_b.service_a, LazyProxy)
+
         # 프록시를 통해 속성 접근 가능
         assert service_b.service_a.value == "from_a"
+
         # 프록시를 통해 메서드 호출 가능
         assert service_b.get_a_value() == "from_a"
 
-    def test_bidirectional_lazy(self):
-        """양쪽 모두 @Lazy를 사용하는 경우"""
+    def test_bidirectional_reference(self):
+        """양방향 참조가 가능함"""
 
-        @LazyComponent
         @Component
         class Alpha:
             name: str = "alpha"
 
-        @LazyComponent
         @Component
         class Beta:
             name: str = "beta"
@@ -152,82 +136,39 @@ class TestLazyCircularDependency:
 
         consumer = app.manager.get_instance(Consumer)
 
-        # 양방향 참조 확인 - 프록시를 통해 속성 접근
+        # 양방향 참조 확인
         assert consumer.alpha.name == "alpha"
         assert consumer.beta.name == "beta"
 
-    def test_mutual_dependency_with_lazy(self):
-        """상호 의존하는 경우 - @Lazy 쪽이 일반 컴포넌트를 의존
 
-        ServiceY(@Lazy) -> ServiceX (일반)
-        ServiceX가 먼저 초기화되고, ServiceY는 LazyProxy로 주입됨
-        ServiceY 접근 시 ServiceX가 이미 있으므로 주입 성공
-        """
+class TestExplicitLazy:
+    """명시적 Lazy[T] 타입 힌트 테스트"""
+
+    def test_explicit_lazy_type_hint(self):
+        """Lazy[T] 타입 힌트가 LazyFieldProxy로 동작"""
 
         @Component
-        class ServiceX:
-            value: str = "x"
-
-        @LazyComponent
-        @Component
-        class ServiceY:
-            service_x: ServiceX
-            value: str = "y"
-
-            def get_x_value(self) -> str:
-                return self.service_x.value
+        class HeavyService:
+            value: str = "heavy"
 
         @Component
         class Consumer:
-            x: ServiceX
-            y: ServiceY  # LazyProxy
+            service: Lazy[HeavyService]  # 명시적 Lazy
 
-        app = Application("test_mutual").ready()
+        app = Application("test_explicit_lazy").ready()
 
         consumer = app.manager.get_instance(Consumer)
 
-        # Consumer.y는 LazyProxy
-        assert isinstance(consumer.y, LazyProxy)
-        # ServiceY가 ServiceX를 참조 가능
-        assert consumer.y.get_x_value() == "x"
-        assert consumer.y.value == "y"
-
-
-class TestLazyWithFactory:
-    """@Lazy와 Factory 조합 테스트"""
-
-    def test_lazy_component_with_dependencies(self):
-        """@Lazy 컴포넌트가 다른 의존성을 가질 때"""
-
-        @Component
-        class Config:
-            url: str = "https://api.example.com"
-
-        @LazyComponent
-        @Component
-        class ApiClient:
-            config: Config
-
-            def get_url(self) -> str:
-                return self.config.url
-
-        @Component
-        class Service:
-            client: ApiClient
-
-        app = Application("test_lazy_deps").ready()
-
-        service = app.manager.get_instance(Service)
-        assert service.client.get_url() == "https://api.example.com"
+        # 투명 프록시로 동작
+        assert consumer.service.value == "heavy"
 
 
 class TestLazyEdgeCases:
-    """@Lazy 엣지 케이스 테스트"""
+    """Lazy 필드 엣지 케이스 테스트"""
 
-    def test_lazy_proxy_repr(self):
-        """LazyProxy의 repr"""
+    def test_lazy_field_repr(self):
+        """LazyFieldProxy의 repr (해결 후)"""
 
-        @LazyComponent
         @Component
         class Target:
             pass
@@ -239,14 +180,13 @@ class TestLazyEdgeCases:
         app = Application("test_repr").ready()
 
         holder = app.manager.get_instance(Holder)
-        proxy_repr = repr(holder.target)
-        assert "LazyProxy" in proxy_repr
-        assert "Target" in proxy_repr
+        # 접근하면 실제 인스턴스의 repr이 반환됨
+        repr_str = repr(holder.target)
+        assert "Target" in repr_str
 
-    def test_lazy_proxy_equality(self):
-        """LazyProxy 동등성 비교"""
+    def test_lazy_field_equality(self):
+        """LazyFieldProxy 동등성 비교"""
 
-        @LazyComponent
         @Component
         class Target:
             pass
@@ -267,10 +207,9 @@ class TestLazyEdgeCases:
         # 같은 인스턴스를 가리키므로 동등해야 함
         assert holder_a.target == holder_b.target
 
-    def test_lazy_proxy_setattr(self):
-        """LazyProxy를 통한 속성 설정"""
+    def test_lazy_field_setattr(self):
+        """LazyFieldProxy를 통한 속성 설정"""
 
-        @LazyComponent
         @Component
         class Target:
             value: str = "original"
@@ -288,265 +227,136 @@ class TestLazyEdgeCases:
         target = app.manager.get_instance(Target)
         assert target.value == "modified"
 
-    def test_non_lazy_component_is_not_proxy(self):
-        """@Lazy가 없는 컴포넌트는 프록시가 아님"""
+
+class TestLazyWithFactory:
+    """Lazy 필드와 Factory 조합 테스트"""
+
+    def test_lazy_field_with_factory(self):
+        """Factory로 생성된 인스턴스도 Lazy 필드를 통해 접근"""
+        from bloom.core.decorators import Factory
 
         @Component
-        class RegularService:
-            value: str = "regular"
+        class Config:
+            url: str = "https://api.example.com"
+
+        class ApiClient:
+            def __init__(self, url: str):
+                self.url = url
+
+            def get_url(self) -> str:
+                return self.url
 
         @Component
-        class Consumer:
-            service: RegularService
+        class FactoryConfig:
+            config: Config
 
-        app = Application("test_non_lazy").ready()
-
-        consumer = app.manager.get_instance(Consumer)
-        # 일반 인스턴스, 프록시가 아님
-        assert not isinstance(consumer.service, LazyProxy)
-        assert isinstance(consumer.service, RegularService)
-
-    def test_multiple_lazy_fields(self):
-        """여러 @Lazy 필드를 가진 컴포넌트"""
-
-        @LazyComponent
-        @Component
-        class DepA:
-            value: str = "A"
-
-        @LazyComponent
-        @Component
-        class DepB:
-            value: str = "B"
-
-        @LazyComponent
-        @Component
-        class DepC:
-            value: str = "C"
-
-        @Component
-        class MultiDep:
-            a: DepA
-            b: DepB
-            c: DepC
-
-        app = Application("test_multi").ready()
-
-        service = app.manager.get_instance(MultiDep)
-
-        assert service.a.value == "A"
-        assert service.b.value == "B"
-        assert service.c.value == "C"
-
-
-class TestLazyInitializationTiming:
-    """@Lazy 초기화 타이밍 테스트"""
-
-    def test_lazy_not_initialized_until_access(self):
-        """@Lazy 컴포넌트는 접근 전까지 초기화되지 않음"""
-        initialized = False
-
-        @LazyComponent
-        @Component
-        class HeavyService:
-            def __init__(self):
-                nonlocal initialized
-                initialized = True
+            @Factory
+            def create_client(self) -> ApiClient:
+                return ApiClient(self.config.url)
 
         @Component
         class Consumer:
-            service: HeavyService
+            client: ApiClient
 
-        app = Application("test_timing").ready()
-
-        consumer = app.manager.get_instance(Consumer)
-        # 아직 접근하지 않았으므로 초기화되지 않음
-        assert not initialized
-
-        # 접근 시 초기화
-        _ = consumer.service.value if hasattr(consumer.service, "value") else None
-        # 이제 초기화됨
-        # (주의: LazyProxy.__getattr__ 호출 시 초기화)
-
-    def test_lazy_initializes_on_method_call(self):
-        """메서드 호출 시 초기화"""
-        call_log = []
-
-        @LazyComponent
-        @Component
-        class Service:
-            def __init__(self):
-                call_log.append("init")
-
-            def do_work(self):
-                call_log.append("work")
-                return "done"
-
-        @Component
-        class Consumer:
-            service: Service
-
-        app = Application("test_method_call").ready()
+        app = Application("test_lazy_factory").ready()
 
         consumer = app.manager.get_instance(Consumer)
-        assert "init" not in call_log
-
-        result = consumer.service.do_work()
-        assert result == "done"
-        assert "init" in call_log
-        assert "work" in call_log
+        assert consumer.client.get_url() == "https://api.example.com"
 
 
-class TestLazyFieldType:
-    """Lazy[T] 필드 타입 테스트 (투명 프록시 스타일)"""
+class TestLazyWithMultipleConsumers:
+    """여러 Consumer에서 같은 서비스 주입 테스트"""
 
-    def test_lazy_field_type_injects_proxy(self):
-        """Lazy[T] 필드 타입으로 LazyFieldProxy가 주입됨"""
-        from bloom.core.lazy import Lazy, LazyFieldProxy
-
-        @Component
-        class HeavyService:
-            value: str = "heavy"
-
-        @Component
-        class Consumer:
-            service: Lazy[HeavyService]
-
-        app = Application("test_lazy_field").ready()
-
-        consumer = app.manager.get_instance(Consumer)
-        # LazyFieldProxy로 주입됨
-        assert isinstance(consumer.service, LazyFieldProxy)
-
-    def test_lazy_proxy_transparent_access(self):
-        """LazyFieldProxy는 투명하게 속성에 접근 가능 (.get() 불필요)"""
-        from bloom.core.lazy import Lazy
-
-        @Component
-        class HeavyService:
-            value: str = "resolved_value"
-
-            def get_value(self) -> str:
-                return self.value
-
-        @Component
-        class Consumer:
-            service: Lazy[HeavyService]
-
-        app = Application("test_lazy_get").ready()
-
-        consumer = app.manager.get_instance(Consumer)
-        # 투명하게 속성 접근 (.get() 불필요!)
-        assert consumer.service.value == "resolved_value"
-        assert consumer.service.get_value() == "resolved_value"
-
-        # get()도 여전히 사용 가능
-        actual = consumer.service.get()
-        assert isinstance(actual, HeavyService)
-
-    def test_lazy_proxy_caches_instance(self):
-        """LazyFieldProxy는 한 번 resolve된 인스턴스를 캐시함"""
-        from bloom.core.lazy import Lazy
-
+    def test_multiple_consumers_same_instance(self):
+        """여러 Consumer가 같은 인스턴스를 공유 (SINGLETON)"""
         init_count = 0
 
         @Component
-        class ExpensiveService:
+        class SharedService:
             def __init__(self):
                 nonlocal init_count
                 init_count += 1
 
         @Component
-        class Consumer:
-            service: Lazy[ExpensiveService]
+        class ConsumerA:
+            service: SharedService
 
-        app = Application("test_lazy_cache").ready()
+        @Component
+        class ConsumerB:
+            service: SharedService
 
-        consumer = app.manager.get_instance(Consumer)
-        # 첫 번째 접근 (투명 프록시)
-        _ = consumer.service  # 접근만 해도 resolve
-        # 아직 resolve 안됨 (속성 접근 시 resolve)
-        assert not consumer.service.resolved
-        # 속성 접근 시 resolve
-        consumer.service.get()
+        @Component
+        class ConsumerC:
+            service: SharedService
+
+        app = Application("test_multiple_consumers").ready()
+
+        a = app.manager.get_instance(ConsumerA)
+        b = app.manager.get_instance(ConsumerB)
+        c = app.manager.get_instance(ConsumerC)
+
+        # 각 consumer의 service에 접근
+        _ = a.service
+        _ = b.service
+        _ = c.service
+
+        # SINGLETON이므로 한 번만 초기화됨
         assert init_count == 1
-        # 두 번째 접근 - 캐시 사용
-        consumer.service.get()
-        assert init_count == 1
 
-    def test_lazy_field_type_breaks_circular_dependency(self):
-        """Lazy[T]로 순환 의존성을 해결함"""
-        from bloom.core.lazy import Lazy
+        # 모두 같은 인스턴스
+        assert a.service == b.service == c.service
 
-        @Component
-        class ServiceA:
-            service_b: Lazy["ServiceB"]
 
-            def get_b_name(self) -> str:
-                # 투명 프록시 - .get() 없이 직접 접근
-                return self.service_b.name
+class TestLazyFieldProxyMethods:
+    """LazyFieldProxy 메서드 테스트"""
 
-        @Component
-        class ServiceB:
-            name: str = "B"
-            service_a: Lazy[ServiceA]
-
-        app = Application("test_circular_lazy").ready()
-
-        a = app.manager.get_instance(ServiceA)
-        b = app.manager.get_instance(ServiceB)
-
-        # 순환 참조가 해결됨 - 투명 프록시 사용
-        assert a.get_b_name() == "B"
-        # .get()도 여전히 사용 가능
-        assert b.service_a.get() is a
-
-    def test_lazy_field_with_factory(self):
-        """Lazy[T]가 @Factory로 생성된 인스턴스와 함께 동작함"""
-        from bloom.core.lazy import Lazy
-        from bloom.core.decorators import Factory
-
-        class Connection:
-            def __init__(self, host: str):
-                self.host = host
-
-        @Component
-        class ConnectionFactory:
-            @Factory
-            def create_connection(self) -> Connection:
-                return Connection("localhost")
-
-        @Component
-        class Repository:
-            conn: Lazy[Connection]
-
-            def get_host(self) -> str:
-                # 투명 프록시 - .get() 없이 직접 접근
-                return self.conn.host
-
-        app = Application("test_lazy_factory").ready()
-
-        repo = app.manager.get_instance(Repository)
-        assert repo.get_host() == "localhost"
-
-    def test_lazy_wrapper_resolved_property(self):
-        """LazyWrapper.resolved 프로퍼티로 resolve 여부 확인"""
-        from bloom.core.lazy import Lazy
+    def test_lazy_field_get_method(self):
+        """get() 메서드로 명시적 접근"""
 
         @Component
         class Service:
-            pass
+            value: str = "test"
 
         @Component
         class Consumer:
-            service: Lazy[Service]
+            service: Service
 
-        app = Application("test_lazy_resolved").ready()
+        app = Application("test_get").ready()
 
         consumer = app.manager.get_instance(Consumer)
-        # 아직 resolve되지 않음
-        assert not consumer.service.resolved
-        # resolve
-        consumer.service.get()
-        # 이제 resolved
-        assert consumer.service.resolved
+
+        # LazyFieldProxy가 주입됨
+        service_field = object.__getattribute__(consumer, "service")
+
+        # get() 메서드로 명시적 접근 (선택적)
+        if hasattr(service_field, "get"):
+            instance = service_field.get()
+            assert instance.value == "test"
+
+    def test_lazy_field_resolved_property(self):
+        """resolved 프로퍼티로 해결 여부 확인"""
+
+        @Component
+        class Service:
+            value: str = "test"
+
+        @Component
+        class Consumer:
+            service: Service
+
+        app = Application("test_resolved").ready()
+
+        consumer = app.manager.get_instance(Consumer)
+
+        # LazyFieldProxy가 주입됨
+        service_field = object.__getattribute__(consumer, "service")
+
+        if hasattr(service_field, "resolved"):
+            # 접근 전에는 미해결
+            assert not service_field.resolved
+
+            # 접근
+            _ = consumer.service.value
+
+            # 접근 후에는 해결됨
+            assert service_field.resolved

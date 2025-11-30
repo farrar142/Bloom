@@ -66,12 +66,15 @@ class Container[T]:
         return None
 
     def get_dependencies(self) -> list[type]:
-        """이 컨테이너가 의존하는 타입들을 반환 (Lazy 컴포넌트 제외)"""
+        """이 컨테이너가 의존하는 타입들을 반환
+
+        Note: 모든 필드 주입이 LazyFieldProxy로 래핑되므로,
+        순환 의존성은 자동으로 해결됩니다. 이 메서드는 주로
+        Factory 파라미터 의존성 분석에 사용됩니다.
+        """
         from typing import get_type_hints
-        from ..lazy import is_lazy_component
 
         dependencies: list[type] = []
-        manager = try_get_current_manager()
 
         # get_type_hints로 forward reference 해석
         try:
@@ -87,49 +90,27 @@ class Container[T]:
             # 타입이 아니면 건너뜀
             if not isinstance(field_type, type):
                 continue
-            # Lazy 컴포넌트는 의존성에서 제외 (지연 로딩이므로 순환 가능)
-            if manager:
-                if dep_container := manager.get_container(field_type):
-                    if is_lazy_component(dep_container):
-                        continue
             dependencies.append(field_type)
         return dependencies
 
     def get_lazy_dependencies(self) -> list[type]:
-        """이 컨테이너가 Lazy로 의존하는 타입들을 반환
+        """이 컨테이너가 Lazy[T]로 명시적으로 의존하는 타입들을 반환
 
-        Lazy[T] 타입 힌트에서 T를 추출하거나,
-        @Lazy로 마킹된 컴포넌트를 주입받는 경우를 감지합니다.
+        Lazy[T] 타입 힌트에서 T를 추출합니다.
+        Note: 모든 필드가 기본적으로 Lazy이므로 이 메서드는
+        명시적으로 Lazy[T]로 선언된 필드만 반환합니다.
         """
         from typing import get_origin, get_args
-        from ..lazy import is_lazy_component
+        from ..lazy import is_lazy_wrapper_type, get_lazy_inner_type
 
         lazy_deps = []
-        manager = try_get_current_manager()
-        if not manager:
-            return lazy_deps
 
         for field_type in getattr(self.target, "__annotations__", {}).values():
             # Lazy[T] 타입 힌트 처리
-            origin = get_origin(field_type)
-            if origin is not None:
-                # 파라미터화된 제네릭 타입은 건너뜀
-                # (예: list[str], dict[str, int] 등)
-                args = get_args(field_type)
-                if args:
-                    # 첫 번째 타입 인자가 실제 의존성
-                    inner_type = args[0]
-                    if isinstance(inner_type, type):
-                        if dep_container := manager.get_container(inner_type):
-                            if is_lazy_component(dep_container):
-                                lazy_deps.append(inner_type)
-                continue
-
-            # 일반 타입: @Lazy로 마킹된 컴포넌트인지 확인
-            if isinstance(field_type, type):
-                if dep_container := manager.get_container(field_type):
-                    if is_lazy_component(dep_container):
-                        lazy_deps.append(field_type)
+            if is_lazy_wrapper_type(field_type):
+                inner_type = get_lazy_inner_type(field_type)
+                if inner_type is not None and isinstance(inner_type, type):
+                    lazy_deps.append(inner_type)
 
         return lazy_deps
 
@@ -145,8 +126,7 @@ class Container[T]:
         """어노테이션 기반으로 의존성을 주입하여 kwargs 반환"""
         from typing import ForwardRef, get_type_hints
         from ..lazy import (
-            LazyProxy,
-            is_lazy_component,
+            LazyFieldProxy,
             is_lazy_wrapper_type,
             get_lazy_inner_type,
         )
@@ -164,7 +144,7 @@ class Container[T]:
                     kwargs[name] = env_value
                 continue
 
-            # Lazy[T] 필드 타입 처리 - 순환 의존성 해결용
+            # Lazy[T] 필드 타입 처리 - 명시적 Lazy 선언
             if is_lazy_wrapper_type(dep_type):
                 inner_type = get_lazy_inner_type(dep_type)
                 if inner_type is not None:
@@ -185,15 +165,30 @@ class Container[T]:
                         inner_type = resolved_type
 
                     # LazyFieldProxy 생성 - 투명 프록시로 동작
-                    from ..lazy import LazyFieldProxy
+                    from .element import Scope as ScopeEnum, ScopeElement
 
-                    def make_resolver(m: "ContainerManager", t: type):
+                    # 컨테이너에서 Scope 정보 가져오기
+                    inner_scope = ScopeEnum.SINGLETON
+                    if inner_container := manager.get_container(inner_type):
+                        for elem in inner_container.elements:
+                            if isinstance(elem, ScopeElement):
+                                inner_scope = elem.scope
+                                break
+
+                    def make_resolver(m: "ContainerManager", t: type, s: ScopeEnum):
                         def resolver():
-                            # 먼저 등록된 인스턴스 확인
+                            # PROTOTYPE은 항상 새 인스턴스 생성
+                            if s == ScopeEnum.PROTOTYPE:
+                                if container := m.get_container(t):
+                                    return container._create_instance()
+                                raise Exception(
+                                    f"Cannot resolve {t.__name__}: no container found"
+                                )
+
+                            # SINGLETON: 캐시 확인
                             instance = m.get_instance(t, raise_exception=False)
                             if instance is not None:
                                 return instance
-                            # 없으면 컨테이너에서 초기화
                             if container := m.get_container(t):
                                 return container.initialize_instance()
                             raise Exception(
@@ -203,23 +198,66 @@ class Container[T]:
                         return resolver
 
                     kwargs[name] = LazyFieldProxy(
-                        make_resolver(manager, inner_type), inner_type
+                        make_resolver(manager, inner_type, inner_scope),
+                        inner_type,
+                        inner_scope,
                     )
                 continue
 
-            # 먼저 이미 등록된 인스턴스가 있는지 확인
-            existing_instance = manager.get_instance(dep_type, raise_exception=False)
-            if existing_instance is not None:
-                kwargs[name] = existing_instance
-                continue
-
-            # 인스턴스가 없으면 컨테이너에서 생성
+            # 모든 필드는 기본적으로 LazyFieldProxy로 주입 (기본 Lazy 동작)
             if dep_container := manager.get_container(dep_type):
-                # @Lazy 컴포넌트는 LazyProxy로 주입
-                if is_lazy_component(dep_container):
-                    kwargs[name] = LazyProxy(dep_container)
-                else:
-                    kwargs[name] = dep_container.initialize_instance()
+                from .element import Scope as ScopeEnum, ScopeElement
+
+                scope = ScopeEnum.SINGLETON  # 기본값
+                for elem in dep_container.elements:
+                    if isinstance(elem, ScopeElement):
+                        scope = elem.scope
+                        break
+
+                # PROTOTYPE이 아닌 경우에만 캐시된 인스턴스 사용
+                if scope != ScopeEnum.PROTOTYPE:
+                    existing_instance = manager.get_instance(
+                        dep_type, raise_exception=False
+                    )
+                    if existing_instance is not None:
+                        kwargs[name] = existing_instance
+                        continue
+
+                # LazyFieldProxy로 주입 (기본 Lazy 동작)
+                # PROTOTYPE: 매번 새 인스턴스 생성
+                # SINGLETON: 캐시 확인 후 없으면 생성
+                def make_default_resolver(m: "ContainerManager", t: type, s: ScopeEnum):
+                    def resolver():
+                        # PROTOTYPE은 항상 새 인스턴스 생성
+                        if s == ScopeEnum.PROTOTYPE:
+                            if container := m.get_container(t):
+                                return container._create_instance()
+                            raise Exception(
+                                f"Cannot resolve {t.__name__}: no container found"
+                            )
+
+                        # SINGLETON은 캐시 확인
+                        instance = m.get_instance(t, raise_exception=False)
+                        if instance is not None:
+                            return instance
+                        if container := m.get_container(t):
+                            return container.initialize_instance()
+                        raise Exception(
+                            f"Cannot resolve {t.__name__}: no container found"
+                        )
+
+                    return resolver
+
+                kwargs[name] = LazyFieldProxy(
+                    make_default_resolver(manager, dep_type, scope), dep_type, scope
+                )
+            else:
+                # 컨테이너가 없으면 기존 인스턴스 확인
+                existing_instance = manager.get_instance(
+                    dep_type, raise_exception=False
+                )
+                if existing_instance is not None:
+                    kwargs[name] = existing_instance
         return kwargs
 
     def _create_instance(self) -> T:

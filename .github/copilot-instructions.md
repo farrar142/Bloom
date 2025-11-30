@@ -18,6 +18,7 @@ Bloom은 Spring Framework에서 영감을 받은 Python DI(의존성 주입) 컨
 | 데코레이터                 | 역할                                         |
 | -------------------------- | -------------------------------------------- |
 | `@Component`               | 클래스를 DI 컨테이너에 등록                  |
+| `@Scope(Scope.XXX)`        | 인스턴스 스코프 지정 (SINGLETON/PROTOTYPE)   |
 | `@Factory`                 | 메서드 기반 인스턴스 생성 (복잡한 초기화 시) |
 | `@Handler(key)`            | 키 기반 핸들러 등록 (예외 처리, 라우팅 등)   |
 | `@Controller`              | 웹 컨트롤러 (Component 확장)                 |
@@ -27,16 +28,63 @@ Bloom은 Spring Framework에서 영감을 받은 Python DI(의존성 주입) 컨
 
 ### 필드 주입 패턴
 
+**모든 필드 주입은 기본적으로 Lazy (지연 초기화)**입니다. 투명 프록시로 동작하여 `.get()` 호출이 필요 없습니다:
+
 ```python
+from bloom import Component, Scope
+from bloom.core import Lazy
+
 @Component
 class Service:
-    repository: Repository  # 타입 어노테이션만으로 자동 주입
-    lazy_dep: Lazy[HeavyService]  # 순환 의존성 해결용 지연 주입 (투명 프록시)
+    repository: Repository  # 기본 Lazy 주입 (LazyFieldProxy)
+    heavy_dep: Lazy[HeavyService]  # 명시적 Lazy[T] 표기도 가능 (동일 동작)
 
-    def use_lazy(self):
-        # .get() 불필요! 직접 접근 가능
-        self.lazy_dep.do_something()
+    def use_deps(self):
+        # 모든 필드는 첫 접근 시점에 실제 인스턴스 생성
+        # .get() 불필요! 투명 프록시로 직접 접근 가능
+        self.repository.find(1)
+        self.heavy_dep.do_something()
 ```
+
+### Scope (인스턴스 스코프)
+
+`@Scope` 데코레이터로 컴포넌트의 인스턴스 생명주기를 지정합니다:
+
+| Scope       | 설명                               | 사용 예                     |
+| ----------- | ---------------------------------- | --------------------------- |
+| `SINGLETON` | 앱 전체에서 단일 인스턴스 (기본값) | 대부분의 서비스, 리포지토리 |
+| `PROTOTYPE` | 접근할 때마다 새 인스턴스 생성     | 상태를 가진 객체, 빌더      |
+| `REQUEST`   | HTTP 요청마다 새 인스턴스 (TODO)   | 요청별 컨텍스트             |
+
+```python
+from bloom import Component, Scope
+from bloom.core import Scope as ScopeEnum
+
+@Component
+class SingletonService:
+    pass  # 기본값: SINGLETON
+
+@Component
+@Scope(ScopeEnum.PROTOTYPE)
+class PrototypeBuilder:
+    """매번 새 인스턴스가 필요한 경우"""
+    state: list = []  # 인스턴스별 독립 상태
+
+@Component
+class Consumer:
+    builder: PrototypeBuilder  # 접근할 때마다 새 인스턴스 반환
+
+    def create_something(self):
+        b1 = self.builder  # 새 인스턴스
+        b2 = self.builder  # 또 다른 새 인스턴스
+        assert b1 is not b2  # True
+```
+
+**동작 원리:**
+
+1. **SINGLETON**: 최초 접근 시 인스턴스 생성 후 캐시, 이후 동일 인스턴스 반환
+2. **PROTOTYPE**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
+3. 모든 필드는 `LazyFieldProxy`로 주입되어 Scope 정보를 활용
 
 ## 웹 레이어 구조
 
