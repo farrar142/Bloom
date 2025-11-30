@@ -66,6 +66,9 @@ from .lazy import (
 )
 from .request_context import (
     RequestContext,
+    RequestContextManager,
+    get_current_request,
+    try_get_current_request,
     request_scope,
 )
 from .abstract import (
@@ -134,6 +137,9 @@ __all__ = [
     "get_lazy_inner_type",
     # Request scope
     "RequestContext",
+    "RequestContextManager",
+    "get_current_request",
+    "try_get_current_request",
     "request_scope",
     # Abstract patterns
     "AbstractRegistry",
