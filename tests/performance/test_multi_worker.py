@@ -110,7 +110,7 @@ class TestGracefulShutdown:
                 await asyncio.sleep(0.1)
                 return {"done": True}
 
-        import tests.test_multi_worker as test_module
+        import tests.performance.test_multi_worker as test_module
 
         app = Application("counting_test").scan(test_module).ready()
         asgi = app.asgi
@@ -239,7 +239,7 @@ class TestWorkerSafety:
         class TestService:
             pass
 
-        import tests.test_multi_worker as test_module
+        import tests.performance.test_multi_worker as test_module
 
         app = Application("idempotent_test").scan(test_module)
 

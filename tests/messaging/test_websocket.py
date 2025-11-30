@@ -170,7 +170,7 @@ class TestMessageControllerIntegration:
 
     def test_collect_handlers(self, reset_container_manager):
         """핸들러 수집 테스트"""
-        import tests.test_websocket as test_module
+        import tests.messaging.test_websocket as test_module
 
         app = Application("test_collect")
         app.scan(test_module).ready()
@@ -187,7 +187,7 @@ class TestMessageControllerIntegration:
 
     def test_handler_send_to(self, reset_container_manager):
         """@SendTo 데코레이터 확인"""
-        import tests.test_websocket as test_module
+        import tests.messaging.test_websocket as test_module
 
         app = Application("test_send_to")
         app.scan(test_module).ready()

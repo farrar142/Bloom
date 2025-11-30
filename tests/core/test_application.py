@@ -3,7 +3,7 @@
 from bloom import Application, Component
 from bloom.core import Factory
 
-from . import conftest
+from tests import conftest
 
 
 class TestApplication:

@@ -49,7 +49,7 @@ def worker_init():
             return {"status": "ok", "pid": os.getpid()}
 
     # 현재 모듈 스캔
-    import tests.test_multiprocess_profile as module
+    import tests.performance.test_multiprocess_profile as module
 
     app = Application(f"worker_{os.getpid()}").scan(module).ready()
 
@@ -268,7 +268,7 @@ def uvicorn_style_worker(worker_id: int, request_count: int, result_queue):
             return self.user_service.get_user(id)
 
     # 한 번만 초기화 (uvicorn 시작과 동일)
-    import tests.test_multiprocess_profile as module
+    import tests.performance.test_multiprocess_profile as module
 
     app = Application(f"worker_{worker_id}").scan(module).ready()
     router = app.router
@@ -389,7 +389,7 @@ def run_multithread_benchmark():
         async def get_user(self, id: str):
             return self.user_service.get_user(id)
 
-    import tests.test_multiprocess_profile as module
+    import tests.performance.test_multiprocess_profile as module
 
     app = Application("thread_test").scan(module).ready()
     router = app.router

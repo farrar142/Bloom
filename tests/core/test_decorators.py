@@ -8,7 +8,7 @@ from bloom.core import (
 )
 from bloom.core.manager import ContainerManager
 
-from .conftest import (
+from tests.conftest import (
     Configuration,
     HandlerTestController,
     ExternalService,

@@ -85,7 +85,7 @@ class TestASGIApplicationCreation:
 
     def test_stomp_handler_collects_message_controllers(self):
         """StompProtocolHandler가 MessageController 수집"""
-        import tests.test_websocket_asgi_integration as test_module
+        import tests.messaging.test_websocket_asgi_integration as test_module
 
         app = Application("test_handler_collection")
         app.scan(test_module).ready()
@@ -120,7 +120,7 @@ class TestStompProtocolHandlerRouting:
 
     def test_message_handler_routing(self):
         """메시지 핸들러 라우팅 확인"""
-        import tests.test_websocket_asgi_integration as test_module
+        import tests.messaging.test_websocket_asgi_integration as test_module
 
         app = Application("test_routing")
         app.scan(test_module).ready()
@@ -342,7 +342,7 @@ class TestIntegrationScenarios:
     async def test_end_to_end_message_flow(self):
         """종단간 메시지 흐름 시뮬레이션"""
         from bloom.web.messaging import Message
-        import tests.test_websocket_asgi_integration as test_module
+        import tests.messaging.test_websocket_asgi_integration as test_module
 
         # 애플리케이션 설정
         app = Application("test_e2e")
@@ -379,7 +379,7 @@ class TestIntegrationScenarios:
         for handler_info in stomp_handler._message_handlers:
             if handler_info.destination_pattern == "/echo":
                 # 핸들러 실행 (간접 호출)
-                from tests.test_websocket_asgi_integration import (
+                from tests.messaging.test_websocket_asgi_integration import (
                     EchoController as EchoCtrl,
                 )
 
@@ -402,7 +402,7 @@ class TestIntegrationScenarios:
     @pytest.mark.asyncio
     async def test_multiple_controllers_integration(self):
         """여러 컨트롤러 통합 테스트"""
-        import tests.test_websocket_asgi_integration as test_module
+        import tests.messaging.test_websocket_asgi_integration as test_module
 
         app = Application("test_multi_controllers")
         app.scan(test_module).ready()
@@ -420,7 +420,7 @@ class TestIntegrationScenarios:
         assert "/chat" in destinations
 
         # 각 컨트롤러 인스턴스 확인
-        from tests.test_websocket_asgi_integration import (
+        from tests.messaging.test_websocket_asgi_integration import (
             EchoController as EchoCtrl,
             ChatController as ChatCtrl,
         )

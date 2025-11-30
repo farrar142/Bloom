@@ -4,7 +4,7 @@ import pytest
 from bloom.core import ComponentContainer
 from bloom.core.manager import ContainerManager
 
-from .conftest import Repository, Service
+from tests.conftest import Repository, Service
 
 
 class TestContainerManager:
