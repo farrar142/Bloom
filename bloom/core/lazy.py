@@ -106,23 +106,23 @@ class LazyFieldProxy[T]:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         instance = self._lfp_resolve()
-        return instance(*args, **kwargs)
+        return instance(*args, **kwargs)  # type:ignore
 
     def __iter__(self) -> Any:
         instance = self._lfp_resolve()
-        return iter(instance)
+        return iter(instance)  # type:ignore
 
     def __len__(self) -> int:
         instance = self._lfp_resolve()
-        return len(instance)
+        return len(instance)  # type:ignore
 
     def __getitem__(self, key: Any) -> Any:
         instance = self._lfp_resolve()
-        return instance[key]
+        return instance[key]  # type:ignore
 
     def __setitem__(self, key: Any, value: Any) -> None:
         instance = self._lfp_resolve()
-        instance[key] = value
+        instance[key] = value  # type:ignore
 
     def __eq__(self, other: Any) -> bool:
         instance = self._lfp_resolve()
