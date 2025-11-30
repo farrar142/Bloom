@@ -30,7 +30,7 @@ from .exceptions import (
 from .lifecycle import LifecycleManager
 from .lazy import (
     Lazy,
-    LazyWrapper,
+    LazyFieldProxy,
     LazyProxy,
     LazyComponent,
     is_lazy_component,
@@ -66,7 +66,7 @@ __all__ = [
     "AmbiguousProviderError",
     "LifecycleManager",
     "Lazy",
-    "LazyWrapper",
+    "LazyFieldProxy",
     "LazyProxy",
     "LazyComponent",
     "is_lazy_component",

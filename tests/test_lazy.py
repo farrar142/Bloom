@@ -398,11 +398,11 @@ class TestLazyInitializationTiming:
 
 
 class TestLazyFieldType:
-    """Lazy[T] 필드 타입 테스트 (Spring ObjectProvider 스타일)"""
+    """Lazy[T] 필드 타입 테스트 (투명 프록시 스타일)"""
 
-    def test_lazy_field_type_injects_wrapper(self):
-        """Lazy[T] 필드 타입으로 LazyWrapper가 주입됨"""
-        from bloom.core.lazy import Lazy, LazyWrapper
+    def test_lazy_field_type_injects_proxy(self):
+        """Lazy[T] 필드 타입으로 LazyFieldProxy가 주입됨"""
+        from bloom.core.lazy import Lazy, LazyFieldProxy
 
         @Component
         class HeavyService:
@@ -415,16 +415,19 @@ class TestLazyFieldType:
         app = Application("test_lazy_field").ready()
 
         consumer = app.manager.get_instance(Consumer)
-        # LazyWrapper로 주입됨
-        assert isinstance(consumer.service, LazyWrapper)
+        # LazyFieldProxy로 주입됨
+        assert isinstance(consumer.service, LazyFieldProxy)
 
-    def test_lazy_wrapper_get_resolves_instance(self):
-        """LazyWrapper.get()으로 실제 인스턴스를 가져옴"""
+    def test_lazy_proxy_transparent_access(self):
+        """LazyFieldProxy는 투명하게 속성에 접근 가능 (.get() 불필요)"""
         from bloom.core.lazy import Lazy
 
         @Component
         class HeavyService:
             value: str = "resolved_value"
+
+            def get_value(self) -> str:
+                return self.value
 
         @Component
         class Consumer:
@@ -433,13 +436,16 @@ class TestLazyFieldType:
         app = Application("test_lazy_get").ready()
 
         consumer = app.manager.get_instance(Consumer)
-        # get()으로 실제 인스턴스 획득
+        # 투명하게 속성 접근 (.get() 불필요!)
+        assert consumer.service.value == "resolved_value"
+        assert consumer.service.get_value() == "resolved_value"
+
+        # get()도 여전히 사용 가능
         actual = consumer.service.get()
         assert isinstance(actual, HeavyService)
-        assert actual.value == "resolved_value"
 
-    def test_lazy_wrapper_caches_instance(self):
-        """LazyWrapper는 한 번 resolve된 인스턴스를 캐시함"""
+    def test_lazy_proxy_caches_instance(self):
+        """LazyFieldProxy는 한 번 resolve된 인스턴스를 캐시함"""
         from bloom.core.lazy import Lazy
 
         init_count = 0
@@ -457,14 +463,16 @@ class TestLazyFieldType:
         app = Application("test_lazy_cache").ready()
 
         consumer = app.manager.get_instance(Consumer)
-        # 첫 번째 호출
-        first = consumer.service.get()
+        # 첫 번째 접근 (투명 프록시)
+        _ = consumer.service  # 접근만 해도 resolve
+        # 아직 resolve 안됨 (속성 접근 시 resolve)
+        assert not consumer.service.resolved
+        # 속성 접근 시 resolve
+        consumer.service.get()
         assert init_count == 1
-        # 두 번째 호출 - 캐시 사용
-        second = consumer.service.get()
+        # 두 번째 접근 - 캐시 사용
+        consumer.service.get()
         assert init_count == 1
-        # 동일 인스턴스
-        assert first is second
 
     def test_lazy_field_type_breaks_circular_dependency(self):
         """Lazy[T]로 순환 의존성을 해결함"""
@@ -475,7 +483,8 @@ class TestLazyFieldType:
             service_b: Lazy["ServiceB"]
 
             def get_b_name(self) -> str:
-                return self.service_b.get().name
+                # 투명 프록시 - .get() 없이 직접 접근
+                return self.service_b.name
 
         @Component
         class ServiceB:
@@ -487,8 +496,9 @@ class TestLazyFieldType:
         a = app.manager.get_instance(ServiceA)
         b = app.manager.get_instance(ServiceB)
 
-        # 순환 참조가 해결됨
+        # 순환 참조가 해결됨 - 투명 프록시 사용
         assert a.get_b_name() == "B"
+        # .get()도 여전히 사용 가능
         assert b.service_a.get() is a
 
     def test_lazy_field_with_factory(self):
@@ -511,7 +521,8 @@ class TestLazyFieldType:
             conn: Lazy[Connection]
 
             def get_host(self) -> str:
-                return self.conn.get().host
+                # 투명 프록시 - .get() 없이 직접 접근
+                return self.conn.host
 
         app = Application("test_lazy_factory").ready()
 

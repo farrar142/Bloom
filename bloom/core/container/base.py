@@ -146,7 +146,6 @@ class Container[T]:
         from typing import ForwardRef, get_type_hints
         from ..lazy import (
             LazyProxy,
-            LazyWrapper,
             is_lazy_component,
             is_lazy_wrapper_type,
             get_lazy_inner_type,
@@ -185,7 +184,9 @@ class Container[T]:
                             )
                         inner_type = resolved_type
 
-                    # LazyWrapper 생성 - get() 호출 시점에 인스턴스 해결
+                    # LazyFieldProxy 생성 - 투명 프록시로 동작
+                    from ..lazy import LazyFieldProxy
+
                     def make_resolver(m: "ContainerManager", t: type):
                         def resolver():
                             # 먼저 등록된 인스턴스 확인
@@ -201,7 +202,9 @@ class Container[T]:
 
                         return resolver
 
-                    kwargs[name] = LazyWrapper(make_resolver(manager, inner_type))
+                    kwargs[name] = LazyFieldProxy(
+                        make_resolver(manager, inner_type), inner_type
+                    )
                 continue
 
             # 먼저 이미 등록된 인스턴스가 있는지 확인

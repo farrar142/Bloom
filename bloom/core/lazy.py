@@ -5,20 +5,23 @@
 
 사용법 1: 클래스 데코레이터
     @Component
-    @Lazy
+    @LazyComponent
     class HeavyService:
         pass
 
 사용법 2: 필드 타입 어노테이션 (순환 의존성 해결용)
     @Component
     class Consumer:
-        heavy: Lazy[HeavyService]  # LazyWrapper가 주입됨
+        heavy: Lazy[HeavyService]  # 투명 프록시가 주입됨
 
         def use(self):
-            self.heavy.get()  # 실제 사용 시점에 해결
+            # .get() 불필요! 직접 사용 가능
+            self.heavy.do_something()
+
+            # 초기화 완료 후에는 실제 인스턴스로 자동 교체됨
 """
 
-from typing import Any, Callable, TYPE_CHECKING, get_origin, get_args
+from typing import Annotated, Any, Callable, TYPE_CHECKING, get_origin, get_args
 
 from .container import Element, Container
 
@@ -27,68 +30,129 @@ if TYPE_CHECKING:
 
 
 class LazyElement(Element):
-    """컴포넌트가 @Lazy로 마킹되었음을 나타내는 Element"""
+    """컴포넌트가 @LazyComponent로 마킹되었음을 나타내는 Element"""
 
     pass
 
 
 # =============================================================================
-# LazyWrapper: 필드 타입 어노테이션용 Lazy[T]
+# LazyFieldProxy: Lazy[T] 필드용 투명 프록시
 # =============================================================================
 
 
-class LazyWrapper[T]:
-    """지연 로딩 래퍼 (필드 타입 어노테이션용)
+class LazyFieldProxy[T]:
+    """Lazy[T] 필드용 투명 프록시
 
-    Spring의 ObjectProvider<T>와 유사하게 동작합니다.
-    순환 의존성 해결을 위해 인스턴스 생성을 지연시킵니다.
+    LazyProxy와 동일하게 투명하게 동작하며, 접근 시점에 인스턴스를 해결합니다.
+    초기화 완료 후에는 실제 인스턴스로 교체될 수 있습니다.
 
     사용법:
         @Component
         class MyService:
-            dep: Lazy[HeavyDependency]  # LazyWrapper 주입
+            dep: Lazy[HeavyDependency]  # LazyFieldProxy 주입
 
             def use(self):
-                instance = self.dep.get()  # 실제 사용 시점에 해결
+                # .get() 불필요! 직접 사용
+                self.dep.do_something()
     """
 
-    __slots__ = ("_resolver", "_instance", "_resolved")
+    __slots__ = ("_lfp_resolver", "_lfp_instance", "_lfp_resolved", "_lfp_target_type")
 
-    def __init__(self, resolver: Callable[[], T]):
-        """
-        Args:
-            resolver: 실제 인스턴스를 해결하는 콜백 함수
-        """
-        self._resolver = resolver
-        self._instance: T | None = None
-        self._resolved = False
+    def __init__(self, resolver: Callable[[], T], target_type: type[T] | None = None):
+        object.__setattr__(self, "_lfp_resolver", resolver)
+        object.__setattr__(self, "_lfp_instance", None)
+        object.__setattr__(self, "_lfp_resolved", False)
+        object.__setattr__(self, "_lfp_target_type", target_type)
 
+    def _lfp_resolve(self) -> T:
+        """실제 인스턴스를 해결합니다."""
+        if not object.__getattribute__(self, "_lfp_resolved"):
+            resolver = object.__getattribute__(self, "_lfp_resolver")
+            instance = resolver()
+            object.__setattr__(self, "_lfp_instance", instance)
+            object.__setattr__(self, "_lfp_resolved", True)
+        return object.__getattribute__(self, "_lfp_instance")
+
+    def __getattr__(self, name: str) -> Any:
+        instance = self._lfp_resolve()
+        return getattr(instance, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_lfp_"):
+            object.__setattr__(self, name, value)
+        else:
+            instance = self._lfp_resolve()
+            setattr(instance, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        instance = self._lfp_resolve()
+        delattr(instance, name)
+
+    def __repr__(self) -> str:
+        if object.__getattribute__(self, "_lfp_resolved"):
+            instance = object.__getattribute__(self, "_lfp_instance")
+            return repr(instance)
+        target_type = object.__getattribute__(self, "_lfp_target_type")
+        type_name = target_type.__name__ if target_type else "?"
+        return f"<LazyFieldProxy[{type_name}] unresolved>"
+
+    def __str__(self) -> str:
+        instance = self._lfp_resolve()
+        return str(instance)
+
+    def __bool__(self) -> bool:
+        instance = self._lfp_resolve()
+        return bool(instance)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        instance = self._lfp_resolve()
+        return instance(*args, **kwargs)
+
+    def __iter__(self) -> Any:
+        instance = self._lfp_resolve()
+        return iter(instance)
+
+    def __len__(self) -> int:
+        instance = self._lfp_resolve()
+        return len(instance)
+
+    def __getitem__(self, key: Any) -> Any:
+        instance = self._lfp_resolve()
+        return instance[key]
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        instance = self._lfp_resolve()
+        instance[key] = value
+
+    def __eq__(self, other: Any) -> bool:
+        instance = self._lfp_resolve()
+        return instance == other
+
+    def __hash__(self) -> int:
+        instance = self._lfp_resolve()
+        return hash(instance)
+
+    # 편의 메서드 (명시적 접근용)
     def get(self) -> T:
-        """실제 인스턴스를 가져옵니다. 최초 호출 시에만 해결됩니다."""
-        if not self._resolved:
-            self._instance = self._resolver()
-            self._resolved = True
-        return self._instance  # type: ignore
+        """명시적으로 실제 인스턴스를 가져옵니다. (선택적 사용)"""
+        return self._lfp_resolve()
 
     @property
     def resolved(self) -> bool:
         """인스턴스가 이미 해결되었는지 확인합니다."""
-        return self._resolved
+        return object.__getattribute__(self, "_lfp_resolved")
 
-    def is_resolved(self) -> bool:
-        """인스턴스가 이미 해결되었는지 확인합니다. (deprecated: use .resolved property)"""
-        return self._resolved
 
-    def __repr__(self) -> str:
-        if self._resolved:
-            return f"Lazy[{type(self._instance).__name__}](resolved)"
-        return f"Lazy[?](unresolved)"
+# =============================================================================
+# LazyWrapper: 하위 호환성용 (deprecated)
+# =============================================================================
 
 
 def is_lazy_wrapper_type(type_hint: Any) -> bool:
     """타입 힌트가 Lazy[T] 형태인지 확인"""
     origin = get_origin(type_hint)
-    return origin is LazyWrapper
+    # LazyWrapper 또는 LazyFieldProxy 모두 지원
+    return origin is LazyFieldProxy
 
 
 def get_lazy_inner_type(type_hint: Any) -> type | None:
@@ -101,8 +165,11 @@ def get_lazy_inner_type(type_hint: Any) -> type | None:
     return None
 
 
-# Lazy[T] 타입 별칭 - 타입 체킹용
-Lazy = LazyWrapper
+# Lazy[T] 타입 별칭 - LazyFieldProxy 사용 (투명 프록시)
+if TYPE_CHECKING:
+    type Lazy[T] = Annotated[T, Lazy[LazyFieldProxy[T]]]
+else:
+    Lazy = LazyFieldProxy
 
 
 # =============================================================================

@@ -31,7 +31,11 @@ Bloom은 Spring Framework에서 영감을 받은 Python DI(의존성 주입) 컨
 @Component
 class Service:
     repository: Repository  # 타입 어노테이션만으로 자동 주입
-    lazy_dep: Lazy[HeavyService]  # 순환 의존성 해결용 지연 주입
+    lazy_dep: Lazy[HeavyService]  # 순환 의존성 해결용 지연 주입 (투명 프록시)
+
+    def use_lazy(self):
+        # .get() 불필요! 직접 접근 가능
+        self.lazy_dep.do_something()
 ```
 
 ## 웹 레이어 구조

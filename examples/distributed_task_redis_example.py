@@ -149,11 +149,7 @@ class InventoryService:
 class TaskBackendFactory:
     """DistributedTaskBackend Factory - 별도 클래스로 분리하여 순환 방지"""
 
-    @Factory
-    def task_backend(self) -> DistributedTaskBackend:
-        """Redis 브로커를 사용하는 분산 태스크 백엔드"""
-        broker = RedisBroker(REDIS_URL)
-        return DistributedTaskBackend(broker, worker_count=4)
+    pass
 
 
 @Component
@@ -164,17 +160,24 @@ class TaskLifecycleManager:
     app.start_async()/shutdown_async()에서 자동으로 실행됩니다.
     """
 
-    backend: Lazy[DistributedTaskBackend]  # Lazy로 지연 주입
+    backend: Lazy[DistributedTaskBackend]  # Lazy로 지연 주입 (투명 프록시)
+
+    @Factory
+    def task_backend(self) -> DistributedTaskBackend:
+        """Redis 브로커를 사용하는 분산 태스크 백엔드"""
+        broker = RedisBroker(REDIS_URL)
+        return DistributedTaskBackend(broker, worker_count=4)
 
     @PostConstruct
     async def start_backend(self):
         """백엔드 시작 (Redis 연결)"""
-        await self.backend.get().start()
+        # .get() 불필요! 투명 프록시로 직접 접근
+        await self.backend.start()
 
     @PreDestroy
     async def stop_backend(self):
         """백엔드 종료 (Redis 연결 해제)"""
-        await self.backend.get().shutdown()
+        await self.backend.shutdown()
 
 
 # =============================================================================
