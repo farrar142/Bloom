@@ -232,6 +232,10 @@ class ContainerManager:
             target: 대상 타입
             include_subclasses: True면 서브클래스 인스턴스도 포함
         """
+        # target이 제네릭 타입(Lazy[T] 등)인 경우 처리 불가
+        if not isinstance(target, type):
+            return []
+
         if not include_subclasses:
             return list(self.instance_registry.get(target, []))
 

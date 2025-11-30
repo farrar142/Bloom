@@ -262,6 +262,10 @@ class ASGIApplication:
         if self.application and not self.application._is_ready:
             self.application.ready()
 
+        # async @PostConstruct 실행
+        if self.application:
+            await self.application.start_async()
+
         # WebSocketManager에서 설정 가져오기 (ready()에서 이미 초기화됨)
         self._apply_websocket_from_manager()
 
@@ -282,11 +286,8 @@ class ASGIApplication:
         if not ws_manager.enabled:
             return
 
-        # StompProtocolHandler 설정
-        if ws_manager.stomp_handler:
-            self.stomp_handler = ws_manager.stomp_handler
-        else:
-            # StompProtocolHandler가 없으면 생성
+        # StompProtocolHandler가 없으면 생성
+        if self.stomp_handler is None:
             self._create_stomp_handler()
 
         # 엔드포인트 경로 설정
@@ -319,7 +320,7 @@ class ASGIApplication:
 
         1. 새 요청 거부 시작
         2. 진행 중인 요청이 완료될 때까지 대기 (타임아웃 있음)
-        3. Application shutdown 호출
+        3. Application shutdown_async() 호출 (async @PreDestroy 실행)
         4. 등록된 shutdown 콜백 실행
         """
         # 새 요청 거부 시작
@@ -333,9 +334,9 @@ class ASGIApplication:
             except asyncio.TimeoutError:
                 pass  # 타임아웃 시 강제 종료
 
-        # Application shutdown 호출
+        # Application shutdown_async 호출 (async @PreDestroy 포함)
         if self.application:
-            self.application.shutdown()
+            await self.application.shutdown_async()
 
         # 등록된 shutdown 콜백 실행
         for callback in self._on_shutdown:

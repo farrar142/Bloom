@@ -28,7 +28,15 @@ from .exceptions import (
     AmbiguousProviderError,
 )
 from .lifecycle import LifecycleManager
-from .lazy import Lazy, LazyProxy, is_lazy_component
+from .lazy import (
+    Lazy,
+    LazyWrapper,
+    LazyProxy,
+    LazyComponent,
+    is_lazy_component,
+    is_lazy_wrapper_type,
+    get_lazy_inner_type,
+)
 from .abstract import (
     AbstractRegistry,
     AbstractManager,
@@ -58,8 +66,12 @@ __all__ = [
     "AmbiguousProviderError",
     "LifecycleManager",
     "Lazy",
+    "LazyWrapper",
     "LazyProxy",
+    "LazyComponent",
     "is_lazy_component",
+    "is_lazy_wrapper_type",
+    "get_lazy_inner_type",
     # Abstract patterns
     "AbstractRegistry",
     "AbstractManager",

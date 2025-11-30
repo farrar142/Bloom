@@ -1,7 +1,8 @@
 """Lazy 컴포넌트 데코레이터 테스트"""
 
 import pytest
-from bloom import Application, Component, Lazy
+from bloom import Application, Component
+from bloom.core import LazyComponent
 from bloom.core import LazyProxy
 from bloom.core.manager import ContainerManager, set_current_manager
 
@@ -14,7 +15,7 @@ class TestLazyBasic:
         from bloom.core.lazy import is_lazy_component
         from bloom.core.container import ComponentContainer
 
-        @Lazy
+        @LazyComponent
         @Component
         class HeavyService:
             pass
@@ -26,7 +27,7 @@ class TestLazyBasic:
     def test_lazy_component_injects_proxy(self):
         """@Lazy 컴포넌트 주입 시 LazyProxy가 주입됨"""
 
-        @Lazy
+        @LazyComponent
         @Component
         class HeavyService:
             value: str = "heavy"
@@ -44,7 +45,7 @@ class TestLazyBasic:
     def test_lazy_proxy_resolves_on_access(self):
         """LazyProxy 속성 접근 시 실제 인스턴스가 resolve됨"""
 
-        @Lazy
+        @LazyComponent
         @Component
         class HeavyService:
             value: str = "heavy_value"
@@ -68,7 +69,7 @@ class TestLazyBasic:
         """LazyProxy는 한 번 resolve된 인스턴스를 캐시함"""
         init_count = 0
 
-        @Lazy
+        @LazyComponent
         @Component
         class Database:
             def __init__(self):
@@ -103,7 +104,7 @@ class TestLazyCircularDependency:
         나중에 ServiceA 접근 시 실제 초기화
         """
 
-        @Lazy
+        @LazyComponent
         @Component
         class ServiceA:
             value: str = "from_a"
@@ -132,12 +133,12 @@ class TestLazyCircularDependency:
     def test_bidirectional_lazy(self):
         """양쪽 모두 @Lazy를 사용하는 경우"""
 
-        @Lazy
+        @LazyComponent
         @Component
         class Alpha:
             name: str = "alpha"
 
-        @Lazy
+        @LazyComponent
         @Component
         class Beta:
             name: str = "beta"
@@ -167,7 +168,7 @@ class TestLazyCircularDependency:
         class ServiceX:
             value: str = "x"
 
-        @Lazy
+        @LazyComponent
         @Component
         class ServiceY:
             service_x: ServiceX
@@ -202,7 +203,7 @@ class TestLazyWithFactory:
         class Config:
             url: str = "https://api.example.com"
 
-        @Lazy
+        @LazyComponent
         @Component
         class ApiClient:
             config: Config
@@ -226,7 +227,7 @@ class TestLazyEdgeCases:
     def test_lazy_proxy_repr(self):
         """LazyProxy의 repr"""
 
-        @Lazy
+        @LazyComponent
         @Component
         class Target:
             pass
@@ -245,7 +246,7 @@ class TestLazyEdgeCases:
     def test_lazy_proxy_equality(self):
         """LazyProxy 동등성 비교"""
 
-        @Lazy
+        @LazyComponent
         @Component
         class Target:
             pass
@@ -269,7 +270,7 @@ class TestLazyEdgeCases:
     def test_lazy_proxy_setattr(self):
         """LazyProxy를 통한 속성 설정"""
 
-        @Lazy
+        @LazyComponent
         @Component
         class Target:
             value: str = "original"
@@ -308,17 +309,17 @@ class TestLazyEdgeCases:
     def test_multiple_lazy_fields(self):
         """여러 @Lazy 필드를 가진 컴포넌트"""
 
-        @Lazy
+        @LazyComponent
         @Component
         class DepA:
             value: str = "A"
 
-        @Lazy
+        @LazyComponent
         @Component
         class DepB:
             value: str = "B"
 
-        @Lazy
+        @LazyComponent
         @Component
         class DepC:
             value: str = "C"
@@ -345,7 +346,7 @@ class TestLazyInitializationTiming:
         """@Lazy 컴포넌트는 접근 전까지 초기화되지 않음"""
         initialized = False
 
-        @Lazy
+        @LazyComponent
         @Component
         class HeavyService:
             def __init__(self):
@@ -371,7 +372,7 @@ class TestLazyInitializationTiming:
         """메서드 호출 시 초기화"""
         call_log = []
 
-        @Lazy
+        @LazyComponent
         @Component
         class Service:
             def __init__(self):
@@ -394,3 +395,147 @@ class TestLazyInitializationTiming:
         assert result == "done"
         assert "init" in call_log
         assert "work" in call_log
+
+
+class TestLazyFieldType:
+    """Lazy[T] 필드 타입 테스트 (Spring ObjectProvider 스타일)"""
+
+    def test_lazy_field_type_injects_wrapper(self):
+        """Lazy[T] 필드 타입으로 LazyWrapper가 주입됨"""
+        from bloom.core.lazy import Lazy, LazyWrapper
+
+        @Component
+        class HeavyService:
+            value: str = "heavy"
+
+        @Component
+        class Consumer:
+            service: Lazy[HeavyService]
+
+        app = Application("test_lazy_field").ready()
+
+        consumer = app.manager.get_instance(Consumer)
+        # LazyWrapper로 주입됨
+        assert isinstance(consumer.service, LazyWrapper)
+
+    def test_lazy_wrapper_get_resolves_instance(self):
+        """LazyWrapper.get()으로 실제 인스턴스를 가져옴"""
+        from bloom.core.lazy import Lazy
+
+        @Component
+        class HeavyService:
+            value: str = "resolved_value"
+
+        @Component
+        class Consumer:
+            service: Lazy[HeavyService]
+
+        app = Application("test_lazy_get").ready()
+
+        consumer = app.manager.get_instance(Consumer)
+        # get()으로 실제 인스턴스 획득
+        actual = consumer.service.get()
+        assert isinstance(actual, HeavyService)
+        assert actual.value == "resolved_value"
+
+    def test_lazy_wrapper_caches_instance(self):
+        """LazyWrapper는 한 번 resolve된 인스턴스를 캐시함"""
+        from bloom.core.lazy import Lazy
+
+        init_count = 0
+
+        @Component
+        class ExpensiveService:
+            def __init__(self):
+                nonlocal init_count
+                init_count += 1
+
+        @Component
+        class Consumer:
+            service: Lazy[ExpensiveService]
+
+        app = Application("test_lazy_cache").ready()
+
+        consumer = app.manager.get_instance(Consumer)
+        # 첫 번째 호출
+        first = consumer.service.get()
+        assert init_count == 1
+        # 두 번째 호출 - 캐시 사용
+        second = consumer.service.get()
+        assert init_count == 1
+        # 동일 인스턴스
+        assert first is second
+
+    def test_lazy_field_type_breaks_circular_dependency(self):
+        """Lazy[T]로 순환 의존성을 해결함"""
+        from bloom.core.lazy import Lazy
+
+        @Component
+        class ServiceA:
+            service_b: Lazy["ServiceB"]
+
+            def get_b_name(self) -> str:
+                return self.service_b.get().name
+
+        @Component
+        class ServiceB:
+            name: str = "B"
+            service_a: Lazy[ServiceA]
+
+        app = Application("test_circular_lazy").ready()
+
+        a = app.manager.get_instance(ServiceA)
+        b = app.manager.get_instance(ServiceB)
+
+        # 순환 참조가 해결됨
+        assert a.get_b_name() == "B"
+        assert b.service_a.get() is a
+
+    def test_lazy_field_with_factory(self):
+        """Lazy[T]가 @Factory로 생성된 인스턴스와 함께 동작함"""
+        from bloom.core.lazy import Lazy
+        from bloom.core.decorators import Factory
+
+        class Connection:
+            def __init__(self, host: str):
+                self.host = host
+
+        @Component
+        class ConnectionFactory:
+            @Factory
+            def create_connection(self) -> Connection:
+                return Connection("localhost")
+
+        @Component
+        class Repository:
+            conn: Lazy[Connection]
+
+            def get_host(self) -> str:
+                return self.conn.get().host
+
+        app = Application("test_lazy_factory").ready()
+
+        repo = app.manager.get_instance(Repository)
+        assert repo.get_host() == "localhost"
+
+    def test_lazy_wrapper_resolved_property(self):
+        """LazyWrapper.resolved 프로퍼티로 resolve 여부 확인"""
+        from bloom.core.lazy import Lazy
+
+        @Component
+        class Service:
+            pass
+
+        @Component
+        class Consumer:
+            service: Lazy[Service]
+
+        app = Application("test_lazy_resolved").ready()
+
+        consumer = app.manager.get_instance(Consumer)
+        # 아직 resolve되지 않음
+        assert not consumer.service.resolved
+        # resolve
+        consumer.service.get()
+        # 이제 resolved
+        assert consumer.service.resolved

@@ -87,8 +87,15 @@ class RedisBroker(Broker):
     async def disconnect(self) -> None:
         """Redis 연결 해제"""
         if self._redis is not None:
-            await self._redis.close()
-            self._redis = None
+            try:
+                await self._redis.aclose()
+            except RuntimeError:
+                # Event loop closed - 무시
+                pass
+            except Exception as e:
+                logger.debug(f"Error closing Redis connection: {e}")
+            finally:
+                self._redis = None
         self._connected = False
         logger.info("RedisBroker disconnected")
 

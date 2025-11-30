@@ -27,7 +27,8 @@ import time
 from datetime import datetime
 
 from bloom import Application, Component
-from bloom.core.decorators import Factory
+from bloom.core.decorators import Factory, PostConstruct, PreDestroy
+from bloom.core.lazy import Lazy
 from bloom.task import Task
 from bloom.task.distributed import DistributedTaskBackend
 from bloom.task.broker.redis import RedisBroker
@@ -55,7 +56,7 @@ REDIS_URL = "redis://192.168.0.17:6379/0"
 class OrderService:
     """주문 처리 서비스"""
 
-    @Task(name="process_order")
+    @Task
     def process_order(self, order_id: int, items: list[dict]) -> dict:
         """주문 처리"""
         print(f"[OrderService] 주문 처리 시작: #{order_id}")
@@ -89,7 +90,7 @@ class OrderService:
 class PaymentService:
     """결제 처리 서비스"""
 
-    @Task(name="process_payment")
+    @Task
     def process_payment(self, order_id: int, amount: float, method: str) -> dict:
         """결제 처리"""
         print(f"[PaymentService] 결제 처리: #{order_id} - {amount:,.0f}원 ({method})")
@@ -145,12 +146,35 @@ class InventoryService:
 
 
 @Component
-class TaskConfig:
+class TaskBackendFactory:
+    """DistributedTaskBackend Factory - 별도 클래스로 분리하여 순환 방지"""
+
     @Factory
     def task_backend(self) -> DistributedTaskBackend:
         """Redis 브로커를 사용하는 분산 태스크 백엔드"""
         broker = RedisBroker(REDIS_URL)
         return DistributedTaskBackend(broker, worker_count=4)
+
+
+@Component
+class TaskLifecycleManager:
+    """태스크 백엔드 생명주기 관리
+
+    async @PostConstruct/@PreDestroy는 ASGI lifespan 또는
+    app.start_async()/shutdown_async()에서 자동으로 실행됩니다.
+    """
+
+    backend: Lazy[DistributedTaskBackend]  # Lazy로 지연 주입
+
+    @PostConstruct
+    async def start_backend(self):
+        """백엔드 시작 (Redis 연결)"""
+        await self.backend.get().start()
+
+    @PreDestroy
+    async def stop_backend(self):
+        """백엔드 종료 (Redis 연결 해제)"""
+        await self.backend.get().shutdown()
 
 
 # =============================================================================
@@ -162,7 +186,8 @@ app = (
     .scan(OrderService)
     .scan(PaymentService)
     .scan(InventoryService)
-    .scan(TaskConfig)
+    .scan(TaskBackendFactory)
+    .scan(TaskLifecycleManager)
     .ready()
 )
 
@@ -179,9 +204,8 @@ async def run_producer():
     print("=" * 60)
     print()
 
-    # 백엔드 연결 (프로듀서도 브로커에 연결해야 함)
-    backend = app.manager.get_instance(DistributedTaskBackend)
-    await backend.start()
+    # async @PostConstruct 실행 (Redis 연결 등)
+    await app.start_async()
 
     # 서비스 인스턴스 가져오기
     order_service = app.manager.get_instance(OrderService)
@@ -201,7 +225,7 @@ async def run_producer():
     # 1. 재고 감소
     print("[1] 재고 감소 태스크 제출")
     for item in items:
-        result = inventory_service.update_inventory.delay(
+        result = await inventory_service.update_inventory.delay_async(
             item["product_id"], -item["quantity"]
         )
         print(f"    상품 #{item['product_id']}: 태스크 ID = {result.task_id[:8]}...")
@@ -209,13 +233,13 @@ async def run_producer():
 
     # 2. 주문 처리
     print("\n[2] 주문 처리 태스크 제출")
-    order_result = order_service.process_order.delay(order_id, items)
+    order_result = await order_service.process_order.delay_async(order_id, items)
     print(f"    주문 #{order_id}: 태스크 ID = {order_result.task_id[:8]}...")
     results.append(("order", order_result))
 
     # 3. 결제 처리
     print("\n[3] 결제 처리 태스크 제출")
-    payment_result = payment_service.process_payment.delay(
+    payment_result = await payment_service.process_payment.delay_async(
         order_id, total_amount, "credit_card"
     )
     print(f"    결제: 태스크 ID = {payment_result.task_id[:8]}...")
@@ -239,8 +263,8 @@ async def run_producer():
         except Exception as e:
             print(f"    {name}: 실패 - {e}")
 
-    # 브로커 연결 해제
-    await backend.shutdown()
+    # async @PreDestroy 실행 (Redis 연결 해제)
+    await app.shutdown_async()
 
     print()
     print("=" * 60)
@@ -263,10 +287,12 @@ async def run_worker():
     print("Ctrl+C로 종료")
     print()
 
+    # async 생명주기 핸들러 실행 (TaskLifecycleManager.start_backend)
+    await app.start_async()
+
     backend = app.manager.get_instance(DistributedTaskBackend)
 
     try:
-        await backend.start()
         await backend.start_worker(app.manager)
 
         # 무한 대기 (Ctrl+C로 종료)
@@ -275,7 +301,8 @@ async def run_worker():
     except KeyboardInterrupt:
         print("\n종료 중...")
     finally:
-        await backend.shutdown()
+        # async 종료 핸들러 실행 (TaskLifecycleManager.stop_backend)
+        await app.shutdown_async()
         print("워커 종료 완료")
 
 

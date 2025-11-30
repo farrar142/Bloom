@@ -143,7 +143,14 @@ class Container[T]:
 
     def _inject_dependencies(self, annotations: dict[str, type]) -> dict[str, Any]:
         """어노테이션 기반으로 의존성을 주입하여 kwargs 반환"""
-        from ..lazy import LazyProxy, is_lazy_component
+        from typing import ForwardRef, get_type_hints
+        from ..lazy import (
+            LazyProxy,
+            LazyWrapper,
+            is_lazy_component,
+            is_lazy_wrapper_type,
+            get_lazy_inner_type,
+        )
         from ...config.env import is_env_type, resolve_env_value
 
         manager = self._get_manager()
@@ -151,12 +158,50 @@ class Container[T]:
         for name, dep_type in annotations.items():
             if name == "return":
                 continue
-
             # 환경변수 타입 처리 (Env[Literal["KEY"]])
             if is_env_type(dep_type):
                 env_value = resolve_env_value(dep_type)
                 if env_value is not None:
                     kwargs[name] = env_value
+                continue
+
+            # Lazy[T] 필드 타입 처리 - 순환 의존성 해결용
+            if is_lazy_wrapper_type(dep_type):
+                inner_type = get_lazy_inner_type(dep_type)
+                if inner_type is not None:
+                    # ForwardRef 해결 (문자열 타입 참조)
+                    if isinstance(inner_type, ForwardRef):
+                        # __forward_arg__가 문자열 타입 이름
+                        type_name = inner_type.__forward_arg__
+                        # 현재 등록된 모든 컨테이너에서 타입 이름으로 검색
+                        resolved_type = None
+                        for t in manager.container_registry.keys():
+                            if t.__name__ == type_name:
+                                resolved_type = t
+                                break
+                        if resolved_type is None:
+                            raise Exception(
+                                f"Cannot resolve Lazy['{type_name}']: type not found in registry"
+                            )
+                        inner_type = resolved_type
+
+                    # LazyWrapper 생성 - get() 호출 시점에 인스턴스 해결
+                    def make_resolver(m: "ContainerManager", t: type):
+                        def resolver():
+                            # 먼저 등록된 인스턴스 확인
+                            instance = m.get_instance(t, raise_exception=False)
+                            if instance is not None:
+                                return instance
+                            # 없으면 컨테이너에서 초기화
+                            if container := m.get_container(t):
+                                return container.initialize_instance()
+                            raise Exception(
+                                f"Cannot resolve Lazy[{t.__name__}]: no container found"
+                            )
+
+                        return resolver
+
+                    kwargs[name] = LazyWrapper(make_resolver(manager, inner_type))
                 continue
 
             # 먼저 이미 등록된 인스턴스가 있는지 확인

@@ -50,7 +50,19 @@ class TaskRegistry:
             handler: 핸들러 함수 (언바운드 메서드)
             component_type: 컴포넌트 클래스
             instance: 인스턴스 (있으면 바운드 메서드로 호출)
+
+        Raises:
+            ValueError: 이미 같은 이름의 태스크가 등록된 경우
         """
+        if name in self._tasks:
+            existing = self._tasks[name]
+            raise ValueError(
+                f"Task name conflict: '{name}' is already registered by "
+                f"{existing.component_type.__name__}.{existing.handler.__name__}. "
+                f"Cannot register {component_type.__name__}.{handler.__name__} with the same name. "
+                f"Use @Task(name='unique_name') to specify a unique task name."
+            )
+
         self._tasks[name] = TaskInfo(
             name=name,
             handler=handler,

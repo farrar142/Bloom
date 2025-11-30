@@ -265,6 +265,33 @@ class TestTaskRegistry:
         assert info.name == "TestComponent.handler"
         assert info.handler is handler
 
+    def test_duplicate_name_raises_error(self):
+        """같은 이름으로 등록 시 에러 발생"""
+        registry = TaskRegistry()
+
+        class ServiceA:
+            def send(self):
+                pass
+
+        class ServiceB:
+            def send(self):
+                pass
+
+        # 첫 번째 등록: 성공
+        registry.register(
+            name="send",
+            handler=ServiceA.send,
+            component_type=ServiceA,
+        )
+
+        # 두 번째 등록: 같은 이름으로 충돌 → ValueError
+        with pytest.raises(ValueError, match="Task name conflict"):
+            registry.register(
+                name="send",
+                handler=ServiceB.send,
+                component_type=ServiceB,
+            )
+
     def test_scan_from_container_manager(self):
         """ContainerManager에서 스캔 테스트"""
 

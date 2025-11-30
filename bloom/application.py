@@ -283,13 +283,10 @@ class Application:
 
     def shutdown(self) -> "Application":
         """
-        애플리케이션 종료
+        애플리케이션 종료 (동기 핸들러만)
 
-        모든 컴포넌트의 @PreDestroy 메서드를 역순으로 호출합니다.
-        (나중에 초기화된 컴포넌트부터 먼저 정리)
-
-        Note:
-            스케줄러가 실행 중이면 shutdown_async()를 사용하세요.
+        동기 @PreDestroy 메서드를 역순으로 호출합니다.
+        비동기 @PreDestroy가 있으면 shutdown_async()를 사용하세요.
 
         Returns:
             self (메서드 체이닝 지원)
@@ -307,11 +304,36 @@ class Application:
         self._is_ready = False
         return self
 
+    async def start_async(self) -> "Application":
+        """
+        애플리케이션 비동기 시작
+
+        지연된 async @PostConstruct 핸들러들을 실행합니다.
+        ASGI lifespan startup에서 자동으로 호출되거나,
+        asyncio.run() 내에서 직접 호출해야 합니다.
+
+        Returns:
+            self (메서드 체이닝 지원)
+
+        사용 예시:
+            async def main():
+                app = Application("my_app").scan(module).ready()
+                await app.start_async()  # async @PostConstruct 실행
+                # ... 비즈니스 로직 ...
+                await app.shutdown_async()
+
+            asyncio.run(main())
+        """
+        await self.manager.lifecycle.start_async()
+        return self
+
     async def shutdown_async(self, wait: bool = True) -> "Application":
         """
         애플리케이션 비동기 종료
 
         모든 컴포넌트의 @PreDestroy 메서드를 호출합니다.
+        ASGI lifespan shutdown에서 자동으로 호출되거나,
+        asyncio.run() 내에서 직접 호출해야 합니다.
 
         Args:
             wait: True이면 실행 중인 작업 완료 대기
@@ -322,5 +344,15 @@ class Application:
         if not self._is_ready:
             return self
 
-        # 동기 종료 처리
-        return self.shutdown()
+        # 현재 매니저 설정
+        set_current_manager(self.manager)
+
+        # 비동기 PreDestroy 실행
+        await self.manager.lifecycle.shutdown_async()
+
+        # 동기 PreDestroy 실행
+        if self._initialized_containers:
+            self.manager.lifecycle.invoke_all_pre_destroy(self._initialized_containers)
+
+        self._is_ready = False
+        return self
