@@ -232,27 +232,46 @@ class OTelAdvice(CallStackTraceAdvice):
         span.end()
 ```
 
-## 향후 확장 계획
+## PROTOTYPE 자동 정리
 
-### 생명주기 추적
+콜스택 시스템은 PROTOTYPE 스코프 인스턴스의 자동 정리도 담당합니다.
 
-현재 `CallStackTraceAdvice`는 **메서드 호출**만 추적합니다.
-**생명주기(PostConstruct/PreDestroy)**는 `LifecycleManager`가 담당하여 별도 계층입니다.
+### 동작 원리
 
+1. **메서드 진입**: `push_frame()`으로 새 depth 생성
+2. **PROTOTYPE 생성**: `LazyFieldProxy`가 `register_prototype(instance, container)` 호출
+3. **메서드 종료**: `pop_frame()`에서 `cleanup_prototypes_at_depth(depth)` 자동 호출
+4. **@PreDestroy 실행**: 해당 depth에서 생성된 모든 PROTOTYPE의 `@PreDestroy` 호출
+
+```python
+from bloom.core.advice.tracing.context import (
+    register_prototype,           # PROTOTYPE 등록
+    cleanup_prototypes_at_depth,  # 특정 depth 정리
+    get_prototype_count_at_depth, # 디버깅용
+)
 ```
-현재 구조:
-MethodAdvice (AOP - 메서드 호출)
-    └── CallStackTraceAdvice
 
-LifecycleManager (DI 컨테이너 - 생명주기)
-    └── PostConstruct / PreDestroy 호출
+자세한 내용은 [PROTOTYPE 스코프와 자동 라이프사이클 관리](./prototype-scope.md) 참조.
+
+## 시스템 이벤트 발행
+
+`CallStackTraceAdvice`는 메서드 호출 시 시스템 이벤트를 발행합니다:
+
+| 시점 | 이벤트 |
+|------|--------|
+| 메서드 진입 | `MethodEnteredEvent` |
+| 정상 종료 | `MethodExitedEvent` |
+| 예외 발생 | `MethodErrorEvent` |
+
+```python
+from bloom.core.events import (
+    MethodEnteredEvent,
+    MethodExitedEvent,
+    MethodErrorEvent,
+)
 ```
 
-향후 통합 방안:
-
-1. **Observer 패턴**: 중앙 이벤트 허브로 통합
-2. **Advice가 LifecycleManager 구독**: DI로 주입받아 이벤트 구독
-3. **별도 유지**: 각각 독립적인 리스너 구현
+자세한 내용은 [이벤트 시스템](./event-system.md) 참조.
 
 ## 파일 구조
 
@@ -260,11 +279,13 @@ LifecycleManager (DI 컨테이너 - 생명주기)
 bloom/core/advice/tracing/
 ├── __init__.py      # 패키지 exports
 ├── frame.py         # CallFrame 정의
-├── context.py       # ContextVar 기반 스택 관리
+├── context.py       # ContextVar 기반 스택 관리, PROTOTYPE 추적
 └── advice.py        # CallStackTraceAdvice
 ```
 
 ## 관련 문서
 
+- [PROTOTYPE 스코프와 자동 라이프사이클 관리](./prototype-scope.md)
+- [이벤트 시스템](./event-system.md)
 - [Method Advice 패턴](./method-advice-pattern.md)
 - [Architecture Patterns](./architecture-patterns.md)

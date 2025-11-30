@@ -102,12 +102,13 @@ class Consumer:
    - `LazyFieldProxy._lfp_resolve()`에서 최초 접근 시 한 번만 resolve하고 프록시 내부 캐시
    - `Application.shutdown()` 시 `LifecycleManager`가 역순으로 `@PreDestroy` 호출
 
-2. **PROTOTYPE** (`bloom/core/lazy.py`):
+2. **PROTOTYPE** (`bloom/core/lazy.py`, `bloom/core/advice/tracing/context.py`):
 
-   - 컨테이너가 인스턴스를 **추적하지 않음** (Spring과 동일)
+   - **콜스택 기반 자동 추적** (Spring과 다름!)
    - `LazyFieldProxy._lfp_resolve()`에서 매 접근마다 새 인스턴스 생성
    - 생성 직후 `LifecycleManager.invoke_prototype_post_construct()` 호출
-   - `@PreDestroy`는 호출되지 않음 - GC가 자연스럽게 정리
+   - `register_prototype(instance, container)`로 현재 콜스택 depth에 등록
+   - **메서드 종료 시 자동으로 `@PreDestroy` 호출** (`pop_frame` → `cleanup_prototypes_at_depth`)
 
 3. **REQUEST** (`bloom/core/request_context.py`):
    - `ContextVar` 기반으로 요청(코루틴)마다 독립적인 저장소
@@ -116,16 +117,18 @@ class Consumer:
    - `RequestScopeMiddleware`가 요청 시작 시 `RequestContext.start()`, 종료 시 `RequestContext.end()` 호출
    - `RequestContext.end()`에서 역순으로 `@PreDestroy` 호출 후 저장소 초기화
 
-**PROTOTYPE 라이프사이클 (Spring과 동일):**
+**PROTOTYPE 라이프사이클 (Spring과 다름!):**
 
-PROTOTYPE은 Spring과 동일하게 컨테이너가 생성만 담당하고, 이후 관리는 클라이언트 책임입니다:
+Bloom의 PROTOTYPE은 **콜스택 기반 자동 정리**를 지원합니다:
 
 - **@PostConstruct**: 인스턴스 생성 직후 호출됨 ✅
-- **@PreDestroy**: 호출되지 않음 ❌ (GC가 알아서 정리)
+- **@PreDestroy**: 메서드 종료 시 자동 호출됨 ✅ (TracingAdvice 필요)
 
 ```python
-from bloom import Component, Scope, PostConstruct, PreDestroy
-from bloom.core import Scope as ScopeEnum
+from bloom import Component
+from bloom.core import Scope, ScopeEnum
+from bloom.core.decorators import PostConstruct, PreDestroy, Handler, Factory
+from bloom.core.advice import MethodAdvice, MethodAdviceRegistry, CallStackTraceAdvice
 
 @Component
 @Scope(ScopeEnum.PROTOTYPE)
@@ -136,26 +139,41 @@ class PrototypeResource:
 
     @PreDestroy
     def cleanup(self):
-        # ⚠️ PROTOTYPE에서는 호출되지 않음!
-        # 리소스 정리가 필요하면 클라이언트가 직접 호출해야 함
-        print("리소스 정리됨")
+        print("리소스 정리됨")  # 메서드 종료 시 자동 호출!
+
+# TracingAdvice 필수!
+@Component
+class TracingAdvice(CallStackTraceAdvice):
+    pass
+
+@Component
+class AdviceConfig:
+    @Factory
+    def registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+        reg = MethodAdviceRegistry()
+        for advice in advices:
+            reg.register(advice)
+        return reg
 
 @Component
 class Consumer:
     resource: PrototypeResource
 
+    @Handler  # @Handler 필요
     def use_resource(self):
-        r = self.resource  # 새 인스턴스 생성 + @PostConstruct 호출
-        r.do_something()
-        # PROTOTYPE은 컨테이너가 추적하지 않음
-        # 정리가 필요하면 r.cleanup() 직접 호출
+        # 속성 접근으로 PROTOTYPE resolve
+        self.resource.do_something()  # @PostConstruct 호출
+        # 메서드 종료 시 자동으로 @PreDestroy 호출
 ```
 
-**Spring과 동일한 이유:**
+**Spring과의 차이점:**
 
-- PROTOTYPE은 요청마다 새 인스턴스를 생성하므로 컨테이너가 모든 인스턴스를 추적하면 메모리 누수 위험
-- 컨테이너가 라이프사이클을 관리하지 않으므로 GC가 자연스럽게 정리
-- 리소스 정리가 필요한 경우 클라이언트 코드에서 직접 처리
+- **Spring**: PROTOTYPE의 `@PreDestroy`는 호출되지 않음 (컨테이너가 추적 안 함)
+- **Bloom**: 콜스택 기반으로 `@PreDestroy` 자동 호출됨 (TracingAdvice 필요)
+- **장점**: 리소스 누수 방지, DB 연결/파일 핸들 등 자동 정리
+- **요구사항**: `CallStackTraceAdvice` + `MethodAdviceRegistry` + `@Handler`
+
+자세한 내용은 `docs/prototype-scope.md` 참조.
 
 ## 웹 레이어 구조
 
