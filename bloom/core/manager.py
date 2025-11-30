@@ -76,6 +76,7 @@ class ContainerManager:
         """시스템 이벤트 버스 반환 (lazy initialization)"""
         if self._system_events is None:
             from .events import SystemEventBus
+
             self._system_events = SystemEventBus()
         return self._system_events
 

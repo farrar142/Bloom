@@ -24,9 +24,9 @@ if TYPE_CHECKING:
 class DomainEvent(Event):
     """
     도메인 이벤트 베이스 클래스
-    
+
     비즈니스 로직에서 발생하는 이벤트의 베이스입니다.
-    
+
     사용 예시:
         @dataclass
         class OrderCreatedEvent(DomainEvent):
@@ -34,6 +34,7 @@ class DomainEvent(Event):
             customer_id: str
             total_amount: float
     """
+
     pass
 
 
@@ -45,9 +46,10 @@ class DomainEvent(Event):
 class EventListenerElement(Element):
     """
     이벤트 리스너 메타데이터를 저장하는 Element
-    
+
     HandlerContainer에 추가되어 이벤트 리스너 정보를 저장합니다.
     """
+
     key = "event_listener"
 
     def __init__(self, event_type: type[Event]):
@@ -67,13 +69,13 @@ class EventListenerElement(Element):
 def EventListener(event_type: type[Event]) -> Callable[[Callable], Callable]:
     """
     이벤트 리스너 데코레이터
-    
+
     메서드를 특정 이벤트 타입의 리스너로 등록합니다.
     Application 초기화 시 자동으로 ApplicationEventBus에 구독됩니다.
-    
+
     Args:
         event_type: 구독할 이벤트 타입
-    
+
     사용 예시:
         @Component
         class EmailService:
@@ -81,11 +83,13 @@ def EventListener(event_type: type[Event]) -> Callable[[Callable], Callable]:
             def on_order_created(self, event: OrderCreatedEvent):
                 self.send_confirmation_email(event.customer_id)
     """
+
     def decorator(method: Callable) -> Callable:
         # HandlerContainer에 EventListenerElement 추가
         container = HandlerContainer.get_or_create(method)
         container.add_elements(EventListenerElement(event_type))
         return method
+
     return decorator
 
 
@@ -114,38 +118,39 @@ def get_event_listener_type(method: Any) -> type[Event] | None:
 class ApplicationEventBus(InMemoryEventBus[DomainEvent]):
     """
     애플리케이션 이벤트 버스
-    
+
     비즈니스 도메인 이벤트를 발행하고 구독하는 버스입니다.
     @Component로 DI 컨테이너에 등록되어 주입받아 사용합니다.
-    
+
     사용 예시:
         @Component
         class OrderService:
             event_bus: ApplicationEventBus
-            
+
             def create_order(self, data: dict) -> Order:
                 order = Order(**data)
                 self.order_repo.save(order)
-                
+
                 # 이벤트 발행
                 self.event_bus.publish(OrderCreatedEvent(
                     order_id=order.id,
                     customer_id=order.customer_id,
                     total_amount=order.total
                 ))
-                
+
                 return order
-        
+
         @Component
         class EmailService:
             @EventListener(OrderCreatedEvent)
             def on_order_created(self, event: OrderCreatedEvent):
                 self.send_confirmation_email(event.customer_id)
-        
+
         @Component
         class InventoryService:
             @EventListener(OrderCreatedEvent)
             def on_order_created(self, event: OrderCreatedEvent):
                 self.decrease_stock(event.order_id)
     """
+
     pass

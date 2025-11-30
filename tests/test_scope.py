@@ -206,3 +206,113 @@ class TestScopeMixed:
         assert result3 == 3
         # SINGLETON은 한 번만 생성
         assert singleton_count == 1
+
+
+class TestPrototypeLifecycleWithEvents:
+    """PROTOTYPE 라이프사이클 자동 정리 테스트"""
+
+    def test_prototype_pre_destroy_auto_called_on_method_exit(self):
+        """메서드 종료 시 PROTOTYPE의 @PreDestroy 자동 호출"""
+        from bloom.core.decorators import PostConstruct, PreDestroy, Factory
+        from bloom.core.advice import MethodAdviceRegistry, MethodAdvice
+        from bloom.core.advice.tracing import CallStackTraceAdvice
+
+        destroyed = []
+        created = []
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class ManagedResource:
+            resource_id: int = 0
+
+            @PostConstruct
+            def init(self):
+                self.resource_id = id(self)
+                created.append(self.resource_id)
+
+            @PreDestroy
+            def cleanup(self):
+                destroyed.append(self.resource_id)
+
+        @Component
+        class TracingAdvice(CallStackTraceAdvice):
+            """콜스택 추적 활성화 (PROTOTYPE 자동 정리 트리거)"""
+
+            pass
+
+        @Component
+        class AdviceConfig:
+            @Factory
+            def advice_registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+                registry = MethodAdviceRegistry()
+                for advice in advices:
+                    registry.register(advice)
+                return registry
+
+        @Component
+        class Consumer:
+            resource: ManagedResource
+
+            def use_resource(self) -> int:
+                """이 메서드 종료 시 resource의 @PreDestroy 자동 호출"""
+                return self.resource.resource_id
+
+        app = Application("test_prototype_auto_destroy")
+        app.scan(ManagedResource)
+        app.scan(TracingAdvice)
+        app.scan(AdviceConfig)
+        app.scan(Consumer)
+        app.ready()
+
+        consumer = app.manager.get_instance(Consumer)
+
+        # 메서드 호출 - 내부에서 PROTOTYPE 생성, 종료 시 자동 정리
+        result1 = consumer.use_resource()
+        result2 = consumer.use_resource()
+        result3 = consumer.use_resource()
+
+        # 3개 생성됨
+        assert len(created) == 3
+        # 메서드 종료 시마다 @PreDestroy 호출됨
+        assert len(destroyed) == 3
+        assert result1 in destroyed
+        assert result2 in destroyed
+        assert result3 in destroyed
+
+    def test_prototype_lifecycle_manager_manual_destroy(self):
+        """LifecycleManager로 수동으로 @PreDestroy 호출"""
+        from bloom.core.decorators import PostConstruct, PreDestroy
+
+        destroyed = []
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class ManagedResource:
+            resource_id: int = 0
+
+            @PostConstruct
+            def init(self):
+                self.resource_id = id(self)
+
+            @PreDestroy
+            def cleanup(self):
+                destroyed.append(self.resource_id)
+
+        app = Application("test_prototype_manual_destroy")
+        app.scan(ManagedResource)
+        app.ready()
+
+        # 직접 컨테이너에서 인스턴스 생성 (콜스택 외부)
+        container = app.manager.get_container(ManagedResource)
+        assert container is not None
+
+        instance = container._create_instance()
+        app.manager.lifecycle.invoke_prototype_post_construct(instance, container)
+
+        assert len(destroyed) == 0
+
+        # 수동으로 PreDestroy 호출
+        app.manager.lifecycle.invoke_prototype_pre_destroy(instance, container)
+
+        assert len(destroyed) == 1
+        assert instance.resource_id in destroyed

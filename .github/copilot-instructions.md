@@ -731,11 +731,11 @@ from bloom.core.advice import (
 @Component
 class LoggingTraceAdvice(CallStackTraceAdvice):
     include_args = True  # 인자 요약 포함
-    
+
     def on_enter(self, frame: CallFrame) -> None:
         indent = "  " * frame.depth
         print(f"{indent}→ {frame.full_name}({frame.args_summary})")
-    
+
     def on_exit(self, frame: CallFrame, duration_ms: float) -> None:
         indent = "  " * frame.depth
         print(f"{indent}← {frame.full_name} [{duration_ms:.2f}ms]")
@@ -751,6 +751,7 @@ class AdviceConfig:
 ```
 
 **출력 예시:**
+
 ```
 → UserController.get_user_detail(42)
   → UserService.get_user(42)
@@ -761,6 +762,7 @@ class AdviceConfig:
 ```
 
 **Context API** - 어디서든 현재 콜스택 조회:
+
 ```python
 from bloom.core.advice import get_call_stack, get_current_frame
 

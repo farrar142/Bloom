@@ -288,3 +288,77 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         from bloom.core.request_context import RequestContext
 
         RequestContext.end()
+
+    # =========================================================================
+    # PROTOTYPE 라이프사이클 수동 관리
+    # =========================================================================
+
+    def invoke_prototype_pre_destroy(
+        self, instance: Any, container: "Container | None" = None
+    ) -> None:
+        """
+        PROTOTYPE 인스턴스의 @PreDestroy 메서드들을 호출합니다.
+
+        Spring과 달리 Bloom에서는 사용자가 SystemEventBus를 통해
+        PROTOTYPE 인스턴스를 추적하고 명시적으로 정리할 수 있습니다.
+
+        Args:
+            instance: PROTOTYPE 인스턴스
+            container: 컨테이너 (없으면 인스턴스 타입에서 조회)
+
+        사용 예시:
+            @Component
+            class ResourceTracker:
+                system_events: SystemEventBus
+                lifecycle: LifecycleManager  # or via ContainerManager
+                _resources: list[tuple[Any, Container]]
+
+                @PostConstruct
+                def setup(self):
+                    self._resources = []
+                    self.system_events.subscribe(InstanceCreatedEvent, self._on_created)
+
+                def _on_created(self, event: InstanceCreatedEvent):
+                    if event.scope == Scope.PROTOTYPE:
+                        container = self._get_container(event.instance_type)
+                        self._resources.append((event.instance, container))
+
+                def cleanup_all(self):
+                    for instance, container in self._resources:
+                        self.lifecycle.invoke_prototype_pre_destroy(instance, container)
+                    self._resources.clear()
+        """
+        from bloom.core.container.element import Scope
+        from bloom.core.events import InstanceDestroyingEvent
+
+        # 컨테이너가 없으면 인스턴스 타입에서 조회
+        if container is None:
+            container = self.container_manager.get_container(type(instance))
+
+        if container is None:
+            return
+
+        target_cls = container.target
+        method_names = self._get_lifecycle_method_names(
+            target_cls, LifecycleType.PRE_DESTROY
+        )
+
+        # InstanceDestroyingEvent 발행
+        event = InstanceDestroyingEvent(
+            instance=instance,
+            instance_type=target_cls,
+            scope=Scope.PROTOTYPE,
+        )
+        self.container_manager.system_events.publish(event)
+
+        # @PreDestroy 메서드들 호출
+        for method_name in method_names:
+            method = getattr(instance, method_name, None)
+            if method is not None:
+                try:
+                    result = method()
+                    # 비동기 메서드인 경우 코루틴 정리
+                    if inspect.iscoroutine(result):
+                        result.close()
+                except Exception:
+                    pass  # PreDestroy 에러는 무시

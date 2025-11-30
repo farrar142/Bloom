@@ -77,7 +77,8 @@ class LazyFieldProxy[T]:
         """실제 인스턴스를 해결합니다. Scope에 따라 동작이 다릅니다."""
         scope = object.__getattribute__(self, "_lfp_scope")
 
-        # PROTOTYPE: 매번 새 인스턴스 생성 (Spring과 동일하게 PreDestroy 미호출)
+        # PROTOTYPE: 매번 새 인스턴스 생성
+        # 콜스택 내에서 생성되면 메서드 종료 시 자동으로 @PreDestroy 호출
         if scope == Scope.PROTOTYPE:
             resolver = object.__getattribute__(self, "_lfp_resolver")
             container = object.__getattribute__(self, "_lfp_container")
@@ -90,6 +91,13 @@ class LazyFieldProxy[T]:
                     manager.lifecycle.invoke_prototype_post_construct(
                         instance, container
                     )
+                    # InstanceCreatedEvent 발행
+                    self._lfp_publish_instance_created(manager, instance, scope)
+
+                # 콜스택에 등록 (메서드 종료 시 자동 정리)
+                from .advice.tracing import register_prototype
+
+                register_prototype(instance, container)
 
             return instance
 
@@ -125,6 +133,8 @@ class LazyFieldProxy[T]:
                 manager = container._get_manager()
                 if manager is not None:
                     manager.lifecycle.invoke_request_post_construct(instance, container)
+                    # InstanceCreatedEvent 발행 (REQUEST 추적 가능)
+                    self._lfp_publish_instance_created(manager, instance, scope)
 
             return instance
 
@@ -135,6 +145,20 @@ class LazyFieldProxy[T]:
             object.__setattr__(self, "_lfp_instance", instance)
             object.__setattr__(self, "_lfp_resolved", True)
         return object.__getattribute__(self, "_lfp_instance")
+
+    def _lfp_publish_instance_created(
+        self, manager: Any, instance: Any, scope: Scope
+    ) -> None:
+        """InstanceCreatedEvent 발행 (PROTOTYPE/REQUEST 추적용)"""
+        from .events import InstanceCreatedEvent
+
+        target_type = object.__getattribute__(self, "_lfp_target_type")
+        event = InstanceCreatedEvent(
+            instance=instance,
+            instance_type=target_type,
+            scope=scope,
+        )
+        manager.system_events.publish(event)
 
     def __getattr__(self, name: str) -> Any:
         instance = self._lfp_resolve()

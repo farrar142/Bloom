@@ -324,3 +324,285 @@ class TestArgsSummary:
         # 너무 많은 인자
         result = _summarize_args((1, 2, 3, 4, 5), {})
         assert "...+2" in result
+
+
+# =============================================================================
+# 멀티 코루틴 PROTOTYPE 라이프사이클 격리 테스트
+# =============================================================================
+
+
+class TestAsyncPrototypeIsolation:
+    """async 환경에서 PROTOTYPE 라이프사이클 격리 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_requests_have_independent_prototype_lifecycle(self):
+        """동시 요청들이 독립적인 PROTOTYPE 라이프사이클을 가짐"""
+        from bloom.core import Scope, ScopeEnum
+        from bloom.core.decorators import PostConstruct, PreDestroy, Handler
+        from bloom.core.advice.tracing.context import (
+            push_frame,
+            pop_frame,
+            get_prototype_count_at_depth,
+        )
+
+        # 각 코루틴별 생성/소멸 기록 (thread-safe를 위해 set 사용)
+        created_by_coroutine: dict[str, list[int]] = {"A": [], "B": [], "C": []}
+        destroyed_by_coroutine: dict[str, list[int]] = {"A": [], "B": [], "C": []}
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class PrototypeResource:
+            coro_id: str = ""
+            resource_id: int = 0
+
+            def init_with_coro(self, coro_id: str) -> int:
+                """coro_id 설정 후 resource_id 반환"""
+                self.coro_id = coro_id
+                self.resource_id = id(self)
+                return self.resource_id
+
+            @PreDestroy
+            def cleanup(self):
+                if self.coro_id:
+                    destroyed_by_coroutine[self.coro_id].append(self.resource_id)
+
+        @Component
+        class TracingAdvice(CallStackTraceAdvice):
+            pass
+
+        @Component
+        class AdviceConfig:
+            @Factory
+            def registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+                reg = MethodAdviceRegistry()
+                for a in advices:
+                    reg.register(a)
+                return reg
+
+        @Component
+        class Consumer:
+            resource: PrototypeResource
+
+            @Handler
+            async def process(self, coro_id: str) -> list[int]:
+                """비동기 처리 - 여러 PROTOTYPE 생성"""
+                results = []
+
+                # 첫 번째 PROTOTYPE 생성 (속성 접근으로 resolve 트리거)
+                # PROTOTYPE은 접근할 때마다 새 인스턴스이므로 메서드 호출로 초기화
+                rid1 = self.resource.init_with_coro(coro_id)
+                created_by_coroutine[coro_id].append(rid1)
+                results.append(rid1)
+
+                await asyncio.sleep(0.01)  # 다른 코루틴에게 양보
+
+                # 두 번째 PROTOTYPE 생성
+                rid2 = self.resource.init_with_coro(coro_id)
+                created_by_coroutine[coro_id].append(rid2)
+                results.append(rid2)
+
+                await asyncio.sleep(0.01)
+
+                # 세 번째 PROTOTYPE 생성
+                rid3 = self.resource.init_with_coro(coro_id)
+                created_by_coroutine[coro_id].append(rid3)
+                results.append(rid3)
+
+                # 메서드 종료 시 이 코루틴에서 생성된 3개의 PROTOTYPE만 정리됨
+                return results
+
+        app = Application("test_async_prototype")
+        app.scan(PrototypeResource)
+        app.scan(TracingAdvice)
+        app.scan(AdviceConfig)
+        app.scan(Consumer)
+        app.ready()
+
+        consumer = app.manager.get_instance(Consumer)
+
+        # 3개의 코루틴 동시 실행
+        results = await asyncio.gather(
+            consumer.process("A"),
+            consumer.process("B"),
+            consumer.process("C"),
+        )
+
+        # 각 코루틴이 3개씩 PROTOTYPE 생성
+        assert len(created_by_coroutine["A"]) == 3
+        assert len(created_by_coroutine["B"]) == 3
+        assert len(created_by_coroutine["C"]) == 3
+
+        # 각 코루틴의 PROTOTYPE은 해당 코루틴 종료 시에만 정리됨
+        assert len(destroyed_by_coroutine["A"]) == 3
+        assert len(destroyed_by_coroutine["B"]) == 3
+        assert len(destroyed_by_coroutine["C"]) == 3
+
+        # 각 코루틴이 생성한 것만 해당 코루틴에서 정리됨 (격리 확인)
+        assert set(created_by_coroutine["A"]) == set(destroyed_by_coroutine["A"])
+        assert set(created_by_coroutine["B"]) == set(destroyed_by_coroutine["B"])
+        assert set(created_by_coroutine["C"]) == set(destroyed_by_coroutine["C"])
+
+        # 결과도 각각 독립적
+        assert len(results[0]) == 3
+        assert len(results[1]) == 3
+        assert len(results[2]) == 3
+
+    @pytest.mark.asyncio
+    async def test_nested_async_calls_prototype_lifecycle(self):
+        """중첩된 async 호출에서 PROTOTYPE 라이프사이클"""
+        from bloom.core import Scope, ScopeEnum
+        from bloom.core.decorators import PostConstruct, PreDestroy, Handler
+
+        lifecycle_log: list[str] = []
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class NestedResource:
+            level: str = ""
+            resource_id: int = 0
+
+            def init_with_level(self, level: str) -> int:
+                """level 설정 후 resource_id 반환"""
+                self.level = level
+                self.resource_id = id(self)
+                return self.resource_id
+
+            @PreDestroy
+            def cleanup(self):
+                lifecycle_log.append(f"destroy:{self.level}:{self.resource_id}")
+
+        @Component
+        class TracingAdvice(CallStackTraceAdvice):
+            pass
+
+        @Component
+        class AdviceConfig:
+            @Factory
+            def registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+                reg = MethodAdviceRegistry()
+                for a in advices:
+                    reg.register(a)
+                return reg
+
+        @Component
+        class InnerService:
+            resource: NestedResource
+
+            @Handler
+            async def inner_process(self) -> int:
+                # 속성 접근으로 resolve 트리거 (단일 메서드 호출로 초기화)
+                rid = self.resource.init_with_level("inner")
+                lifecycle_log.append(f"create:inner:{rid}")
+                await asyncio.sleep(0.005)
+                return rid
+                # inner 메서드 종료 시 inner PROTOTYPE 정리
+
+        @Component
+        class OuterService:
+            inner: InnerService
+            resource: NestedResource
+
+            @Handler
+            async def outer_process(self) -> tuple[int, int]:
+                # outer level PROTOTYPE 생성 (속성 접근으로 resolve 트리거)
+                outer_rid = self.resource.init_with_level("outer")
+                lifecycle_log.append(f"create:outer:{outer_rid}")
+
+                await asyncio.sleep(0.005)
+
+                # inner 호출 (inner level PROTOTYPE 생성 및 정리)
+                inner_id = await self.inner.inner_process()
+
+                await asyncio.sleep(0.005)
+
+                # inner 종료 후에도 outer PROTOTYPE은 살아있음
+                return (outer_rid, inner_id)
+                # outer 메서드 종료 시 outer PROTOTYPE 정리
+
+        app = Application("test_nested_async")
+        app.scan(NestedResource)
+        app.scan(TracingAdvice)
+        app.scan(AdviceConfig)
+        app.scan(InnerService)
+        app.scan(OuterService)
+        app.ready()
+
+        outer = app.manager.get_instance(OuterService)
+        outer_id, inner_id = await outer.outer_process()
+
+        # 라이프사이클 순서 검증
+        # 1. outer 생성
+        # 2. inner 생성
+        # 3. inner 정리 (inner 메서드 종료)
+        # 4. outer 정리 (outer 메서드 종료)
+
+        assert f"create:outer:{outer_id}" in lifecycle_log
+        assert f"create:inner:{inner_id}" in lifecycle_log
+        assert f"destroy:inner:{inner_id}" in lifecycle_log
+        assert f"destroy:outer:{outer_id}" in lifecycle_log
+
+        # 순서 확인: inner 정리가 outer 정리보다 먼저
+        inner_destroy_idx = lifecycle_log.index(f"destroy:inner:{inner_id}")
+        outer_destroy_idx = lifecycle_log.index(f"destroy:outer:{outer_id}")
+        assert inner_destroy_idx < outer_destroy_idx
+
+    @pytest.mark.asyncio
+    async def test_exception_in_async_still_cleans_up_prototypes(self):
+        """async 메서드에서 예외 발생해도 PROTOTYPE 정리"""
+        from bloom.core import Scope, ScopeEnum
+        from bloom.core.decorators import PostConstruct, PreDestroy, Handler
+
+        destroyed = []
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class ResourceWithCleanup:
+            resource_id: int = 0
+
+            @PostConstruct
+            def init(self):
+                self.resource_id = id(self)
+
+            @PreDestroy
+            def cleanup(self):
+                destroyed.append(self.resource_id)
+
+        @Component
+        class TracingAdvice(CallStackTraceAdvice):
+            pass
+
+        @Component
+        class AdviceConfig:
+            @Factory
+            def registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+                reg = MethodAdviceRegistry()
+                for a in advices:
+                    reg.register(a)
+                return reg
+
+        @Component
+        class FailingService:
+            resource: ResourceWithCleanup
+
+            @Handler
+            async def fail_after_create(self) -> None:
+                # 속성 접근으로 resolve 트리거
+                _ = self.resource.resource_id
+                await asyncio.sleep(0.01)
+                raise ValueError("Intentional error")
+                # 예외 발생해도 pop_frame에서 PROTOTYPE 정리
+
+        app = Application("test_exception_cleanup")
+        app.scan(ResourceWithCleanup)
+        app.scan(TracingAdvice)
+        app.scan(AdviceConfig)
+        app.scan(FailingService)
+        app.ready()
+
+        service = app.manager.get_instance(FailingService)
+
+        with pytest.raises(ValueError, match="Intentional error"):
+            await service.fail_after_create()
+
+        # 예외가 발생해도 PROTOTYPE이 정리됨
+        assert len(destroyed) == 1

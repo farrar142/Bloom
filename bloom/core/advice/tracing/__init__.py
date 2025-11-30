@@ -37,6 +37,9 @@ from .context import (
     pop_frame,
     get_trace_id,
     set_trace_id,
+    register_prototype,
+    cleanup_prototypes_at_depth,
+    get_prototype_count_at_depth,
 )
 from .advice import CallStackTraceAdvice
 
@@ -49,5 +52,8 @@ __all__ = [
     "pop_frame",
     "get_trace_id",
     "set_trace_id",
+    "register_prototype",
+    "cleanup_prototypes_at_depth",
+    "get_prototype_count_at_depth",
     "CallStackTraceAdvice",
 ]

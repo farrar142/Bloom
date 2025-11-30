@@ -9,6 +9,7 @@ from .context import push_frame, pop_frame, get_call_depth
 if TYPE_CHECKING:
     from ..context import InvocationContext
     from ...container import HandlerContainer
+    from ...manager import ContainerManager
 
 
 class CallStackTraceAdvice(MethodAdvice):
@@ -64,9 +65,9 @@ class CallStackTraceAdvice(MethodAdvice):
         """
         pass
 
-    def on_error(self, frame: CallFrame, error: Exception) -> None:
+    def on_error_callback(self, frame: CallFrame, error: Exception) -> None:
         """
-        메서드에서 예외 발생 시 호출
+        메서드에서 예외 발생 시 호출 (상속 클래스에서 오버라이드)
 
         Args:
             frame: 현재 콜 프레임
@@ -82,34 +83,37 @@ class CallStackTraceAdvice(MethodAdvice):
         """비동기 메서드 진입 전"""
         frame = self._push_frame(context)
         context.set_attribute("_trace_frame", frame)
+        self._publish_entered_event(context, frame)
         self.on_enter(frame)
 
     async def after(self, context: "InvocationContext", result: Any) -> Any:
         """비동기 메서드 정상 종료 후"""
         frame = self._pop_frame(context)
         if frame:
+            self._publish_exited_event(context, frame)
             self.on_exit(frame, frame.elapsed_ms)
         return result
 
-    async def on_error_hook(
-        self, context: "InvocationContext", error: Exception
-    ) -> Any:
+    async def on_error(self, context: "InvocationContext", error: Exception) -> Any:
         """비동기 메서드 예외 발생 시"""
         frame = self._pop_frame(context)
         if frame:
-            self.on_error(frame, error)
+            self._publish_error_event(context, frame, error)
+            self.on_error_callback(frame, error)
         raise error
 
     def before_sync(self, context: "InvocationContext") -> None:
         """동기 메서드 진입 전"""
         frame = self._push_frame(context)
         context.set_attribute("_trace_frame", frame)
+        self._publish_entered_event(context, frame)
         self.on_enter(frame)
 
     def after_sync(self, context: "InvocationContext", result: Any) -> Any:
         """동기 메서드 정상 종료 후"""
         frame = self._pop_frame(context)
         if frame:
+            self._publish_exited_event(context, frame)
             self.on_exit(frame, frame.elapsed_ms)
         return result
 
@@ -117,7 +121,8 @@ class CallStackTraceAdvice(MethodAdvice):
         """동기 메서드 예외 발생 시"""
         frame = self._pop_frame(context)
         if frame:
-            self.on_error(frame, error)
+            self._publish_error_event(context, frame, error)
+            self.on_error_callback(frame, error)
         raise error
 
     # =========================================================================
@@ -137,3 +142,78 @@ class CallStackTraceAdvice(MethodAdvice):
     def _pop_frame(self, context: "InvocationContext") -> CallFrame | None:
         """스택에서 프레임 제거"""
         return pop_frame()
+
+    def _get_manager(self, context: "InvocationContext") -> "ContainerManager | None":
+        """ContainerManager 가져오기"""
+        return context.container._get_manager()
+
+    def _should_publish_event(self, context: "InvocationContext") -> bool:
+        """이벤트 발행 여부 결정 (무한 재귀 방지)"""
+        from ...events import SystemEventBus
+
+        # SystemEventBus 메서드는 이벤트 발행 건너뜀 (무한 재귀 방지)
+        if isinstance(context.instance, SystemEventBus):
+            return False
+        return True
+
+    def _publish_entered_event(
+        self, context: "InvocationContext", frame: CallFrame
+    ) -> None:
+        """MethodEnteredEvent 발행"""
+        if not self._should_publish_event(context):
+            return
+
+        manager = self._get_manager(context)
+        if manager is None:
+            return
+
+        from ...events import MethodEnteredEvent
+
+        event = MethodEnteredEvent(
+            frame=frame,
+            instance=context.instance,
+            method_name=frame.method_name,
+        )
+        manager.system_events.publish(event)
+
+    def _publish_exited_event(
+        self, context: "InvocationContext", frame: CallFrame
+    ) -> None:
+        """MethodExitedEvent 발행"""
+        if not self._should_publish_event(context):
+            return
+
+        manager = self._get_manager(context)
+        if manager is None:
+            return
+
+        from ...events import MethodExitedEvent
+
+        event = MethodExitedEvent(
+            frame=frame,
+            instance=context.instance,
+            method_name=frame.method_name,
+            duration_ms=frame.elapsed_ms,
+        )
+        manager.system_events.publish(event)
+
+    def _publish_error_event(
+        self, context: "InvocationContext", frame: CallFrame, error: Exception
+    ) -> None:
+        """MethodErrorEvent 발행"""
+        if not self._should_publish_event(context):
+            return
+
+        manager = self._get_manager(context)
+        if manager is None:
+            return
+
+        from ...events import MethodErrorEvent
+
+        event = MethodErrorEvent(
+            frame=frame,
+            instance=context.instance,
+            method_name=frame.method_name,
+            error=error,
+        )
+        manager.system_events.publish(event)

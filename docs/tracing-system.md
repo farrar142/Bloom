@@ -22,15 +22,15 @@ from bloom.core.advice import (
 @Component
 class LoggingTraceAdvice(CallStackTraceAdvice):
     include_args = True  # 인자 요약 포함
-    
+
     def on_enter(self, frame: CallFrame) -> None:
         indent = "  " * frame.depth
         print(f"{indent}→ {frame.full_name}({frame.args_summary})")
-    
+
     def on_exit(self, frame: CallFrame, duration_ms: float) -> None:
         indent = "  " * frame.depth
         print(f"{indent}← {frame.full_name} [{duration_ms:.2f}ms]")
-    
+
     def on_error(self, frame: CallFrame, error: Exception) -> None:
         indent = "  " * frame.depth
         print(f"{indent}✗ {frame.full_name} ERROR: {error}")
@@ -79,11 +79,11 @@ class CallFrame:
     trace_id: str        # 요청별 추적 ID
     depth: int           # 콜스택 깊이 (0부터)
     args_summary: str    # 인자 요약 (선택)
-    
+
     @property
     def full_name(self) -> str:
         return f"{self.instance_type}.{self.method_name}"
-    
+
     @property
     def elapsed_ms(self) -> float:
         return (time.time() - self.start_time) * 1000
@@ -116,11 +116,11 @@ if current:
 
 확장 가능한 베이스 클래스입니다.
 
-| 메서드 | 호출 시점 | 용도 |
-|--------|-----------|------|
-| `on_enter(frame)` | 메서드 진입 | 로깅, span 시작 |
-| `on_exit(frame, duration_ms)` | 정상 종료 | 로깅, 메트릭 |
-| `on_error(frame, error)` | 예외 발생 | 에러 로깅 |
+| 메서드                        | 호출 시점   | 용도            |
+| ----------------------------- | ----------- | --------------- |
+| `on_enter(frame)`             | 메서드 진입 | 로깅, span 시작 |
+| `on_exit(frame, duration_ms)` | 정상 종료   | 로깅, 메트릭    |
+| `on_error(frame, error)`      | 예외 발생   | 에러 로깅       |
 
 ## async/multithread 안전성
 
@@ -193,10 +193,10 @@ setattr(instance, name, proxy)
 @Component
 class LoggingAdvice(CallStackTraceAdvice):
     logger: Logger
-    
+
     def on_enter(self, frame: CallFrame) -> None:
         self.logger.debug(f"→ {frame.full_name}")
-    
+
     def on_exit(self, frame: CallFrame, duration_ms: float) -> None:
         self.logger.debug(f"← {frame.full_name} ({duration_ms:.2f}ms)")
 ```
@@ -207,7 +207,7 @@ class LoggingAdvice(CallStackTraceAdvice):
 @Component
 class MetricsAdvice(CallStackTraceAdvice):
     metrics: MetricsClient
-    
+
     def on_exit(self, frame: CallFrame, duration_ms: float) -> None:
         self.metrics.histogram(
             "method_duration_ms",
@@ -222,11 +222,11 @@ class MetricsAdvice(CallStackTraceAdvice):
 @Component
 class OTelAdvice(CallStackTraceAdvice):
     tracer: Tracer
-    
+
     def on_enter(self, frame: CallFrame) -> None:
         span = self.tracer.start_span(frame.full_name)
         # span을 어딘가에 저장 (context 등)
-    
+
     def on_exit(self, frame: CallFrame, duration_ms: float) -> None:
         span = # 저장된 span 가져오기
         span.end()
@@ -249,6 +249,7 @@ LifecycleManager (DI 컨테이너 - 생명주기)
 ```
 
 향후 통합 방안:
+
 1. **Observer 패턴**: 중앙 이벤트 허브로 통합
 2. **Advice가 LifecycleManager 구독**: DI로 주입받아 이벤트 구독
 3. **별도 유지**: 각각 독립적인 리스너 구현

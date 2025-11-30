@@ -2,14 +2,22 @@
 
 ContextVar 기반으로 각 코루틴/스레드별 독립적인 콜스택을 관리합니다.
 불변 튜플을 사용하여 스레드 안전성을 보장합니다.
+
+PROTOTYPE 스코프 인스턴스 자동 정리:
+- 메서드 진입 시: 새 depth에 대한 PROTOTYPE 리스트 생성
+- PROTOTYPE 생성 시: 현재 depth의 리스트에 추가
+- 메서드 종료 시: 해당 depth의 PROTOTYPE들 @PreDestroy 호출
 """
 
 from contextvars import ContextVar
 import time
 import uuid
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .frame import CallFrame
+
+if TYPE_CHECKING:
+    from ...container import Container
 
 
 # 콜스택 저장 (불변 튜플로 스레드 안전)
@@ -19,6 +27,12 @@ _call_stack: ContextVar[tuple[CallFrame, ...]] = ContextVar(
 
 # 요청별 추적 ID
 _trace_id: ContextVar[str] = ContextVar("bloom_trace_id", default="")
+
+# PROTOTYPE 인스턴스 저장 (depth -> [(instance, container), ...])
+# 각 콜스택 깊이별로 생성된 PROTOTYPE 인스턴스들을 추적
+_prototype_instances: ContextVar[dict[int, list[tuple[Any, "Container"]]]] = ContextVar(
+    "bloom_prototype_instances", default={}
+)
 
 
 def get_trace_id() -> str:
@@ -115,6 +129,8 @@ def pop_frame() -> CallFrame | None:
     """
     마지막 프레임을 콜스택에서 제거
 
+    해당 프레임에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy를 호출합니다.
+
     Returns:
         제거된 CallFrame 또는 None
     """
@@ -123,6 +139,11 @@ def pop_frame() -> CallFrame | None:
         return None
 
     frame = current_stack[-1]
+    depth = frame.depth
+
+    # PROTOTYPE 인스턴스 정리 (메서드 스코프 종료)
+    cleanup_prototypes_at_depth(depth)
+
     # 새 튜플 생성 (불변성 유지)
     _call_stack.set(current_stack[:-1])
 
@@ -133,6 +154,81 @@ def clear_stack() -> None:
     """콜스택 초기화 (요청 종료 시 사용)"""
     _call_stack.set(())
     _trace_id.set("")
+    _prototype_instances.set({})
+
+
+# =============================================================================
+# PROTOTYPE 인스턴스 자동 정리
+# =============================================================================
+
+
+def register_prototype(instance: Any, container: "Container") -> None:
+    """
+    현재 콜스택 깊이에 PROTOTYPE 인스턴스 등록
+
+    메서드 종료 시 자동으로 @PreDestroy가 호출됩니다.
+
+    Args:
+        instance: PROTOTYPE 인스턴스
+        container: 컨테이너 (라이프사이클 메서드 조회용)
+    """
+    depth = get_call_depth()
+    if depth == 0:
+        # 콜스택 외부에서 생성된 PROTOTYPE은 추적하지 않음
+        return
+
+    # 현재 depth - 1에 등록 (현재 메서드 내에서 생성된 것이므로)
+    target_depth = depth - 1
+
+    instances = _prototype_instances.get()
+    # 딕셔너리 복사 후 수정 (불변성 유지)
+    new_instances = dict(instances)
+    if target_depth not in new_instances:
+        new_instances[target_depth] = []
+    new_instances[target_depth] = new_instances[target_depth] + [(instance, container)]
+    _prototype_instances.set(new_instances)
+
+
+def cleanup_prototypes_at_depth(depth: int) -> None:
+    """
+    특정 콜스택 깊이에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy 호출
+
+    pop_frame 시 자동으로 호출됩니다.
+
+    Args:
+        depth: 콜스택 깊이
+    """
+    instances = _prototype_instances.get()
+    if depth not in instances:
+        return
+
+    prototypes = instances[depth]
+    if not prototypes:
+        return
+
+    # 라이프사이클 매니저를 통해 PreDestroy 호출
+    from ...manager import try_get_current_manager
+
+    manager = try_get_current_manager()
+    if manager is None:
+        return
+
+    for instance, container in prototypes:
+        try:
+            manager.lifecycle.invoke_prototype_pre_destroy(instance, container)
+        except Exception:
+            pass  # PreDestroy 에러는 무시
+
+    # 해당 depth 정리
+    new_instances = dict(instances)
+    del new_instances[depth]
+    _prototype_instances.set(new_instances)
+
+
+def get_prototype_count_at_depth(depth: int) -> int:
+    """특정 깊이에 등록된 PROTOTYPE 인스턴스 수 (테스트/디버깅용)"""
+    instances = _prototype_instances.get()
+    return len(instances.get(depth, []))
 
 
 def _summarize_args(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:

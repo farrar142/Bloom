@@ -208,10 +208,9 @@ class Application:
 
         # ApplicationEventBus - 사용자가 @Factory/@Component로 등록했으면 스킵
         # 이미 인스턴스가 있거나 컨테이너가 있으면 스킵
-        if (
-            self.manager.get_container(ApplicationEventBus) is None
-            and not self.manager.get_instances(ApplicationEventBus)
-        ):
+        if self.manager.get_container(
+            ApplicationEventBus
+        ) is None and not self.manager.get_instances(ApplicationEventBus):
             app_event_bus = ApplicationEventBus()
             self.manager.set_instance(ApplicationEventBus, app_event_bus)
 
@@ -224,7 +223,9 @@ class Application:
         )
 
         # ApplicationEventBus 인스턴스 가져오기
-        event_bus = self.manager.get_instance(ApplicationEventBus, raise_exception=False)
+        event_bus = self.manager.get_instance(
+            ApplicationEventBus, raise_exception=False
+        )
         if event_bus is None:
             return
 
@@ -233,9 +234,7 @@ class Application:
             for instance in instances:
                 self._bind_instance_event_listeners(instance, event_bus)
 
-    def _bind_instance_event_listeners(
-        self, instance: Any, event_bus: Any
-    ) -> None:
+    def _bind_instance_event_listeners(self, instance: Any, event_bus: Any) -> None:
         """인스턴스의 @EventListener 메서드들을 이벤트 버스에 바인딩"""
         from .core.events import is_event_listener, get_event_listener_type
 

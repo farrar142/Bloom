@@ -11,11 +11,11 @@
     @Component
     class LifecycleLogger:
         system_events: SystemEventBus
-        
+
         @PostConstruct
         def setup(self):
             self.system_events.subscribe(InstanceCreatedEvent, self.on_created)
-        
+
         def on_created(self, event: InstanceCreatedEvent):
             print(f"Created: {event.instance_type}")
 
@@ -23,7 +23,7 @@
     @Component
     class OrderService:
         event_bus: ApplicationEventBus
-        
+
         def create_order(self, data):
             order = Order(**data)
             self.event_bus.publish(OrderCreatedEvent(order))

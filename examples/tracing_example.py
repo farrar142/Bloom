@@ -51,7 +51,11 @@ class UserRepository:
         # 여기서 현재 콜스택을 확인할 수 있음
         stack = get_call_stack()
         print(f"      [DEBUG] 현재 콜스택 깊이: {len(stack)}")
-        return {"id": user_id, "name": f"User{user_id}", "email": f"user{user_id}@example.com"}
+        return {
+            "id": user_id,
+            "name": f"User{user_id}",
+            "email": f"user{user_id}@example.com",
+        }
 
     def save(self, user: dict) -> dict:
         user["saved"] = True
