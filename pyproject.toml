@@ -20,6 +20,9 @@ dependencies = [
 [project.scripts]
 bloom = "bloom.__main__:main"
 
+[tool.setuptools.package-data]
+"bloom.templates" = ["**/*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 markers = [

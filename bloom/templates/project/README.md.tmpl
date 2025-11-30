@@ -1,0 +1,57 @@
+# {{project_name}}
+
+Bloom Framework 기반 애플리케이션입니다.
+
+## 시작하기
+
+### 설치
+
+```bash
+uv sync
+```
+
+### 개발 서버 실행
+
+```bash
+uvicorn application:application.asgi --reload
+```
+
+### 워커 실행
+
+```bash
+bloom worker
+```
+
+### 데이터베이스 마이그레이션
+
+```bash
+# 마이그레이션 생성
+bloom db makemigrations
+
+# 마이그레이션 적용
+bloom db migrate
+
+# 마이그레이션 상태 확인
+bloom db show
+```
+
+## 프로젝트 구조
+
+```
+{{project_name}}/
+├── application.py      # 메인 애플리케이션
+├── settings/
+│   ├── __init__.py     # 설정 통합
+│   ├── database.py     # 데이터베이스 설정
+│   ├── advice.py       # MethodAdviceRegistry 설정
+│   └── task.py         # 태스크 설정
+├── pyproject.toml
+└── README.md
+```
+
+## 환경 변수
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `DATABASE_URL` | 데이터베이스 연결 URL | `sqlite:///db.sqlite3` |
+| `REDIS_URL` | Redis 연결 URL (분산 태스크) | `None` |

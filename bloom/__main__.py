@@ -181,6 +181,109 @@ def worker(application: str | None, concurrency: int):
 
 
 # =============================================================================
+# startproject command
+# =============================================================================
+
+
+@cli.command()
+@click.argument("path", default=".")
+@click.option(
+    "-n",
+    "--name",
+    type=str,
+    default=None,
+    help="Project name (default: directory name)",
+)
+def startproject(path: str, name: str | None):
+    """Create a new Bloom project
+
+    \b
+    Creates a new project with the standard Bloom structure:
+      - application.py
+      - settings/
+          - __init__.py
+          - database.py
+          - middleware.py
+          - task.py
+      - pyproject.toml
+      - README.md
+
+    \b
+    Examples:
+        bloom startproject myproject
+        bloom startproject . --name myapp
+        bloom startproject /path/to/project
+    """
+    import shutil
+    from importlib import resources
+
+    target_path = Path(path).resolve()
+
+    # 프로젝트 이름 결정
+    project_name = name or target_path.name
+    if project_name == ".":
+        project_name = Path.cwd().name
+
+    click.echo(f"[Bloom] Creating project '{project_name}' at {target_path}")
+
+    # 대상 디렉토리 생성
+    target_path.mkdir(parents=True, exist_ok=True)
+
+    # 기존 파일 확인
+    if (target_path / "application.py").exists():
+        raise click.ClickException(
+            f"application.py already exists in {target_path}. "
+            "Use a different path or remove existing files."
+        )
+
+    # 템플릿 디렉토리 경로
+    try:
+        template_ref = resources.files("bloom.templates.project")
+        with resources.as_file(template_ref) as template_dir:
+            _copy_template(template_dir, target_path, project_name)
+    except Exception as e:
+        raise click.ClickException(f"Failed to copy template: {e}")
+
+    click.echo()
+    click.echo(f"[Bloom] Project '{project_name}' created successfully!")
+    click.echo()
+    click.echo("Next steps:")
+    click.echo(f"  cd {path}")
+    click.echo("  uv sync")
+    click.echo("  uvicorn application:application.asgi --reload")
+
+
+def _copy_template(template_dir: Path, target_path: Path, project_name: str):
+    """템플릿 디렉토리를 복사하고 변수를 치환합니다."""
+    import shutil
+
+    for src_file in template_dir.rglob("*"):
+        if src_file.is_dir():
+            continue
+
+        # 상대 경로 계산
+        rel_path = src_file.relative_to(template_dir)
+        dest_file = target_path / rel_path
+
+        # 디렉토리 생성
+        dest_file.parent.mkdir(parents=True, exist_ok=True)
+
+        if src_file.suffix == ".tmpl":
+            # .tmpl 파일: 변수 치환 후 확장자 제거
+            content = src_file.read_text(encoding="utf-8")
+            content = content.replace("{{project_name}}", project_name)
+
+            # .tmpl 확장자 제거
+            final_dest = dest_file.with_suffix("")
+            final_dest.write_text(content, encoding="utf-8")
+            click.echo(f"  Created: {final_dest.relative_to(target_path)}")
+        else:
+            # 일반 파일: 그대로 복사
+            shutil.copy2(src_file, dest_file)
+            click.echo(f"  Created: {dest_file.relative_to(target_path)}")
+
+
+# =============================================================================
 # db command group (from bloom.db.cli)
 # =============================================================================
 

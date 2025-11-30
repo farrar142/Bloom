@@ -1,0 +1,55 @@
+"""Task Configuration
+
+백그라운드 태스크 설정입니다.
+"""
+
+import os
+
+from bloom import Component
+from bloom.core.decorators import Factory
+from bloom.task import TaskRegistry, TaskBackend, AsyncioTaskBackend
+
+
+# =============================================================================
+# Task Settings
+# =============================================================================
+
+# Redis URL for distributed tasks (optional)
+REDIS_URL = os.getenv("REDIS_URL", None)
+
+
+# =============================================================================
+# TaskRegistry & TaskBackend
+# =============================================================================
+
+@Component
+class TaskConfig:
+    """태스크 설정 컴포넌트"""
+
+    @Factory
+    def task_backend(self) -> TaskBackend:
+        """TaskBackend를 생성합니다.
+        
+        REDIS_URL이 설정된 경우 DistributedTaskBackend를,
+        그렇지 않으면 AsyncioTaskBackend를 사용합니다.
+        
+        Returns:
+            TaskBackend: 태스크 백엔드
+        """
+        if REDIS_URL:
+            from bloom.task import DistributedTaskBackend
+            return DistributedTaskBackend(REDIS_URL)
+        
+        return AsyncioTaskBackend()
+
+    @Factory
+    def task_registry(self, backend: TaskBackend) -> TaskRegistry:
+        """TaskRegistry를 생성합니다.
+        
+        Args:
+            backend: 주입된 TaskBackend
+            
+        Returns:
+            TaskRegistry: 태스크 레지스트리
+        """
+        return TaskRegistry(backend=backend)

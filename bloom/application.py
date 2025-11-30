@@ -134,6 +134,87 @@ class Application:
         self._config_manager.load_config(source, source_type)
         return self
 
+    def auto_import(
+        self,
+        base_path: str | Path | None = None,
+        exclude: set[str] | None = None,
+    ) -> "Application":
+        """
+        지정된 경로의 모든 Python 모듈을 자동으로 import하고 스캔합니다.
+
+        Args:
+            base_path: 스캔할 기본 경로 (기본값: 현재 작업 디렉토리)
+            exclude: 제외할 디렉토리/파일 이름 집합 (기본값: 빈 집합)
+
+        Returns:
+            self (메서드 체이닝 지원)
+
+        사용 예시:
+            # 현재 디렉토리 전체 스캔
+            app = Application("myapp").auto_import().ready()
+
+            # 특정 경로 스캔
+            app.auto_import("src/")
+
+            # 제외 대상 지정
+            app.auto_import(exclude={"application.py", "tests"})
+
+            # scan과 조합
+            app.scan(configure).auto_import(exclude={"application.py"}).ready()
+        """
+        import importlib
+        import os
+        import sys
+
+        if base_path is None:
+            base_path = Path(os.getcwd())
+        else:
+            base_path = Path(base_path).resolve()
+
+        if exclude is None:
+            exclude = set()
+
+        # 항상 제외할 기본 패턴 (시스템 디렉토리)
+        system_exclude = {"__pycache__", ".venv", "venv", ".git"}
+        all_exclude = exclude | system_exclude
+
+        # 기본 경로를 sys.path에 추가
+        base_str = str(base_path)
+        if base_str not in sys.path:
+            sys.path.insert(0, base_str)
+
+        # 현재 매니저 설정
+        set_current_manager(self.manager)
+
+        for path in base_path.rglob("*.py"):
+            # 제외 대상 체크 (디렉토리 또는 파일 이름)
+            if any(part in all_exclude for part in path.parts):
+                continue
+            if path.name in all_exclude:
+                continue
+
+            # 모듈 이름 계산
+            if path.name == "__init__.py":
+                rel_path = path.parent.relative_to(base_path)
+                module_name = ".".join(rel_path.parts)
+            else:
+                rel_path = path.relative_to(base_path)
+                module_name = ".".join(rel_path.with_suffix("").parts)
+
+            if not module_name:
+                continue
+
+            try:
+                module = importlib.import_module(module_name)
+                self.manager.scan(module)
+            except ImportError as e:
+                # import 실패 시 경고만 출력
+                import warnings
+
+                warnings.warn(f"Could not import {module_name}: {e}")
+
+        return self
+
     def scan(self, *modules: object) -> "Application":
         """
         모듈들을 스캔하여 컴포넌트 수집
