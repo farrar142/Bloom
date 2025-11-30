@@ -73,7 +73,9 @@ class TestMainCLI:
         from bloom.__main__ import cli
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["task", "--worker", "--application=nonexistent:app.queue"])
+        result = runner.invoke(
+            cli, ["task", "--worker", "--application=nonexistent:app.queue"]
+        )
         assert result.exit_code != 0
         # 명시적 지정 시 import 에러
         assert "Could not import module" in result.output

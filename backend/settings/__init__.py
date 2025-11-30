@@ -1,0 +1,17 @@
+"""backend Settings
+
+애플리케이션 설정을 위한 패키지입니다.
+각 모듈은 DI 컨테이너에 등록할 컴포넌트들을 정의합니다.
+"""
+
+from backend.settings import database
+from backend.settings import advice
+from backend.settings import task
+
+
+def configure():
+    """설정 모듈들을 반환합니다.
+
+    Application.scan()에 전달되어 DI 컨테이너에 등록됩니다.
+    """
+    return [database, advice, task]
