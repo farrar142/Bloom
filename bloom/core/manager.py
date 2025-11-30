@@ -34,10 +34,8 @@ def set_current_manager(manager: "ContainerManager | None") -> None:
     _current_manager.set(manager)
 
 
-class AmbiguousInstanceError(Exception):
-    """동일 타입의 인스턴스가 여러 개일 때 발생"""
-
-    pass
+# AmbiguousInstanceError는 exceptions.py에서 정의됨
+from .exceptions import AmbiguousInstanceError
 
 
 class ContainerManager:
@@ -218,20 +216,14 @@ class ContainerManager:
         if len(instances) == 1:
             return instances[0]
         elif len(instances) > 1:
-            raise AmbiguousInstanceError(
-                f"Multiple instances of {target.__name__} found ({len(instances)}). "
-                f"Use get_instances() to get all instances."
-            )
+            raise AmbiguousInstanceError(target, len(instances))
 
         # 정확한 타입 없으면 서브클래스 검색
         sub_instances = self.get_instances(target, include_subclasses=True)
         if len(sub_instances) == 1:
             return sub_instances[0]
         elif len(sub_instances) > 1:
-            raise AmbiguousInstanceError(
-                f"Multiple subclass instances of {target.__name__} found ({len(sub_instances)}). "
-                f"Use get_instances() to get all instances or specify exact type."
-            )
+            raise AmbiguousInstanceError(target, len(sub_instances))
 
         if raise_exception:
             raise Exception(f"Instance for {target.__name__} not found")

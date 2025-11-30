@@ -87,8 +87,10 @@ class ErrorHandlerMiddleware(Middleware):
         """
         예외를 HTTP 응답으로 변환
 
-        1. ErrorHandlerManager에서 핸들러 찾기
-        2. 없으면 기본 에러 응답 생성
+        우선순위:
+        1. 사용자 정의 ErrorHandler (@ErrorHandler 데코레이터)
+        2. HttpException (ValidationError 등) 내부 처리
+        3. 기본 에러 응답
 
         Args:
             request: HTTP 요청
@@ -97,7 +99,9 @@ class ErrorHandlerMiddleware(Middleware):
         Returns:
             에러 응답
         """
-        # Manager가 초기화되어 있으면 핸들러 찾기
+        from bloom.core.exceptions import HttpException, ValidationError
+
+        # 1. 사용자 정의 에러 핸들러 먼저 확인
         if self._manager:
             entry = self._manager.find_handler(exc, request.path)
 
@@ -110,8 +114,25 @@ class ErrorHandlerMiddleware(Middleware):
                     return result
                 return HttpResponse.ok(result)
 
-        # 기본 에러 응답
-        error_body: dict[str, Any] = {
+        # 2. ValidationError 특별 처리 (필드별 상세 에러)
+        if isinstance(exc, ValidationError):
+            return HttpResponse(
+                status_code=exc.status_code,
+                body=exc.to_dict(),
+            )
+
+        # 3. 기타 HttpException 처리
+        if isinstance(exc, HttpException):
+            error_body: dict[str, Any] = {
+                "error": type(exc).__name__,
+                "message": exc.detail,
+            }
+            if self.debug:
+                error_body["traceback"] = traceback.format_exc()
+            return HttpResponse(status_code=exc.status_code, body=error_body)
+
+        # 4. 기본 에러 응답
+        error_body = {
             "error": type(exc).__name__,
             "message": str(exc),
         }

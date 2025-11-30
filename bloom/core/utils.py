@@ -274,33 +274,8 @@ def group_by_dependency_level(items: list[T]) -> list[list[T]]:
     return [level_to_items[level] for level in range(max_level + 1)]
 
 
-class AmbiguousProviderError(Exception):
-    """
-    동일 타입을 생성하는 여러 Factory가 있고,
-    그 타입을 주입받는 다른 Factory가 있어 모호한 경우 발생하는 에러
-    """
-
-    def __init__(
-        self,
-        target_type: type,
-        conflicting_factories: list["FactoryContainer"],
-        dependent_factory: "FactoryContainer",
-    ):
-        self.target_type = target_type
-        self.conflicting_factories = conflicting_factories
-        self.dependent_factory = dependent_factory
-
-        factory_names = [f.factory_method.__name__ for f in conflicting_factories]
-        message = (
-            f"Ambiguous provider for type '{target_type.__name__}'.\n"
-            f"Multiple factories produce this type: {factory_names}\n"
-            f"Factory '{dependent_factory.factory_method.__name__}' requires "
-            f"'{target_type.__name__}' as a dependency but cannot determine which provider to use.\n"
-            f"This is an Ambiguous Provider Anti-pattern.\n"
-            f"Solution: Use Factory Chain pattern where only ONE factory creates the initial instance, "
-            f"and others modify it with @Order decorator."
-        )
-        super().__init__(message)
+# AmbiguousProviderError는 exceptions.py에서 정의됨
+from .exceptions import AmbiguousProviderError
 
 
 def detect_factory_chains(

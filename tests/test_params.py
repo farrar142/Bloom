@@ -30,6 +30,7 @@ class TestRequestBodyResolver:
         class UserData:
             name: str
             age: int
+
         @Controller
         class UserController:
             @Post("/users")
@@ -60,6 +61,7 @@ class TestRequestBodyResolver:
         class CreateUserRequest(BaseModel):
             username: str
             email: str
+
         @Controller
         class UserController:
             @Post("/users")
@@ -91,6 +93,7 @@ class TestModelParamResolver:
         class UserData:
             name: str
             age: int
+
         @Controller
         class UserController:
             @Post("/users")
@@ -122,6 +125,7 @@ class TestModelParamResolver:
         class Profile(BaseModel):
             nickname: str
             bio: str
+
         @Controller
         class ProfileController:
             @Post("/profile")
@@ -153,6 +157,7 @@ class TestModelParamResolver:
         @dataclass
         class Book:
             title: str
+
         @Controller
         class BookController:
             @Post("/books")
@@ -185,6 +190,7 @@ class TestListBodyResolver:
         class Address:
             city: str
             country: str
+
         @Controller
         class AddressController:
             @Post("/addresses")
@@ -216,6 +222,7 @@ class TestListBodyResolver:
         class Item(BaseModel):
             name: str
             price: float
+
         @Controller
         class ItemController:
             @Post("/items/bulk")
@@ -244,6 +251,7 @@ class TestPathParamResolver:
     @pytest.mark.asyncio
     async def test_single_path_param(self, reset_container_manager):
         """단일 경로 파라미터"""
+
         @Controller
         class UserController:
             @Get("/users/{id}")
@@ -261,6 +269,7 @@ class TestPathParamResolver:
     @pytest.mark.asyncio
     async def test_multiple_path_params(self, reset_container_manager):
         """여러 경로 파라미터"""
+
         @Controller
         class ResourceController:
             @Get("/users/{user_id}/posts/{post_id}")
@@ -278,6 +287,7 @@ class TestPathParamResolver:
     @pytest.mark.asyncio
     async def test_path_param_with_int_type(self, reset_container_manager):
         """int 타입 경로 파라미터"""
+
         @Controller
         class UserController:
             @Get("/users/{id}")
@@ -299,6 +309,7 @@ class TestQueryParamResolver:
     @pytest.mark.asyncio
     async def test_query_params(self, reset_container_manager):
         """쿼리 파라미터 추출"""
+
         @Controller
         class SearchController:
             @Get("/search")
@@ -320,6 +331,7 @@ class TestQueryParamResolver:
     @pytest.mark.asyncio
     async def test_primitive_params_from_body(self, reset_container_manager):
         """body에서 기본 타입 파라미터 추출"""
+
         @Controller
         class UserController:
             @Post("/users")
@@ -342,6 +354,7 @@ class TestQueryParamResolver:
     @pytest.mark.asyncio
     async def test_mixed_query_and_body_params(self, reset_container_manager):
         """query와 body 혼합 - query 우선"""
+
         @Controller
         class MixedController:
             @Post("/items")
@@ -370,6 +383,7 @@ class TestHttpRequestResolver:
     @pytest.mark.asyncio
     async def test_http_request_injection(self, reset_container_manager):
         """HttpRequest 주입"""
+
         @Controller
         class InfoController:
             @Get("/info")
@@ -405,6 +419,7 @@ class TestMixedParameters:
         @dataclass
         class UpdateData:
             name: str
+
         @Controller
         class UserController:
             @Post("/users/{id}")
@@ -427,6 +442,7 @@ class TestMixedParameters:
     @pytest.mark.asyncio
     async def test_path_query_and_request(self, reset_container_manager):
         """경로 + 쿼리 + HttpRequest 혼합"""
+
         @Controller
         class MixedController:
             @Get("/resources/{id}")
@@ -463,6 +479,7 @@ class TestHttpHeaderResolver:
     @pytest.mark.asyncio
     async def test_header_by_param_name(self, reset_container_manager):
         """파라미터 이름으로 헤더 키 추론 (user_agent -> user-agent)"""
+
         @Controller
         class HeaderController:
             @Get("/info")
@@ -487,6 +504,7 @@ class TestHttpHeaderResolver:
     @pytest.mark.asyncio
     async def test_header_with_explicit_key(self, reset_container_manager):
         """정확한 헤더 키 지정"""
+
         @Controller
         class HeaderController:
             @Get("/info")
@@ -508,6 +526,7 @@ class TestHttpHeaderResolver:
     @pytest.mark.asyncio
     async def test_multiple_headers(self, reset_container_manager):
         """여러 헤더 추출"""
+
         @Controller
         class HeaderController:
             @Get("/info")
@@ -543,6 +562,7 @@ class TestHttpCookieResolver:
     @pytest.mark.asyncio
     async def test_cookie_by_param_name(self, reset_container_manager):
         """파라미터 이름으로 쿠키 키 추론"""
+
         @Controller
         class CookieController:
             @Get("/session")
@@ -564,6 +584,7 @@ class TestHttpCookieResolver:
     @pytest.mark.asyncio
     async def test_cookie_with_explicit_key(self, reset_container_manager):
         """정확한 쿠키 키 지정 - KeyValue 반환"""
+
         @Controller
         class CookieController:
             @Get("/token")
@@ -585,6 +606,7 @@ class TestHttpCookieResolver:
     @pytest.mark.asyncio
     async def test_multiple_cookies(self, reset_container_manager):
         """여러 쿠키 추출 - KeyValue 반환"""
+
         @Controller
         class CookieController:
             @Get("/auth")
@@ -624,6 +646,7 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_single_file_by_param_name(self, reset_container_manager):
         """파라미터 이름으로 단일 파일 추출"""
+
         @Controller
         class UploadController:
             @Post("/upload")
@@ -658,6 +681,7 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_single_file_with_explicit_field(self, reset_container_manager):
         """지정된 필드명으로 단일 파일 추출"""
+
         @Controller
         class UploadController:
             @Post("/avatar")
@@ -684,6 +708,7 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_multiple_files_by_param_name(self, reset_container_manager):
         """파라미터 이름으로 여러 파일 추출"""
+
         @Controller
         class UploadController:
             @Post("/upload-multiple")
@@ -721,6 +746,7 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_multiple_files_with_explicit_field(self, reset_container_manager):
         """지정된 필드명으로 여러 파일 추출"""
+
         @Controller
         class UploadController:
             @Post("/gallery")
@@ -752,6 +778,7 @@ class TestUploadedFileResolver:
     @pytest.mark.asyncio
     async def test_file_content_access(self, reset_container_manager):
         """파일 내용 접근"""
+
         @Controller
         class UploadController:
             @Post("/read")
@@ -782,6 +809,7 @@ class TestOptionalParameters:
     @pytest.mark.asyncio
     async def test_optional_query_param(self, reset_container_manager):
         """Optional 쿼리 파라미터"""
+
         @Controller
         class SearchController:
             @Get("/search")
@@ -815,6 +843,7 @@ class TestOptionalParameters:
     @pytest.mark.asyncio
     async def test_optional_header(self, reset_container_manager):
         """Optional 헤더"""
+
         @Controller
         class HeaderController:
             @Get("/info")
@@ -846,6 +875,7 @@ class TestOptionalParameters:
     @pytest.mark.asyncio
     async def test_optional_cookie(self, reset_container_manager):
         """Optional 쿠키"""
+
         @Controller
         class CookieController:
             @Get("/session")
@@ -874,6 +904,7 @@ class TestOptionalParameters:
         @dataclass
         class Data:
             value: str
+
         @Controller
         class DataController:
             @Post("/data")
@@ -901,6 +932,7 @@ class TestOptionalParameters:
     @pytest.mark.asyncio
     async def test_optional_uploaded_file(self, reset_container_manager):
         """Optional UploadedFile"""
+
         @Controller
         class UploadController:
             @Post("/upload")
@@ -926,6 +958,7 @@ class TestAuthenticationResolver:
     async def test_authentication_injection(self, reset_container_manager):
         """Authentication 주입"""
         from bloom.web.auth import Authentication
+
         @Controller
         class UserController:
             @Get("/me")
@@ -950,6 +983,7 @@ class TestAuthenticationResolver:
     async def test_authentication_none_when_not_set(self, reset_container_manager):
         """Authentication이 설정되지 않으면 None"""
         from bloom.web.auth import Authentication
+
         @Controller
         class UserController:
             @Get("/me")
@@ -971,6 +1005,7 @@ class TestAuthenticationResolver:
     async def test_optional_authentication(self, reset_container_manager):
         """Optional[Authentication] 주입"""
         from bloom.web.auth import Authentication
+
         @Controller
         class UserController:
             @Get("/me")
@@ -1000,6 +1035,7 @@ class TestAuthenticationResolver:
     async def test_authentication_with_authorities(self, reset_container_manager):
         """authorities 포함한 Authentication 주입"""
         from bloom.web.auth import Authentication
+
         @Controller
         class AdminController:
             @Get("/admin")
@@ -1031,6 +1067,7 @@ class TestAuthenticationResolver:
     ):
         """Authentication + HttpRequest + path param 조합"""
         from bloom.web.auth import Authentication
+
         @Controller
         class PostController:
             @Get("/posts/{id}")
@@ -1053,3 +1090,204 @@ class TestAuthenticationResolver:
         assert response.body["post_id"] == "123"
         assert response.body["viewer"] == "viewer1"
         assert response.body["method"] == "GET"
+
+
+class TestValidationError:
+    """ValidationError 처리 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_pydantic_validation_error_simple(self, reset_container_manager):
+        """pydantic 단순 필드 유효성 검사 실패"""
+        try:
+            from pydantic import BaseModel, Field
+        except ImportError:
+            pytest.skip("pydantic not installed")
+
+        class CreateUserRequest(BaseModel):
+            username: str = Field(min_length=3)
+            email: str
+            age: int = Field(ge=0, le=150)
+
+        @Controller
+        class UserController:
+            @Post("/users")
+            async def create_user(self, body: RequestBody[CreateUserRequest]) -> dict:
+                return {"username": body.username}
+
+        app = Application("test").ready()
+
+        # 잘못된 데이터: username 너무 짧음, age가 문자열
+        request = HttpRequest(
+            method="POST",
+            path="/users",
+            body=b'{"username": "ab", "email": "test@example.com", "age": "not-a-number"}',
+            headers={"content-type": "application/json"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 400
+        assert response.body["error"] == "ValidationError"
+        assert "details" in response.body
+        assert len(response.body["details"]) >= 2  # username, age 에러
+
+        # 에러 위치 확인
+        locs = [tuple(e["loc"]) for e in response.body["details"]]
+        assert any("username" in loc for loc in locs)
+        assert any("age" in loc for loc in locs)
+
+    @pytest.mark.asyncio
+    async def test_pydantic_validation_error_nested(self, reset_container_manager):
+        """pydantic 중첩 모델 유효성 검사 실패"""
+        try:
+            from pydantic import BaseModel, Field
+        except ImportError:
+            pytest.skip("pydantic not installed")
+
+        class Address(BaseModel):
+            street: str
+            city: str
+            zipcode: str = Field(min_length=5)
+
+        class Contact(BaseModel):
+            email: str
+            phone: str = Field(min_length=10)
+
+        class CreateUserRequest(BaseModel):
+            username: str
+            address: Address
+            contact: Contact
+
+        @Controller
+        class UserController:
+            @Post("/users")
+            async def create_user(self, body: RequestBody[CreateUserRequest]) -> dict:
+                return {"username": body.username}
+
+        app = Application("test").ready()
+
+        # 중첩 필드에 잘못된 데이터
+        request = HttpRequest(
+            method="POST",
+            path="/users",
+            body=b'{"username": "bob", "address": {"street": "123 Main"}, "contact": {"email": "test@test.com", "phone": "123"}}',
+            headers={"content-type": "application/json"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 400
+        assert response.body["error"] == "ValidationError"
+        assert "details" in response.body
+
+        # 에러 위치에 중첩 경로가 포함되어야 함
+        details = response.body["details"]
+        locs = [tuple(e["loc"]) for e in details]
+
+        # address.city, address.zipcode 누락
+        assert any("address" in str(loc) for loc in locs)
+        # contact.phone 길이 오류
+        assert any("contact" in str(loc) and "phone" in str(loc) for loc in locs)
+
+    @pytest.mark.asyncio
+    async def test_pydantic_validation_error_list_items(self, reset_container_manager):
+        """pydantic 리스트 아이템 유효성 검사 실패"""
+        try:
+            from pydantic import BaseModel
+        except ImportError:
+            pytest.skip("pydantic not installed")
+
+        class Item(BaseModel):
+            name: str
+            price: float
+
+        class OrderRequest(BaseModel):
+            items: list[Item]
+
+        @Controller
+        class OrderController:
+            @Post("/orders")
+            async def create_order(self, body: RequestBody[OrderRequest]) -> dict:
+                return {"count": len(body.items)}
+
+        app = Application("test").ready()
+
+        # 리스트 내 아이템 중 일부가 잘못됨
+        request = HttpRequest(
+            method="POST",
+            path="/orders",
+            body=b'{"items": [{"name": "A", "price": 100}, {"name": "B", "price": "invalid"}]}',
+            headers={"content-type": "application/json"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 400
+        assert response.body["error"] == "ValidationError"
+
+        # items.1.price에 에러가 있어야 함 (인덱스 포함)
+        details = response.body["details"]
+        locs = [e["loc"] for e in details]
+        # ["body", "items", 1, "price"] 형태
+        assert any(1 in loc and "price" in loc for loc in locs)
+
+    @pytest.mark.asyncio
+    async def test_dataclass_validation_error(self, reset_container_manager):
+        """dataclass 생성 실패 시 ValidationError"""
+
+        @dataclass
+        class UserData:
+            name: str
+            age: int
+
+        @Controller
+        class UserController:
+            @Post("/users")
+            async def create_user(self, body: RequestBody[UserData]) -> dict:
+                return {"name": body.name}
+
+        app = Application("test").ready()
+
+        # 필수 필드 누락
+        request = HttpRequest(
+            method="POST",
+            path="/users",
+            body=b'{"name": "Alice"}',
+            headers={"content-type": "application/json"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 400
+        assert response.body["error"] == "ValidationError"
+        assert "details" in response.body
+
+    @pytest.mark.asyncio
+    async def test_validation_error_includes_input(self, reset_container_manager):
+        """ValidationError에 입력값이 포함됨"""
+        try:
+            from pydantic import BaseModel
+        except ImportError:
+            pytest.skip("pydantic not installed")
+
+        class AgeRequest(BaseModel):
+            age: int
+
+        @Controller
+        class TestController:
+            @Post("/test")
+            async def test_age(self, body: RequestBody[AgeRequest]) -> dict:
+                return {"age": body.age}
+
+        app = Application("test").ready()
+
+        request = HttpRequest(
+            method="POST",
+            path="/test",
+            body=b'{"age": "twenty"}',
+            headers={"content-type": "application/json"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 400
+        details = response.body["details"]
+        # input 필드가 포함되어 있어야 함
+        assert any("input" in e for e in details)
+        # 입력값이 "twenty"
+        assert any(e.get("input") == "twenty" for e in details)
