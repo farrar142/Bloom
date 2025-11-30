@@ -21,6 +21,10 @@ from typing import Annotated, Any, Callable, TYPE_CHECKING, get_origin, get_args
 
 from .container.element import Scope
 
+if TYPE_CHECKING:
+    from .lifecycle import LifecycleHandlerContainer
+    from .container import Container
+
 
 # =============================================================================
 # LazyFieldProxy: 필드 주입용 투명 프록시
@@ -33,7 +37,7 @@ class LazyFieldProxy[T]:
     모든 필드 주입은 기본적으로 이 프록시로 래핑됩니다.
     접근 시점에 실제 인스턴스를 해결하며, Scope에 따라 동작이 다릅니다:
     - SINGLETON: 최초 접근 시 한 번만 resolve (캐시)
-    - PROTOTYPE: 매 접근마다 새 인스턴스 생성
+    - PROTOTYPE: 매 접근마다 새 인스턴스 생성 (GC 시 PreDestroy 호출)
     - REQUEST: HTTP 요청 컨텍스트마다 새 인스턴스 (TODO)
 
     사용법:
@@ -52,6 +56,7 @@ class LazyFieldProxy[T]:
         "_lfp_resolved",
         "_lfp_target_type",
         "_lfp_scope",
+        "_lfp_container",  # PROTOTYPE PreDestroy 호출용
     )
 
     def __init__(
@@ -59,12 +64,14 @@ class LazyFieldProxy[T]:
         resolver: Callable[[], T],
         target_type: type[T] | None = None,
         scope: Scope = Scope.SINGLETON,
+        container: Any = None,  # PROTOTYPE의 경우 Container 참조
     ):
         object.__setattr__(self, "_lfp_resolver", resolver)
         object.__setattr__(self, "_lfp_instance", None)
         object.__setattr__(self, "_lfp_resolved", False)
         object.__setattr__(self, "_lfp_target_type", target_type)
         object.__setattr__(self, "_lfp_scope", scope)
+        object.__setattr__(self, "_lfp_container", container)
 
     def _lfp_resolve(self) -> T:
         """실제 인스턴스를 해결합니다. Scope에 따라 동작이 다릅니다."""
@@ -73,7 +80,58 @@ class LazyFieldProxy[T]:
         # PROTOTYPE: 매번 새 인스턴스 생성
         if scope == Scope.PROTOTYPE:
             resolver = object.__getattribute__(self, "_lfp_resolver")
-            return resolver()
+            container = object.__getattribute__(self, "_lfp_container")
+
+            # 첫 resolve 시 __del__ 주입 (클래스당 한 번만) - LifecycleManager 위임
+            if container is not None:
+                manager = container._get_manager()
+                if manager is not None:
+                    manager.lifecycle.prepare_prototype_class(container)
+
+            instance = resolver()
+
+            # PROTOTYPE도 @PostConstruct 호출 - LifecycleManager 위임
+            if container is not None:
+                manager = container._get_manager()
+                if manager is not None:
+                    manager.lifecycle.invoke_prototype_post_construct(instance, container)
+
+            return instance
+
+        # REQUEST: 요청별 캐시 사용
+        if scope == Scope.REQUEST:
+            from .request_context import RequestContext
+
+            container = object.__getattribute__(self, "_lfp_container")
+            target_type = object.__getattribute__(self, "_lfp_target_type")
+
+            # 컨텍스트 활성화 확인
+            if not RequestContext.is_active():
+                raise RuntimeError(
+                    f"REQUEST scope requires active request context. "
+                    f"Ensure RequestScopeMiddleware is enabled. "
+                    f"Type: {target_type.__name__ if target_type else 'unknown'}"
+                )
+
+            # 현재 요청에 캐시된 인스턴스 확인
+            cached = RequestContext.get_instance(target_type)
+            if cached is not None:
+                return cached
+
+            # 새 인스턴스 생성
+            resolver = object.__getattribute__(self, "_lfp_resolver")
+            instance = resolver()
+
+            # 요청 컨텍스트에 저장
+            if container is not None:
+                RequestContext.set_instance(target_type, instance, container)
+
+                # @PostConstruct 호출
+                manager = container._get_manager()
+                if manager is not None:
+                    manager.lifecycle.invoke_request_post_construct(instance, container)
+
+            return instance
 
         # SINGLETON (기본값): 캐시 사용
         if not object.__getattribute__(self, "_lfp_resolved"):

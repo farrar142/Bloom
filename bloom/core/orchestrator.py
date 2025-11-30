@@ -143,21 +143,27 @@ class ContainerOrchestrator:
         """단일 컨테이너 초기화
 
         Returns:
-            (container, instance) 튜플 또는 @Scope(PROTOTYPE) 컴포넌트면 None
+            (container, instance) 튜플 또는 @Scope(PROTOTYPE/REQUEST) 컴포넌트면 None
         """
-        # PROTOTYPE 스코프는 즉시 초기화하지 않음 (접근 시 생성)
-        if self._is_prototype_scope(container):
+        # PROTOTYPE/REQUEST 스코프는 즉시 초기화하지 않음 (접근 시 생성)
+        if self._is_lazy_scope(container):
             return None
-        
+
         instance = container.initialize_instance()
         return (container, instance)
 
-    def _is_prototype_scope(self, container: "Container") -> bool:
-        """컨테이너가 PROTOTYPE 스코프인지 확인"""
+    def _is_lazy_scope(self, container: "Container") -> bool:
+        """컨테이너가 PROTOTYPE 또는 REQUEST 스코프인지 확인
+
+        이 스코프들은 ready() 시점에 초기화되지 않고, 필드 접근 시점에 초기화됩니다.
+        """
         from .container.element import ScopeElement, Scope
-        
+
         for elem in container.elements:
-            if isinstance(elem, ScopeElement) and elem.scope == Scope.PROTOTYPE:
+            if isinstance(elem, ScopeElement) and elem.scope in (
+                Scope.PROTOTYPE,
+                Scope.REQUEST,
+            ):
                 return True
         return False
 

@@ -1,6 +1,11 @@
 """LifecycleManager - 라이프사이클 관리자
 
 Manager → Registry → Container(Entry) 패턴을 따릅니다.
+
+SINGLETON, PROTOTYPE, REQUEST 모두 이 클래스에서 라이프사이클을 관리합니다:
+- SINGLETON: ready() 시점에 PostConstruct, shutdown() 시점에 PreDestroy
+- PROTOTYPE: 필드 접근 시 PostConstruct, GC 시점에 PreDestroy (__del__ 주입)
+- REQUEST: 요청 내 첫 접근 시 PostConstruct, 요청 종료 시 PreDestroy (RequestContext)
 """
 
 import asyncio
@@ -13,6 +18,17 @@ from .registry import LifecycleRegistry
 if TYPE_CHECKING:
     from bloom.core.manager import ContainerManager
     from bloom.core.container import Container
+
+
+# =============================================================================
+# PROTOTYPE 클래스 추적 (클래스당 한 번만 __del__ 주입)
+# =============================================================================
+_prototype_del_injected: set[type] = set()
+
+
+def clear_prototype_tracking() -> None:
+    """PROTOTYPE 추적 상태 초기화 (테스트용)"""
+    _prototype_del_injected.clear()
 
 
 class LifecycleManager:
@@ -148,3 +164,174 @@ class LifecycleManager:
             instance = container._get_cached_instance()
             if instance:
                 self.invoke_pre_destroy(container, instance)
+
+    # =========================================================================
+    # PROTOTYPE 라이프사이클 관리
+    # =========================================================================
+
+    def _get_lifecycle_method_names(
+        self, target_cls: type, lifecycle_type: LifecycleType
+    ) -> list[str]:
+        """클래스의 특정 라이프사이클 메서드 이름들을 가져옵니다."""
+        from bloom.core.container.base import Container
+
+        method_names: list[str] = []
+
+        for attr_name in dir(target_cls):
+            try:
+                attr = getattr(target_cls, attr_name, None)
+                if attr is None:
+                    continue
+
+                handler_container = Container.get_container(attr)
+                if handler_container is None:
+                    continue
+
+                if not isinstance(handler_container, LifecycleHandlerContainer):
+                    continue
+
+                for elem in handler_container.elements:
+                    if isinstance(elem, LifecycleTypeElement):
+                        if elem.lifecycle_type == lifecycle_type:
+                            method_names.append(attr_name)
+                            break
+            except Exception:
+                continue
+
+        return method_names
+
+    def invoke_prototype_post_construct(
+        self, instance: Any, container: "Container"
+    ) -> None:
+        """
+        PROTOTYPE 인스턴스의 @PostConstruct 메서드들을 호출합니다.
+
+        PROTOTYPE은 필드 접근 시마다 새 인스턴스가 생성되므로,
+        LazyFieldProxy에서 인스턴스 생성 직후 이 메서드를 호출합니다.
+
+        Args:
+            instance: PROTOTYPE 인스턴스
+            container: 컨테이너
+
+        Raises:
+            Exception: PostConstruct 실패 시 예외 전파
+        """
+        target_cls = container.target
+        method_names = self._get_lifecycle_method_names(
+            target_cls, LifecycleType.POST_CONSTRUCT
+        )
+
+        for method_name in method_names:
+            method = getattr(instance, method_name, None)
+            if method is not None:
+                result = method()
+                # 비동기 메서드인 경우 경고 (PROTOTYPE에서는 지원 안 함)
+                if inspect.iscoroutine(result):
+                    result.close()  # 코루틴 정리
+                    raise RuntimeError(
+                        f"Async @PostConstruct is not supported for PROTOTYPE scope: "
+                        f"{target_cls.__name__}.{method_name}"
+                    )
+
+    def invoke_request_post_construct(
+        self, instance: Any, container: "Container"
+    ) -> None:
+        """
+        REQUEST 인스턴스의 @PostConstruct 메서드들을 호출합니다.
+
+        REQUEST 스코프는 요청 내 첫 접근 시 인스턴스가 생성되며,
+        LazyFieldProxy에서 인스턴스 생성 직후 이 메서드를 호출합니다.
+
+        Args:
+            instance: REQUEST 인스턴스
+            container: 컨테이너
+
+        Raises:
+            Exception: PostConstruct 실패 시 예외 전파
+        """
+        target_cls = container.target
+        method_names = self._get_lifecycle_method_names(
+            target_cls, LifecycleType.POST_CONSTRUCT
+        )
+
+        for method_name in method_names:
+            method = getattr(instance, method_name, None)
+            if method is not None:
+                result = method()
+                # 비동기 메서드인 경우 경고 (REQUEST에서는 동기만 지원)
+                if inspect.iscoroutine(result):
+                    result.close()  # 코루틴 정리
+                    raise RuntimeError(
+                        f"Async @PostConstruct is not supported for REQUEST scope: "
+                        f"{target_cls.__name__}.{method_name}"
+                    )
+
+    # =========================================================================
+    # REQUEST 컨텍스트 관리 (ASGI 레벨에서 호출)
+    # =========================================================================
+
+    def start_request(self) -> None:
+        """
+        HTTP 요청 시작 시 호출 - REQUEST 컨텍스트 활성화
+
+        ASGI 앱에서 요청 처리 시작 전에 호출됩니다.
+        모든 미들웨어보다 먼저 실행되어 REQUEST 스코프를 사용 가능하게 합니다.
+        """
+        from bloom.core.request_context import RequestContext
+
+        RequestContext.start()
+
+    def end_request(self) -> None:
+        """
+        HTTP 요청 종료 시 호출 - REQUEST 인스턴스 정리
+
+        ASGI 앱에서 요청 처리 완료 후 호출됩니다.
+        모든 REQUEST 스코프 인스턴스의 @PreDestroy를 호출하고 컨텍스트를 정리합니다.
+        """
+        from bloom.core.request_context import RequestContext
+
+        RequestContext.end()
+
+    def prepare_prototype_class(self, container: "Container") -> None:
+        """
+        PROTOTYPE 클래스에 __del__ 메서드를 주입하여 GC 시 PreDestroy 호출
+
+        클래스당 한 번만 호출되며, 이후 해당 클래스의 모든 인스턴스는
+        GC될 때 자동으로 @PreDestroy 메서드들이 호출됩니다.
+
+        Args:
+            container: PROTOTYPE 스코프의 컨테이너
+        """
+        target_cls = container.target
+        if target_cls in _prototype_del_injected:
+            return
+
+        pre_destroy_method_names = self._get_lifecycle_method_names(
+            target_cls, LifecycleType.PRE_DESTROY
+        )
+
+        if not pre_destroy_method_names:
+            _prototype_del_injected.add(target_cls)
+            return
+
+        # 원래 __del__ 저장
+        original_del = getattr(target_cls, "__del__", None)
+
+        def injected_del(self: Any) -> None:
+            """주입된 __del__: @PreDestroy 메서드들 호출 후 원래 __del__ 호출"""
+            for method_name in pre_destroy_method_names:
+                try:
+                    method = getattr(self, method_name, None)
+                    if method is not None:
+                        method()
+                except Exception:
+                    pass  # GC 시점에 예외는 무시
+
+            if original_del is not None:
+                try:
+                    original_del(self)
+                except Exception:
+                    pass
+
+        target_cls.__del__ = injected_del  # type: ignore
+        _prototype_del_injected.add(target_cls)

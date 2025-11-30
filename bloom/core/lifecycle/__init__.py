@@ -26,7 +26,7 @@ from .container import (
     LifecycleTypeElement,
 )
 from .registry import LifecycleRegistry
-from .manager import LifecycleManager
+from .manager import LifecycleManager, clear_prototype_tracking
 
 __all__ = [
     "LifecycleHandlerContainer",

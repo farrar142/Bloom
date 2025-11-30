@@ -36,6 +36,10 @@ from .lazy import (
     is_lazy_wrapper_type,
     get_lazy_inner_type,
 )
+from .request_context import (
+    RequestContext,
+    request_scope,
+)
 from .abstract import (
     AbstractRegistry,
     AbstractManager,
@@ -70,6 +74,9 @@ __all__ = [
     "LazyFieldProxy",
     "is_lazy_wrapper_type",
     "get_lazy_inner_type",
+    # Request scope
+    "RequestContext",
+    "request_scope",
     # Abstract patterns
     "AbstractRegistry",
     "AbstractManager",

@@ -9,6 +9,7 @@ from .core import (
     PostConstruct,
     PreDestroy,
     Lazy,
+    Scope,
 )
 from .logging import logger, get_logger, configure_logging
 from .web import (
@@ -35,6 +36,7 @@ __all__ = [
     "PostConstruct",
     "PreDestroy",
     "Lazy",
+    "Scope",
     # Logging
     "logger",
     "get_logger",

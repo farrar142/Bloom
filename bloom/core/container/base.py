@@ -177,8 +177,8 @@ class Container[T]:
 
                     def make_resolver(m: "ContainerManager", t: type, s: ScopeEnum):
                         def resolver():
-                            # PROTOTYPE은 항상 새 인스턴스 생성
-                            if s == ScopeEnum.PROTOTYPE:
+                            # PROTOTYPE/REQUEST는 항상 새 인스턴스 생성
+                            if s == ScopeEnum.PROTOTYPE or s == ScopeEnum.REQUEST:
                                 if container := m.get_container(t):
                                     return container._create_instance()
                                 raise Exception(
@@ -197,10 +197,17 @@ class Container[T]:
 
                         return resolver
 
+                    # PROTOTYPE/REQUEST인 경우 container 전달 (라이프사이클 관리용)
+                    lifecycle_container = (
+                        inner_container
+                        if inner_scope in (ScopeEnum.PROTOTYPE, ScopeEnum.REQUEST)
+                        else None
+                    )
                     kwargs[name] = LazyFieldProxy(
                         make_resolver(manager, inner_type, inner_scope),
                         inner_type,
                         inner_scope,
+                        lifecycle_container,
                     )
                 continue
 
@@ -214,8 +221,8 @@ class Container[T]:
                         scope = elem.scope
                         break
 
-                # PROTOTYPE이 아닌 경우에만 캐시된 인스턴스 사용
-                if scope != ScopeEnum.PROTOTYPE:
+                # SINGLETON만 캐시된 인스턴스 사용 (PROTOTYPE/REQUEST는 LazyFieldProxy에서 처리)
+                if scope == ScopeEnum.SINGLETON:
                     existing_instance = manager.get_instance(
                         dep_type, raise_exception=False
                     )
@@ -225,11 +232,13 @@ class Container[T]:
 
                 # LazyFieldProxy로 주입 (기본 Lazy 동작)
                 # PROTOTYPE: 매번 새 인스턴스 생성
+                # REQUEST: 요청마다 새 인스턴스 (RequestContext에서 캐시)
                 # SINGLETON: 캐시 확인 후 없으면 생성
                 def make_default_resolver(m: "ContainerManager", t: type, s: ScopeEnum):
                     def resolver():
-                        # PROTOTYPE은 항상 새 인스턴스 생성
-                        if s == ScopeEnum.PROTOTYPE:
+                        # PROTOTYPE/REQUEST는 항상 새 인스턴스 생성
+                        # (REQUEST는 LazyFieldProxy에서 RequestContext 캐시를 확인)
+                        if s == ScopeEnum.PROTOTYPE or s == ScopeEnum.REQUEST:
                             if container := m.get_container(t):
                                 return container._create_instance()
                             raise Exception(
@@ -248,8 +257,17 @@ class Container[T]:
 
                     return resolver
 
+                # PROTOTYPE/REQUEST인 경우 container 전달 (라이프사이클 관리용)
+                lifecycle_container = (
+                    dep_container
+                    if scope in (ScopeEnum.PROTOTYPE, ScopeEnum.REQUEST)
+                    else None
+                )
                 kwargs[name] = LazyFieldProxy(
-                    make_default_resolver(manager, dep_type, scope), dep_type, scope
+                    make_default_resolver(manager, dep_type, scope),
+                    dep_type,
+                    scope,
+                    lifecycle_container,
                 )
             else:
                 # 컨테이너가 없으면 기존 인스턴스 확인

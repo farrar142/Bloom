@@ -151,6 +151,11 @@ class ASGIApplication:
         """HTTP 요청 처리"""
         # 활성 요청 카운트 증가
         self._active_requests += 1
+
+        # REQUEST 스코프 컨텍스트 시작
+        if self.application:
+            self.application.manager.lifecycle.start_request()
+
         try:
             # 요청 바디 수집
             body = b""
@@ -186,6 +191,10 @@ class ASGIApplication:
             else:
                 await self._send_response(send, response)
         finally:
+            # REQUEST 스코프 컨텍스트 종료 (@PreDestroy 호출)
+            if self.application:
+                self.application.manager.lifecycle.end_request()
+
             # 활성 요청 카운트 감소
             self._active_requests -= 1
             # shutdown 대기 중이고 모든 요청이 완료되면 이벤트 설정

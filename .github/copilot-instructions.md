@@ -86,6 +86,43 @@ class Consumer:
 2. **PROTOTYPE**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
 3. 모든 필드는 `LazyFieldProxy`로 주입되어 Scope 정보를 활용
 
+**PROTOTYPE 라이프사이클:**
+
+PROTOTYPE 인스턴스도 SINGLETON과 동일하게 `@PostConstruct`와 `@PreDestroy`가 호출됩니다:
+- **@PostConstruct**: 인스턴스 생성 직후 (필드 접근 시마다)
+- **@PreDestroy**: GC(가비지 컬렉션) 시점에 자동 호출
+
+```python
+from bloom import Component, Scope, PostConstruct, PreDestroy
+from bloom.core import Scope as ScopeEnum
+
+@Component
+@Scope(ScopeEnum.PROTOTYPE)
+class PrototypeResource:
+    @PostConstruct
+    def init(self):
+        print("초기화됨")  # 인스턴스 생성 시 자동 호출
+
+    @PreDestroy
+    def cleanup(self):
+        print("리소스 정리됨")  # GC 시점에 자동 호출
+
+@Component
+class Consumer:
+    resource: PrototypeResource
+
+    def use_resource(self):
+        r = self.resource  # 새 인스턴스 생성 + @PostConstruct 호출
+        r.do_something()
+        # 함수 종료 후 r의 참조가 사라지면 GC에 의해 @PreDestroy 호출
+```
+
+**구현 세부사항:**
+- PROTOTYPE 클래스에 `__del__` 메서드가 동적으로 주입됩니다
+- 클래스당 한 번만 주입되며, 기존 `__del__`이 있으면 체인으로 연결됩니다
+- GC 시점에 예외가 발생해도 무시됩니다 (안전한 정리 보장)
+- `@PostConstruct` 실패 시 예외가 전파됩니다 (SINGLETON과 동일)
+
 ## 웹 레이어 구조
 
 - `bloom/web/router.py`: 경로 매칭 및 핸들러 디스패치

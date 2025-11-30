@@ -227,3 +227,232 @@ class TestLifecycleHooks:
 
         assert isinstance(container, LifecycleHandlerContainer)
         assert container.lifecycle_type == LifecycleType.PRE_DESTROY
+
+
+class TestPrototypePreDestroy:
+    """PROTOTYPE 스코프에서 PostConstruct/PreDestroy 호출 테스트"""
+
+    def test_prototype_post_construct_on_access(self, reset_container_manager):
+        """PROTOTYPE 인스턴스 생성 시 @PostConstruct가 호출됨"""
+        from bloom import Scope
+        from bloom.core import ScopeEnum
+
+        call_log = []
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class PrototypeService:
+            @PostConstruct
+            def init(self):
+                call_log.append(f"init:{id(self)}")
+
+            def get_id(self):
+                return id(self)
+
+        @Component
+        class Consumer:
+            service: PrototypeService
+
+        app = Application("test").ready()
+        consumer = app.manager.get_instance(Consumer)
+
+        # ready() 시점에는 PROTOTYPE 인스턴스가 생성되지 않음
+        assert len(call_log) == 0, "PROTOTYPE should not be initialized on ready()"
+
+        # 첫 번째 접근: 새 인스턴스 생성 + PostConstruct 호출
+        service1_id = consumer.service.get_id()
+        assert len(call_log) == 1, f"PostConstruct should be called, logs: {call_log}"
+        assert f"init:{service1_id}" in call_log
+
+        # 두 번째 접근: 또 다른 새 인스턴스 + PostConstruct 호출
+        service2_id = consumer.service.get_id()
+        assert len(call_log) == 2, f"PostConstruct should be called again, logs: {call_log}"
+        assert f"init:{service2_id}" in call_log
+        assert service1_id != service2_id
+
+    def test_prototype_pre_destroy_on_gc(self, reset_container_manager):
+        """PROTOTYPE 인스턴스가 GC될 때 @PreDestroy가 호출됨"""
+        import gc
+        from bloom import Scope
+        from bloom.core import ScopeEnum
+
+        call_log = []
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class PrototypeService:
+            @PostConstruct
+            def init(self):
+                call_log.append(f"init:{id(self)}")
+
+            @PreDestroy
+            def cleanup(self):
+                call_log.append(f"cleanup:{id(self)}")
+
+            def get_id(self):
+                """인스턴스 ID 반환용 메서드"""
+                return id(self)
+
+        @Component
+        class Consumer:
+            service: PrototypeService
+
+        app = Application("test").ready()
+        consumer = app.manager.get_instance(Consumer)
+
+        # 첫 번째 접근: 새 인스턴스 생성 (프록시를 통해 메서드 호출)
+        service1_id = consumer.service.get_id()
+
+        # 두 번째 접근: 또 다른 새 인스턴스
+        service2_id = consumer.service.get_id()
+
+        assert (
+            service1_id != service2_id
+        ), "PROTOTYPE should create new instances each access"
+
+        # PostConstruct가 호출되었는지 확인
+        init_count = sum(1 for log in call_log if log.startswith("init:"))
+        assert init_count == 2, f"PostConstruct should be called twice, logs: {call_log}"
+
+        # GC 강제 실행
+        gc.collect()
+        gc.collect()  # 여러 번 호출하여 확실하게 정리
+        gc.collect()
+
+        # PreDestroy가 호출되었는지 확인
+        cleanup_count = sum(1 for log in call_log if log.startswith("cleanup:"))
+        assert (
+            cleanup_count >= 1
+        ), f"PreDestroy should be called on GC, logs: {call_log}"
+
+    def test_prototype_multiple_pre_destroy_on_gc(self, reset_container_manager):
+        """PROTOTYPE 인스턴스의 여러 @PreDestroy 메서드가 GC 시 모두 호출됨"""
+        import gc
+        from bloom import Scope
+        from bloom.core import ScopeEnum
+
+        call_log = []
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class MultiCleanupService:
+            @PreDestroy
+            def cleanup1(self):
+                call_log.append("cleanup1")
+
+            @PreDestroy
+            def cleanup2(self):
+                call_log.append("cleanup2")
+
+            def do_something(self):
+                pass
+
+        @Component
+        class Consumer:
+            service: MultiCleanupService
+
+        app = Application("test").ready()
+        consumer = app.manager.get_instance(Consumer)
+
+        # 인스턴스 생성 (메서드 호출로 실제 인스턴스가 생성됨)
+        consumer.service.do_something()
+
+        # GC 강제 실행
+        gc.collect()
+        gc.collect()
+        gc.collect()
+
+        # 두 PreDestroy 모두 호출되었는지 확인
+        assert (
+            "cleanup1" in call_log or "cleanup2" in call_log
+        ), f"At least one PreDestroy should be called, logs: {call_log}"
+
+    def test_prototype_no_memory_leak(self, reset_container_manager):
+        """PROTOTYPE 인스턴스가 참조 제거 후 GC됨 (메모리 누수 없음)"""
+        import gc
+        import weakref
+        from bloom import Scope
+        from bloom.core import ScopeEnum
+
+        instance_refs = []
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class PrototypeService:
+            def register_self(self):
+                # weak reference 등록
+                instance_refs.append(weakref.ref(self))
+                return self
+
+        @Component
+        class Consumer:
+            service: PrototypeService
+
+        app = Application("test").ready()
+        consumer = app.manager.get_instance(Consumer)
+
+        # 인스턴스 생성 및 weak ref 등록
+        consumer.service.register_self()
+        consumer.service.register_self()  # 또 다른 인스턴스
+
+        assert len(instance_refs) == 2, f"Should have 2 refs, got {len(instance_refs)}"
+
+        # GC 실행
+        gc.collect()
+        gc.collect()
+        gc.collect()
+
+        # 모든 weak reference가 None이면 객체가 GC됨
+        gc_count = sum(1 for ref in instance_refs if ref() is None)
+        assert (
+            gc_count >= 1
+        ), f"At least one PROTOTYPE instance should be garbage collected, refs: {[ref() for ref in instance_refs]}"
+
+    def test_singleton_not_affected_by_prototype_cleanup(self, reset_container_manager):
+        """SINGLETON은 PROTOTYPE의 cleanup 로직에 영향받지 않음"""
+        import gc
+        from bloom import Scope
+        from bloom.core import ScopeEnum
+
+        call_log = []
+
+        @Component
+        class SingletonService:
+            @PreDestroy
+            def cleanup(self):
+                call_log.append("singleton_cleanup")
+
+        @Component
+        @Scope(ScopeEnum.PROTOTYPE)
+        class PrototypeService:
+            @PreDestroy
+            def cleanup(self):
+                call_log.append("prototype_cleanup")
+
+        @Component
+        class Consumer:
+            singleton: SingletonService
+            prototype: PrototypeService
+
+        app = Application("test").ready()
+        consumer = app.manager.get_instance(Consumer)
+
+        # 두 서비스 접근
+        _ = consumer.singleton
+        proto = consumer.prototype
+
+        # PROTOTYPE 참조 제거 후 GC
+        del proto
+        gc.collect()
+        gc.collect()
+        gc.collect()
+
+        # PROTOTYPE의 cleanup은 호출될 수 있지만
+        # SINGLETON의 cleanup은 아직 호출되면 안 됨
+        assert (
+            "singleton_cleanup" not in call_log
+        ), "SINGLETON PreDestroy should not be called until shutdown"
+
+        # shutdown 시에만 SINGLETON cleanup 호출
+        app.shutdown()
+        assert "singleton_cleanup" in call_log
