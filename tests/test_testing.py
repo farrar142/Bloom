@@ -533,14 +533,12 @@ class AsyncTestCaseTest(AsyncTestCase):
 
     components = [TestRepository, TestService, TestController]
 
-    @pytest.mark.asyncio
     async def test_async_get(self):
         """비동기 GET 요청 테스트"""
         response = await self.async_get("/items")
         self.assert_success(response)
         self.assertEqual(response.json(), ["item1", "item2", "item3"])
 
-    @pytest.mark.asyncio
     async def test_async_post(self):
         """비동기 POST 요청 테스트"""
         response = await self.async_post("/items", json={"name": "async_item"})

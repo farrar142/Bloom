@@ -88,7 +88,7 @@ class MiddlewareProcessContext:
     __aenter__에서 미들웨어 전처리, __aexit__에서 후처리 수행.
     """
 
-    __slots__ = ("chain", "request", "handler", "ctx")
+    __slots__ = ("chain", "request", "handler", "ctx", "_early_return_gen")
 
     def __init__(
         self,
@@ -100,6 +100,7 @@ class MiddlewareProcessContext:
         self.request = request
         self.handler = handler
         self.ctx = MiddlewareContext()
+        self._early_return_gen = None  # early return 시 닫아야 할 generator
 
     async def __aenter__(self) -> MiddlewareContext:
         """미들웨어 요청 단계 실행"""
@@ -121,8 +122,8 @@ class MiddlewareProcessContext:
                     else HttpResponse.ok(first_yield)
                 )
                 self.ctx.early_response = response
-                # early return 이전까지의 미들웨어만 응답 처리
-                self.ctx._generators.pop()
+                # early return한 generator는 따로 저장 (닫기 위해)
+                self._early_return_gen = self.ctx._generators.pop()
                 break
 
         return self.ctx
@@ -137,6 +138,9 @@ class MiddlewareProcessContext:
             ctx._response = await self.chain._finish_generators(
                 ctx._generators, request, ctx.early_response
             )
+            # early return한 generator도 닫음
+            if self._early_return_gen:
+                await self._early_return_gen.aclose()
         elif ctx._exception:
             ctx._response = await self.chain._handle_exception(
                 ctx._generators, request, ctx._exception
@@ -348,6 +352,9 @@ class MiddlewareChain(GroupRegistry[Middleware]):
                     response = result
             except StopAsyncIteration:
                 pass
+            finally:
+                # generator가 완전히 종료되지 않았을 수 있으므로 명시적으로 닫음
+                await gen.aclose()
 
         return response
 
@@ -389,6 +396,9 @@ class MiddlewareChain(GroupRegistry[Middleware]):
             except Exception as new_exc:
                 # 미들웨어가 예외를 다시 던지면 다음 미들웨어로 전달
                 exc = new_exc
+            finally:
+                # generator가 완전히 종료되지 않았을 수 있으므로 명시적으로 닫음
+                await gen.aclose()
 
         # 아무 미들웨어도 예외를 처리하지 않으면 기본 에러 응답
         if response is None:

@@ -40,6 +40,9 @@ class TestResponse:
         body: 원본 바이트 바디
     """
 
+    # pytest가 테스트 클래스로 수집하지 않도록 설정
+    __test__ = False
+
     status_code: int
     headers: dict[str, str] = field(default_factory=dict)
     body: bytes = b""
@@ -101,6 +104,9 @@ class TestClient:
         base_url: 기본 URL (기본: "http://testserver")
         default_headers: 모든 요청에 포함될 기본 헤더
     """
+
+    # pytest가 테스트 클래스로 수집하지 않도록 설정
+    __test__ = False
 
     def __init__(
         self,

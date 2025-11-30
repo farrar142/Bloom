@@ -348,7 +348,8 @@ class AsyncTestCase(TestCase):
     """
     비동기 테스트 케이스
 
-    pytest-asyncio와 함께 사용하거나, run_async로 동기 실행 가능합니다.
+    unittest.TestCase를 상속받아 async 테스트 메서드를 자동으로 실행합니다.
+    pytest-asyncio 없이도 async 테스트 메서드가 올바르게 실행됩니다.
 
     Usage:
         class TestMyService(AsyncTestCase):
@@ -359,6 +360,17 @@ class AsyncTestCase(TestCase):
                 result = await service.async_method()
                 self.assertEqual(result, "expected")
     """
+
+    def __init__(self, methodName: str = "runTest") -> None:
+        super().__init__(methodName)
+        # async 테스트 메서드를 동기 래퍼로 교체
+        test_method = getattr(self, methodName, None)
+        if test_method and asyncio.iscoroutinefunction(test_method):
+            # async 메서드를 run_async로 감싸서 교체
+            def sync_wrapper(async_method=test_method):
+                return self.run_async(async_method())
+
+            setattr(self, methodName, sync_wrapper)
 
     async def async_get(
         self,
