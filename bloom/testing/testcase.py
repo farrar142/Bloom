@@ -122,10 +122,6 @@ class TestCase(UnitTestCase):
         # ContainerManager 정리
         set_current_manager(None)
 
-        # PROTOTYPE __del__ 주입 추적 초기화
-        from ..core.lifecycle import clear_prototype_tracking
-        clear_prototype_tracking()
-
     # === 이벤트 루프 ===
 
     @property

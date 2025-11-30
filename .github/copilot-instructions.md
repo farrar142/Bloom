@@ -86,11 +86,12 @@ class Consumer:
 2. **PROTOTYPE**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
 3. 모든 필드는 `LazyFieldProxy`로 주입되어 Scope 정보를 활용
 
-**PROTOTYPE 라이프사이클:**
+**PROTOTYPE 라이프사이클 (Spring과 동일):**
 
-PROTOTYPE 인스턴스도 SINGLETON과 동일하게 `@PostConstruct`와 `@PreDestroy`가 호출됩니다:
-- **@PostConstruct**: 인스턴스 생성 직후 (필드 접근 시마다)
-- **@PreDestroy**: GC(가비지 컬렉션) 시점에 자동 호출
+PROTOTYPE은 Spring과 동일하게 컨테이너가 생성만 담당하고, 이후 관리는 클라이언트 책임입니다:
+
+- **@PostConstruct**: 인스턴스 생성 직후 호출됨 ✅
+- **@PreDestroy**: 호출되지 않음 ❌ (GC가 알아서 정리)
 
 ```python
 from bloom import Component, Scope, PostConstruct, PreDestroy
@@ -105,7 +106,9 @@ class PrototypeResource:
 
     @PreDestroy
     def cleanup(self):
-        print("리소스 정리됨")  # GC 시점에 자동 호출
+        # ⚠️ PROTOTYPE에서는 호출되지 않음!
+        # 리소스 정리가 필요하면 클라이언트가 직접 호출해야 함
+        print("리소스 정리됨")
 
 @Component
 class Consumer:
@@ -114,14 +117,15 @@ class Consumer:
     def use_resource(self):
         r = self.resource  # 새 인스턴스 생성 + @PostConstruct 호출
         r.do_something()
-        # 함수 종료 후 r의 참조가 사라지면 GC에 의해 @PreDestroy 호출
+        # PROTOTYPE은 컨테이너가 추적하지 않음
+        # 정리가 필요하면 r.cleanup() 직접 호출
 ```
 
-**구현 세부사항:**
-- PROTOTYPE 클래스에 `__del__` 메서드가 동적으로 주입됩니다
-- 클래스당 한 번만 주입되며, 기존 `__del__`이 있으면 체인으로 연결됩니다
-- GC 시점에 예외가 발생해도 무시됩니다 (안전한 정리 보장)
-- `@PostConstruct` 실패 시 예외가 전파됩니다 (SINGLETON과 동일)
+**Spring과 동일한 이유:**
+
+- PROTOTYPE은 요청마다 새 인스턴스를 생성하므로 컨테이너가 모든 인스턴스를 추적하면 메모리 누수 위험
+- 컨테이너가 라이프사이클을 관리하지 않으므로 GC가 자연스럽게 정리
+- 리소스 정리가 필요한 경우 클라이언트 코드에서 직접 처리
 
 ## 웹 레이어 구조
 

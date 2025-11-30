@@ -2,16 +2,17 @@
 
 Manager → Registry → Container(Entry) 패턴을 따릅니다.
 
-SINGLETON, PROTOTYPE, REQUEST 모두 이 클래스에서 라이프사이클을 관리합니다:
+SINGLETON, PROTOTYPE, REQUEST 스코프별 라이프사이클 관리:
 - SINGLETON: ready() 시점에 PostConstruct, shutdown() 시점에 PreDestroy
-- PROTOTYPE: 필드 접근 시 PostConstruct, GC 시점에 PreDestroy (__del__ 주입)
+- PROTOTYPE: 필드 접근 시 PostConstruct (Spring과 동일하게 PreDestroy 미호출, GC가 정리)
 - REQUEST: 요청 내 첫 접근 시 PostConstruct, 요청 종료 시 PreDestroy (RequestContext)
 """
 
 import asyncio
 import inspect
-from typing import Any, Callable, TYPE_CHECKING
+from typing import Any, Callable, ClassVar, TYPE_CHECKING
 
+from bloom.core.abstract import AbstractManager
 from .container import LifecycleHandlerContainer, LifecycleType, LifecycleTypeElement
 from .registry import LifecycleRegistry
 
@@ -20,18 +21,7 @@ if TYPE_CHECKING:
     from bloom.core.container import Container
 
 
-# =============================================================================
-# PROTOTYPE 클래스 추적 (클래스당 한 번만 __del__ 주입)
-# =============================================================================
-_prototype_del_injected: set[type] = set()
-
-
-def clear_prototype_tracking() -> None:
-    """PROTOTYPE 추적 상태 초기화 (테스트용)"""
-    _prototype_del_injected.clear()
-
-
-class LifecycleManager:
+class LifecycleManager(AbstractManager[LifecycleRegistry]):
     """
     애플리케이션 레벨에서 컨테이너들의 라이프사이클을 관리하는 클래스
 
@@ -43,7 +33,11 @@ class LifecycleManager:
     - @PreDestroy: 애플리케이션 종료 시 역순으로 호출
     """
 
+    registry_type: ClassVar[type[LifecycleRegistry]] = LifecycleRegistry
+    # item_type은 None - 수집 방식이 다름 (클래스 메서드 탐색)
+
     def __init__(self, container_manager: "ContainerManager"):
+        super().__init__()
         self.container_manager = container_manager
         self._registry = LifecycleRegistry()
         # 비동기 PostConstruct 핸들러들 (지연 실행용)
@@ -52,10 +46,13 @@ class LifecycleManager:
         self._pending_async_pre_destroy: list[Callable[[], Any]] = []
         # 초기화 완료 여부
         self._started = False
+        self._initialized = True  # AbstractManager 호환
 
     @property
     def registry(self) -> LifecycleRegistry:
         """레지스트리 반환"""
+        if self._registry is None:
+            raise RuntimeError("LifecycleManager is not initialized")
         return self._registry
 
     @property
@@ -136,7 +133,7 @@ class LifecycleManager:
             container: 대상 컨테이너
             instance: 컨테이너의 인스턴스
         """
-        handlers = self._registry.get_post_construct_handlers(container)
+        handlers = self.registry.get_post_construct_handlers(container)
         for handler in handlers:
             self._invoke_handler(handler, instance)
 
@@ -148,7 +145,7 @@ class LifecycleManager:
             container: 대상 컨테이너
             instance: 컨테이너의 인스턴스
         """
-        handlers = self._registry.get_pre_destroy_handlers(container)
+        handlers = self.registry.get_pre_destroy_handlers(container)
         for handler in handlers:
             self._invoke_handler_for_destroy(handler, instance)
 
@@ -291,47 +288,3 @@ class LifecycleManager:
         from bloom.core.request_context import RequestContext
 
         RequestContext.end()
-
-    def prepare_prototype_class(self, container: "Container") -> None:
-        """
-        PROTOTYPE 클래스에 __del__ 메서드를 주입하여 GC 시 PreDestroy 호출
-
-        클래스당 한 번만 호출되며, 이후 해당 클래스의 모든 인스턴스는
-        GC될 때 자동으로 @PreDestroy 메서드들이 호출됩니다.
-
-        Args:
-            container: PROTOTYPE 스코프의 컨테이너
-        """
-        target_cls = container.target
-        if target_cls in _prototype_del_injected:
-            return
-
-        pre_destroy_method_names = self._get_lifecycle_method_names(
-            target_cls, LifecycleType.PRE_DESTROY
-        )
-
-        if not pre_destroy_method_names:
-            _prototype_del_injected.add(target_cls)
-            return
-
-        # 원래 __del__ 저장
-        original_del = getattr(target_cls, "__del__", None)
-
-        def injected_del(self: Any) -> None:
-            """주입된 __del__: @PreDestroy 메서드들 호출 후 원래 __del__ 호출"""
-            for method_name in pre_destroy_method_names:
-                try:
-                    method = getattr(self, method_name, None)
-                    if method is not None:
-                        method()
-                except Exception:
-                    pass  # GC 시점에 예외는 무시
-
-            if original_del is not None:
-                try:
-                    original_del(self)
-                except Exception:
-                    pass
-
-        target_cls.__del__ = injected_del  # type: ignore
-        _prototype_del_injected.add(target_cls)

@@ -37,8 +37,8 @@ class LazyFieldProxy[T]:
     모든 필드 주입은 기본적으로 이 프록시로 래핑됩니다.
     접근 시점에 실제 인스턴스를 해결하며, Scope에 따라 동작이 다릅니다:
     - SINGLETON: 최초 접근 시 한 번만 resolve (캐시)
-    - PROTOTYPE: 매 접근마다 새 인스턴스 생성 (GC 시 PreDestroy 호출)
-    - REQUEST: HTTP 요청 컨텍스트마다 새 인스턴스 (TODO)
+    - PROTOTYPE: 매 접근마다 새 인스턴스 생성 (Spring과 동일하게 PreDestroy 미호출)
+    - REQUEST: HTTP 요청 컨텍스트마다 새 인스턴스
 
     사용법:
         @Component
@@ -56,7 +56,7 @@ class LazyFieldProxy[T]:
         "_lfp_resolved",
         "_lfp_target_type",
         "_lfp_scope",
-        "_lfp_container",  # PROTOTYPE PreDestroy 호출용
+        "_lfp_container",
     )
 
     def __init__(
@@ -64,7 +64,7 @@ class LazyFieldProxy[T]:
         resolver: Callable[[], T],
         target_type: type[T] | None = None,
         scope: Scope = Scope.SINGLETON,
-        container: Any = None,  # PROTOTYPE의 경우 Container 참조
+        container: Any = None,
     ):
         object.__setattr__(self, "_lfp_resolver", resolver)
         object.__setattr__(self, "_lfp_instance", None)
@@ -77,24 +77,19 @@ class LazyFieldProxy[T]:
         """실제 인스턴스를 해결합니다. Scope에 따라 동작이 다릅니다."""
         scope = object.__getattribute__(self, "_lfp_scope")
 
-        # PROTOTYPE: 매번 새 인스턴스 생성
+        # PROTOTYPE: 매번 새 인스턴스 생성 (Spring과 동일하게 PreDestroy 미호출)
         if scope == Scope.PROTOTYPE:
             resolver = object.__getattribute__(self, "_lfp_resolver")
             container = object.__getattribute__(self, "_lfp_container")
-
-            # 첫 resolve 시 __del__ 주입 (클래스당 한 번만) - LifecycleManager 위임
-            if container is not None:
-                manager = container._get_manager()
-                if manager is not None:
-                    manager.lifecycle.prepare_prototype_class(container)
-
             instance = resolver()
 
-            # PROTOTYPE도 @PostConstruct 호출 - LifecycleManager 위임
+            # PROTOTYPE @PostConstruct 호출 - LifecycleManager 위임
             if container is not None:
                 manager = container._get_manager()
                 if manager is not None:
-                    manager.lifecycle.invoke_prototype_post_construct(instance, container)
+                    manager.lifecycle.invoke_prototype_post_construct(
+                        instance, container
+                    )
 
             return instance
 

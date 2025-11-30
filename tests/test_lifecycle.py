@@ -229,8 +229,8 @@ class TestLifecycleHooks:
         assert container.lifecycle_type == LifecycleType.PRE_DESTROY
 
 
-class TestPrototypePreDestroy:
-    """PROTOTYPE 스코프에서 PostConstruct/PreDestroy 호출 테스트"""
+class TestPrototypePostConstruct:
+    """PROTOTYPE 스코프에서 PostConstruct 호출 테스트 (Spring과 동일하게 PreDestroy는 미호출)"""
 
     def test_prototype_post_construct_on_access(self, reset_container_manager):
         """PROTOTYPE 인스턴스 생성 시 @PostConstruct가 호출됨"""
@@ -266,12 +266,14 @@ class TestPrototypePreDestroy:
 
         # 두 번째 접근: 또 다른 새 인스턴스 + PostConstruct 호출
         service2_id = consumer.service.get_id()
-        assert len(call_log) == 2, f"PostConstruct should be called again, logs: {call_log}"
+        assert (
+            len(call_log) == 2
+        ), f"PostConstruct should be called again, logs: {call_log}"
         assert f"init:{service2_id}" in call_log
         assert service1_id != service2_id
 
-    def test_prototype_pre_destroy_on_gc(self, reset_container_manager):
-        """PROTOTYPE 인스턴스가 GC될 때 @PreDestroy가 호출됨"""
+    def test_prototype_pre_destroy_not_called(self, reset_container_manager):
+        """PROTOTYPE 인스턴스는 PreDestroy가 호출되지 않음 (Spring과 동일)"""
         import gc
         from bloom import Scope
         from bloom.core import ScopeEnum
@@ -290,7 +292,6 @@ class TestPrototypePreDestroy:
                 call_log.append(f"cleanup:{id(self)}")
 
             def get_id(self):
-                """인스턴스 ID 반환용 메서드"""
                 return id(self)
 
         @Component
@@ -300,10 +301,8 @@ class TestPrototypePreDestroy:
         app = Application("test").ready()
         consumer = app.manager.get_instance(Consumer)
 
-        # 첫 번째 접근: 새 인스턴스 생성 (프록시를 통해 메서드 호출)
+        # 인스턴스 생성
         service1_id = consumer.service.get_id()
-
-        # 두 번째 접근: 또 다른 새 인스턴스
         service2_id = consumer.service.get_id()
 
         assert (
@@ -312,60 +311,20 @@ class TestPrototypePreDestroy:
 
         # PostConstruct가 호출되었는지 확인
         init_count = sum(1 for log in call_log if log.startswith("init:"))
-        assert init_count == 2, f"PostConstruct should be called twice, logs: {call_log}"
+        assert (
+            init_count == 2
+        ), f"PostConstruct should be called twice, logs: {call_log}"
 
         # GC 강제 실행
         gc.collect()
-        gc.collect()  # 여러 번 호출하여 확실하게 정리
+        gc.collect()
         gc.collect()
 
-        # PreDestroy가 호출되었는지 확인
+        # PreDestroy는 호출되지 않아야 함 (Spring과 동일하게 컨테이너가 관리하지 않음)
         cleanup_count = sum(1 for log in call_log if log.startswith("cleanup:"))
         assert (
-            cleanup_count >= 1
-        ), f"PreDestroy should be called on GC, logs: {call_log}"
-
-    def test_prototype_multiple_pre_destroy_on_gc(self, reset_container_manager):
-        """PROTOTYPE 인스턴스의 여러 @PreDestroy 메서드가 GC 시 모두 호출됨"""
-        import gc
-        from bloom import Scope
-        from bloom.core import ScopeEnum
-
-        call_log = []
-
-        @Component
-        @Scope(ScopeEnum.PROTOTYPE)
-        class MultiCleanupService:
-            @PreDestroy
-            def cleanup1(self):
-                call_log.append("cleanup1")
-
-            @PreDestroy
-            def cleanup2(self):
-                call_log.append("cleanup2")
-
-            def do_something(self):
-                pass
-
-        @Component
-        class Consumer:
-            service: MultiCleanupService
-
-        app = Application("test").ready()
-        consumer = app.manager.get_instance(Consumer)
-
-        # 인스턴스 생성 (메서드 호출로 실제 인스턴스가 생성됨)
-        consumer.service.do_something()
-
-        # GC 강제 실행
-        gc.collect()
-        gc.collect()
-        gc.collect()
-
-        # 두 PreDestroy 모두 호출되었는지 확인
-        assert (
-            "cleanup1" in call_log or "cleanup2" in call_log
-        ), f"At least one PreDestroy should be called, logs: {call_log}"
+            cleanup_count == 0
+        ), f"PreDestroy should NOT be called for PROTOTYPE, logs: {call_log}"
 
     def test_prototype_no_memory_leak(self, reset_container_manager):
         """PROTOTYPE 인스턴스가 참조 제거 후 GC됨 (메모리 누수 없음)"""
@@ -408,9 +367,8 @@ class TestPrototypePreDestroy:
             gc_count >= 1
         ), f"At least one PROTOTYPE instance should be garbage collected, refs: {[ref() for ref in instance_refs]}"
 
-    def test_singleton_not_affected_by_prototype_cleanup(self, reset_container_manager):
-        """SINGLETON은 PROTOTYPE의 cleanup 로직에 영향받지 않음"""
-        import gc
+    def test_singleton_not_affected_by_prototype(self, reset_container_manager):
+        """SINGLETON은 PROTOTYPE과 독립적으로 동작"""
         from bloom import Scope
         from bloom.core import ScopeEnum
 
@@ -439,16 +397,9 @@ class TestPrototypePreDestroy:
 
         # 두 서비스 접근
         _ = consumer.singleton
-        proto = consumer.prototype
+        _ = consumer.prototype
 
-        # PROTOTYPE 참조 제거 후 GC
-        del proto
-        gc.collect()
-        gc.collect()
-        gc.collect()
-
-        # PROTOTYPE의 cleanup은 호출될 수 있지만
-        # SINGLETON의 cleanup은 아직 호출되면 안 됨
+        # SINGLETON cleanup은 shutdown 전까지 호출되면 안 됨
         assert (
             "singleton_cleanup" not in call_log
         ), "SINGLETON PreDestroy should not be called until shutdown"
@@ -456,3 +407,5 @@ class TestPrototypePreDestroy:
         # shutdown 시에만 SINGLETON cleanup 호출
         app.shutdown()
         assert "singleton_cleanup" in call_log
+        # PROTOTYPE cleanup은 호출되지 않음
+        assert "prototype_cleanup" not in call_log
