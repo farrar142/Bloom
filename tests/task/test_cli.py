@@ -47,14 +47,33 @@ class TestMainCLI:
 
     def test_no_command_shows_help(self, capsys):
         """명령어 없으면 도움말 표시"""
-        with patch.object(sys, "argv", ["bloom"]):
-            with pytest.raises(SystemExit) as exc:
-                main()
-            assert exc.value.code == 0
+        from click.testing import CliRunner
+        from bloom.__main__ import cli
 
-    def test_worker_command_requires_app(self, capsys):
-        """worker 명령어는 app 인자 필요"""
-        with patch.object(sys, "argv", ["bloom", "worker"]):
-            with pytest.raises(SystemExit) as exc:
-                main()
-            assert exc.value.code != 0
+        runner = CliRunner()
+        result = runner.invoke(cli, [])
+        # Click은 명령어 없이 실행하면 help를 보여주고 성공(0) 또는 실패(2) 반환
+        assert result.exit_code in [0, 2]
+        assert "Usage:" in result.output or "Commands:" in result.output
+
+    def test_worker_command_uses_default_application(self, capsys):
+        """worker 명령어는 기본 application:application.queue 사용"""
+        from click.testing import CliRunner
+        from bloom.__main__ import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["worker"])
+        # 기본값 사용 시 application 모듈이 없으면 친절한 에러
+        assert result.exit_code != 0
+        assert "Could not import default application" in result.output
+
+    def test_worker_command_with_explicit_application(self, capsys):
+        """worker 명령어는 명시적 application 지정 가능"""
+        from click.testing import CliRunner
+        from bloom.__main__ import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["worker", "--application=nonexistent:app.queue"])
+        assert result.exit_code != 0
+        # 명시적 지정 시 import 에러
+        assert "Could not import module" in result.output

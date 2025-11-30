@@ -1,21 +1,30 @@
 """Bloom CLI
 
 사용 예시:
-    # 워커 실행
-    bloom worker main:app.queue
-    bloom worker main:app.queue --concurrency 4
-    bloom worker main:app.queue -c 8
+    # 워커 실행 (기본: application:application.queue)
+    bloom worker
+    bloom worker --concurrency 4
+    bloom worker --application=main:app.queue -c 8
+
+    # DB 관리
+    bloom db makemigrations
+    bloom db migrate
+    bloom db showmigrations
 
     # Python -m 으로 실행
-    python -m bloom worker main:app.queue
+    python -m bloom worker
+    python -m bloom db makemigrations
 """
 
-import argparse
+from __future__ import annotations
+
 import importlib
 import os
 import sys
 from pathlib import Path
 from typing import Any
+
+import click
 
 # bloom 패키지가 설치되지 않은 경우를 위해 경로 추가
 # __main__.py가 bloom/ 안에 있으므로 상위 디렉토리를 추가
@@ -67,62 +76,121 @@ def import_from_string(import_string: str) -> Any:
     return obj
 
 
-def worker_command(args: argparse.Namespace) -> None:
-    """워커 실행 명령"""
+# =============================================================================
+# Main CLI Group
+# =============================================================================
+
+
+@click.group()
+@click.version_option(version="0.1.0", prog_name="bloom")
+def cli():
+    """Bloom Framework CLI
+
+    \b
+    Examples:
+        bloom worker
+        bloom worker --application=main:app.queue
+        bloom db makemigrations
+        bloom db migrate
+    """
+    pass
+
+
+# =============================================================================
+# worker command
+# =============================================================================
+
+
+@cli.command()
+@click.option(
+    "-a",
+    "--application",
+    type=str,
+    default=None,
+    help="Application path (default: 'application:application.queue')",
+)
+@click.option(
+    "-c",
+    "--concurrency",
+    type=int,
+    default=4,
+    help="Number of concurrent workers (default: 4)",
+)
+def worker(application: str | None, concurrency: int):
+    """Start a task worker
+
+    \b
+    Runs the QueueApplication from the specified application module.
+    Default: application:application.queue
+
+    \b
+    Examples:
+        bloom worker
+        bloom worker --concurrency 8
+        bloom worker --application=main:app.queue
+        bloom worker -a examples.task_example_app:app.queue -c 4
+    """
     from bloom.logging import configure_logging
     from bloom.task.queue_app import QueueApplication
 
-    print(f"[Bloom] Importing {args.app}")
+    # 기본값: application:application.queue
+    app_path = application or "application:application.queue"
+
+    click.echo(f"[Bloom] Importing {app_path}")
 
     # app.queue 임포트
     try:
-        queue_app = import_from_string(args.app)
+        queue_app = import_from_string(app_path)
     except ImportError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+        if application:
+            # 명시적으로 지정한 경우 에러
+            raise click.ClickException(str(e))
+        else:
+            # 기본값 사용 시 더 친절한 에러 메시지
+            raise click.ClickException(
+                f"Could not import default application.\n\n"
+                f"Make sure you have 'application.py' with:\n"
+                f"  from bloom import Application\n"
+                f"  application = Application('myapp')\n"
+                f"  # application.queue is your QueueApplication\n\n"
+                f"Or specify explicitly:\n"
+                f"  bloom worker --application=mymodule:app.queue"
+            )
 
     # 로깅 설정 (bloom.logging 모듈 사용)
     configure_logging(level="INFO")
 
     # QueueApplication 확인
     if not isinstance(queue_app, QueueApplication):
-        print(
-            f"Error: Expected QueueApplication, got {type(queue_app).__name__}",
-            file=sys.stderr,
+        raise click.ClickException(
+            f"Expected QueueApplication, got {type(queue_app).__name__}"
         )
-        sys.exit(1)
 
     # concurrency 설정
-    queue_app._concurrency = args.concurrency
+    queue_app._concurrency = concurrency
 
     # 워커 실행
     queue_app.run_sync()
 
 
-def main() -> None:
-    """CLI 메인 엔트리포인트"""
-    parser = argparse.ArgumentParser(prog="bloom", description="Bloom Framework CLI")
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+# =============================================================================
+# db command group (from bloom.db.cli)
+# =============================================================================
 
-    # worker 명령
-    worker_parser = subparsers.add_parser("worker", help="Start a task worker")
-    worker_parser.add_argument("app", help="Application to run (e.g., main:app.queue)")
-    worker_parser.add_argument(
-        "-c",
-        "--concurrency",
-        type=int,
-        default=4,
-        help="Number of concurrent workers (default: 4)",
-    )
+# DB CLI 그룹을 메인 CLI에 추가
+from bloom.db.cli import db as db_cli
 
-    args = parser.parse_args()
+cli.add_command(db_cli)
 
-    if args.command is None:
-        parser.print_help()
-        sys.exit(0)
 
-    if args.command == "worker":
-        worker_command(args)
+# =============================================================================
+# Entry Point
+# =============================================================================
+
+
+def main():
+    """CLI 엔트리 포인트"""
+    cli()
 
 
 if __name__ == "__main__":

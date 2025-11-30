@@ -84,3 +84,5 @@ uv.lock
 # Generated files
 *.txt
 !requirements.txt
+
+/migrations
