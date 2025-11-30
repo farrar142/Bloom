@@ -38,26 +38,30 @@ Options:
   --help     Show this message and exit.
 
 Commands:
-  db      Database management commands
-  worker  Start a task worker
+  db           Database management commands
+  server       Start development server
+  startproject Create a new Bloom project
+  task         Task management commands
+  tests        Run tests with pytest
 ```
 
 ---
 
-## worker - 태스크 워커
+## task - 태스크 관리
 
 백그라운드 태스크를 처리하는 워커를 실행합니다.
 
 ### 사용법
 
 ```bash
-bloom worker [OPTIONS]
+bloom task [OPTIONS]
 ```
 
 ### 옵션
 
 | 옵션            | 단축 | 설명             | 기본값                    |
 | --------------- | ---- | ---------------- | ------------------------- |
+| `--worker`      | `-w` | 워커 시작        | -                         |
 | `--application` | `-a` | Application 경로 | `application:application` |
 | `--concurrency` | `-c` | 동시 워커 수     | 4                         |
 
@@ -65,18 +69,19 @@ bloom worker [OPTIONS]
 
 ```bash
 # 기본 실행 (application:application 사용, 자동으로 .queue 접근)
-bloom worker
+bloom task --worker
+bloom task -w
 
 # 동시성 설정
-bloom worker --concurrency 8
-bloom worker -c 8
+bloom task -w --concurrency 8
+bloom task -w -c 8
 
 # 다른 애플리케이션 지정 (Application 또는 QueueApplication 모두 가능)
-bloom worker --application=myapp.main:app
-bloom worker -a myapp.main:app
+bloom task -w --application=myapp.main:app
+bloom task -w -a myapp.main:app
 
 # 직접 QueueApplication 지정도 가능
-bloom worker -a myapp.main:app.queue
+bloom task -w -a myapp.main:app.queue
 ```
 
 ### 자동 .queue 탐색
@@ -85,8 +90,8 @@ bloom worker -a myapp.main:app.queue
 
 ```bash
 # 이 두 명령은 동일합니다
-bloom worker --application=myapp:app
-bloom worker --application=myapp:app.queue
+bloom task -w --application=myapp:app
+bloom task -w --application=myapp:app.queue
 ```
 
 ### Application 설정
@@ -94,12 +99,8 @@ bloom worker --application=myapp:app.queue
 ```python
 # application.py
 from bloom import Application
-from bloom.task import QueueApplication
 
 application = Application("myapp")
-
-# QueueApplication 속성으로 등록
-application.queue = QueueApplication(application)
 
 # 태스크 정의
 @application.queue.task
@@ -121,7 +122,145 @@ Make sure you have 'application.py' with:
   # application.queue is your QueueApplication
 
 Or specify explicitly:
-  bloom worker --application=mymodule:app.queue
+  bloom task -w --application=mymodule:app
+```
+
+---
+
+## tests - 테스트 실행
+
+pytest를 사용하여 테스트를 실행합니다.
+
+### 사용법
+
+```bash
+bloom tests [OPTIONS] [PATHS]...
+```
+
+### 옵션
+
+| 옵션          | 단축 | 설명                  | 기본값   |
+| ------------- | ---- | --------------------- | -------- |
+| `--verbose`   | `-v` | 상세 출력             | -        |
+| `--quiet`     | `-q` | 간단한 출력           | -        |
+| `--exitfirst` | `-x` | 첫 실패 시 종료       | -        |
+| `-k`          |      | 표현식에 맞는 테스트  | -        |
+| `--cov`       |      | 커버리지 대상         | -        |
+
+### 예제
+
+```bash
+# 기본 실행 (tests/ 디렉토리)
+bloom tests
+
+# 특정 파일 실행
+bloom tests tests/test_api.py
+
+# 상세 출력과 함께
+bloom tests -v
+
+# 첫 실패 시 종료
+bloom tests -x
+
+# 조합
+bloom tests -v -x
+
+# 표현식으로 필터링
+bloom tests -k "test_user"
+
+# 커버리지 측정
+bloom tests --cov=src
+```
+
+---
+
+## server - 개발 서버
+
+uvicorn을 사용하여 개발 서버를 실행합니다.
+
+### 사용법
+
+```bash
+bloom server [OPTIONS]
+```
+
+### 옵션
+
+| 옵션            | 단축 | 설명             | 기본값                    |
+| --------------- | ---- | ---------------- | ------------------------- |
+| `--application` | `-a` | Application 경로 | `application:application` |
+| `--host`        | `-h` | 바인딩 호스트    | `127.0.0.1`               |
+| `--port`        | `-p` | 바인딩 포트      | `8000`                    |
+| `--reload`      |      | 자동 리로드 활성화 | `True`                  |
+| `--no-reload`   |      | 자동 리로드 비활성화 | -                      |
+
+### 예제
+
+```bash
+# 기본 실행
+bloom server
+
+# 포트 변경
+bloom server --port 3000
+bloom server -p 3000
+
+# 호스트와 포트 지정
+bloom server --host 0.0.0.0 --port 8080
+
+# 자동 리로드 없이
+bloom server --no-reload
+
+# 다른 애플리케이션 지정
+bloom server --application=backend.application:application
+```
+
+---
+
+## startproject - 프로젝트 생성
+
+새 Bloom 프로젝트를 생성합니다.
+
+### 사용법
+
+```bash
+bloom startproject [OPTIONS] [PATH]
+```
+
+### 옵션
+
+| 옵션     | 단축 | 설명          | 기본값          |
+| -------- | ---- | ------------- | --------------- |
+| `--name` | `-n` | 프로젝트 이름 | 디렉토리 이름   |
+
+### 예제
+
+```bash
+# 새 디렉토리에 프로젝트 생성
+bloom startproject myproject
+
+# 현재 디렉토리에 프로젝트 생성
+bloom startproject .
+
+# 이름 지정
+bloom startproject . --name myapp
+```
+
+### 생성되는 구조
+
+```
+myproject/
+├── application.py
+├── settings/
+│   ├── __init__.py
+│   ├── database.py
+│   ├── advice.py
+│   └── task.py
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py
+│   └── test_example.py
+├── pyproject.toml
+└── README.md
 ```
 
 ---

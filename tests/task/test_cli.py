@@ -56,24 +56,34 @@ class TestMainCLI:
         assert result.exit_code in [0, 2]
         assert "Usage:" in result.output or "Commands:" in result.output
 
-    def test_worker_command_uses_default_application(self, capsys):
-        """worker 명령어는 기본 application:application.queue 사용"""
+    def test_task_worker_command_uses_default_application(self, capsys):
+        """task --worker 명령어는 기본 application:application.queue 사용"""
         from click.testing import CliRunner
         from bloom.__main__ import cli
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["worker"])
+        result = runner.invoke(cli, ["task", "--worker"])
         # 기본값 사용 시 application 모듈이 없으면 친절한 에러
         assert result.exit_code != 0
         assert "Could not import default application" in result.output
 
-    def test_worker_command_with_explicit_application(self, capsys):
-        """worker 명령어는 명시적 application 지정 가능"""
+    def test_task_worker_command_with_explicit_application(self, capsys):
+        """task --worker 명령어는 명시적 application 지정 가능"""
         from click.testing import CliRunner
         from bloom.__main__ import cli
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["worker", "--application=nonexistent:app.queue"])
+        result = runner.invoke(cli, ["task", "--worker", "--application=nonexistent:app.queue"])
         assert result.exit_code != 0
         # 명시적 지정 시 import 에러
         assert "Could not import module" in result.output
+
+    def test_task_without_worker_shows_help(self, capsys):
+        """task 명령어만 실행하면 도움말 표시"""
+        from click.testing import CliRunner
+        from bloom.__main__ import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["task"])
+        assert result.exit_code == 0
+        assert "Usage:" in result.output

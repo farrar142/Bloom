@@ -1,19 +1,24 @@
 """Bloom CLI
 
 사용 예시:
-    # 워커 실행 (기본: application:application.queue)
-    bloom worker
-    bloom worker --concurrency 4
-    bloom worker --application=main:app.queue -c 8
+    # 태스크 워커
+    bloom task --worker
+    bloom task -w --concurrency 4
+
+    # 테스트
+    bloom tests
+    bloom tests -v -x
+
+    # 개발 서버
+    bloom server
+    bloom server --port 3000
 
     # DB 관리
     bloom db makemigrations
     bloom db migrate
-    bloom db showmigrations
 
-    # Python -m 으로 실행
-    python -m bloom worker
-    python -m bloom db makemigrations
+    # 프로젝트 생성
+    bloom startproject myproject
 """
 
 from __future__ import annotations
@@ -90,97 +95,15 @@ def cli():
     Examples:
         bloom server
         bloom server --port 3000
-        bloom worker
-        bloom worker --application=main:app
+        bloom task --worker
+        bloom task -w --concurrency 4
+        bloom tests
+        bloom tests -v -x
         bloom db makemigrations
         bloom db migrate
         bloom startproject myproject
     """
     pass
-
-
-# =============================================================================
-# worker command
-# =============================================================================
-
-
-@cli.command()
-@click.option(
-    "-a",
-    "--application",
-    type=str,
-    default=None,
-    help="Application path (default: 'application:application')",
-)
-@click.option(
-    "-c",
-    "--concurrency",
-    type=int,
-    default=4,
-    help="Number of concurrent workers (default: 4)",
-)
-def worker(application: str | None, concurrency: int):
-    """Start a task worker
-
-    \b
-    Runs the QueueApplication from the specified application module.
-    Automatically finds .queue attribute if Application is specified.
-    Default: application:application
-
-    \b
-    Examples:
-        bloom worker
-        bloom worker --concurrency 8
-        bloom worker --application=main:app
-        bloom worker -a examples.task_example_app:app -c 4
-    """
-    from bloom.log import configure_logging
-    from bloom.task.queue_app import QueueApplication
-    from bloom import Application
-
-    # 기본값: application:application
-    app_path = application or "application:application"
-
-    click.echo(f"[Bloom] Importing {app_path}")
-
-    # 앱 임포트
-    try:
-        obj = import_from_string(app_path)
-    except ImportError as e:
-        if application:
-            # 명시적으로 지정한 경우 에러
-            raise click.ClickException(str(e))
-        else:
-            # 기본값 사용 시 더 친절한 에러 메시지
-            raise click.ClickException(
-                f"Could not import default application.\n\n"
-                f"Make sure you have 'application.py' with:\n"
-                f"  from bloom import Application\n"
-                f"  application = Application('myapp')\n"
-                f"  # application.queue is your QueueApplication\n\n"
-                f"Or specify explicitly:\n"
-                f"  bloom worker --application=mymodule:app"
-            )
-
-    # Application인 경우 .queue 자동 접근
-    if isinstance(obj, Application):
-        click.echo(f"[Bloom] Found Application, accessing .queue")
-        queue_app = obj.queue
-    elif isinstance(obj, QueueApplication):
-        queue_app = obj
-    else:
-        raise click.ClickException(
-            f"Expected Application or QueueApplication, got {type(obj).__name__}"
-        )
-
-    # 로깅 설정 (bloom.logging 모듈 사용)
-    configure_logging(level="INFO")
-
-    # concurrency 설정
-    queue_app._concurrency = concurrency
-
-    # 워커 실행
-    queue_app.run_sync()
 
 
 # =============================================================================
@@ -228,6 +151,7 @@ def server(application: str | None, host: str, port: int, reload: bool):
         bloom server --port 3000
         bloom server --host 0.0.0.0 --port 8080
         bloom server --application=main:app --no-reload
+        bloom server --application=backend/application:app
     """
     try:
         import uvicorn
@@ -237,8 +161,24 @@ def server(application: str | None, host: str, port: int, reload: bool):
             "Install it with: pip install uvicorn[standard]"
         )
 
+    # 현재 디렉토리를 PYTHONPATH에 추가 (reload 프로세스에서도 작동하도록)
+    cwd = os.getcwd()
+    python_path = os.environ.get("PYTHONPATH", "")
+    if cwd not in python_path.split(os.pathsep):
+        os.environ["PYTHONPATH"] = (
+            f"{cwd}{os.pathsep}{python_path}" if python_path else cwd
+        )
+
     # 기본값: application:application
     app_path = application or "application:application"
+
+    # 경로 구분자 변환: backend/application:app -> backend.application:app
+    if "/" in app_path:
+        module_part, attr_part = (
+            app_path.split(":", 1) if ":" in app_path else (app_path, "")
+        )
+        module_part = module_part.replace("/", ".")
+        app_path = f"{module_part}:{attr_part}" if attr_part else module_part
 
     # ASGI 앱 경로 생성
     asgi_path = f"{app_path}.asgi"
@@ -255,91 +195,6 @@ def server(application: str | None, host: str, port: int, reload: bool):
         port=port,
         reload=reload,
     )
-
-
-# =============================================================================
-# test command
-# =============================================================================
-
-
-@cli.command()
-@click.argument("paths", nargs=-1)
-@click.option(
-    "-v",
-    "--verbose",
-    is_flag=True,
-    help="Verbose output",
-)
-@click.option(
-    "-x",
-    "--exitfirst",
-    is_flag=True,
-    help="Exit on first failure",
-)
-@click.option(
-    "-k",
-    type=str,
-    default=None,
-    help="Run tests matching expression",
-)
-@click.option(
-    "--cov",
-    type=str,
-    default=None,
-    help="Coverage target (e.g., --cov=src)",
-)
-def test(
-    paths: tuple[str, ...],
-    verbose: bool,
-    exitfirst: bool,
-    k: str | None,
-    cov: str | None,
-):
-    """Run tests with pytest
-
-    \b
-    Runs pytest with common options.
-    Default: runs all tests in tests/ directory.
-
-    \b
-    Examples:
-        bloom test
-        bloom test tests/test_api.py
-        bloom test -v -x
-        bloom test -k "test_user"
-        bloom test --cov=src
-    """
-    try:
-        import pytest
-    except ImportError:
-        raise click.ClickException(
-            "pytest is required for the test command.\n"
-            "Install it with: pip install pytest"
-        )
-
-    # pytest 인자 구성
-    args = list(paths) if paths else ["tests/"]
-
-    if verbose:
-        args.append("-v")
-    if exitfirst:
-        args.append("-x")
-    if k:
-        args.extend(["-k", k])
-    if cov:
-        try:
-            import pytest_cov
-
-            args.extend([f"--cov={cov}"])
-        except ImportError:
-            click.echo("[Bloom] Warning: pytest-cov not installed, skipping coverage")
-
-    click.echo(f"[Bloom] Running: pytest {' '.join(args)}")
-    click.echo()
-
-    # pytest 실행
-    exit_code = pytest.main(args)
-    raise SystemExit(exit_code)
 
 
 # =============================================================================
@@ -453,6 +308,24 @@ def _copy_template(template_dir: Path, target_path: Path, project_name: str):
 from bloom.db.cli import db as db_cli
 
 cli.add_command(db_cli)
+
+
+# =============================================================================
+# task command (from bloom.task.cli)
+# =============================================================================
+
+from bloom.task.cli import task as task_cli
+
+cli.add_command(task_cli)
+
+
+# =============================================================================
+# tests command (from bloom.tests.cli)
+# =============================================================================
+
+from bloom.tests.cli import tests as tests_cli
+
+cli.add_command(tests_cli)
 
 
 # =============================================================================

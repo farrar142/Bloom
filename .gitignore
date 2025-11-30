@@ -86,3 +86,4 @@ uv.lock
 !requirements.txt
 
 /migrations
+*.sqlite3

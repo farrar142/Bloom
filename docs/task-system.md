@@ -216,12 +216,13 @@ uvicorn main:app.asgi --workers 4
 
 ```bash
 # bloom CLI로 워커 실행
-bloom worker main:app.queue
-bloom worker main:app.queue --concurrency 4
-bloom worker main:app.queue -c 8
+bloom task --worker
+bloom task -w --concurrency 4
+bloom task -w -c 8
 
-# Python -m으로 실행
-python -m bloom worker main:app.queue
+# 특정 애플리케이션 지정
+bloom task -w -a main:app
+bloom task -w -a main:app.queue
 
 # 직접 코드로 실행
 import asyncio
@@ -297,7 +298,7 @@ def send_email(self, to: str) -> str:
 ## QueueApplication (app.queue)
 
 `app.queue`는 워커 프로세스를 위한 애플리케이션입니다.
-`uvicorn main:app.asgi`처럼 `bloom worker main:app.queue`로 실행합니다.
+`uvicorn main:app.asgi`처럼 `bloom task -w -a main:app`로 실행합니다.
 
 ### 프로퍼티
 
@@ -349,25 +350,29 @@ app.queue.on_shutdown(on_shutdown)
 
 ## CLI
 
-### bloom worker
+### bloom task
 
 ```bash
-# 기본 실행
-bloom worker main:app.queue
+# 워커 시작
+bloom task --worker
+bloom task -w
 
 # 동시성 설정
-bloom worker main:app.queue --concurrency 4
-bloom worker main:app.queue -c 8
+bloom task -w --concurrency 4
+bloom task -w -c 8
 
-# Python -m 실행
-python -m bloom worker main:app.queue
+# 특정 애플리케이션 지정
+bloom task -w -a main:app
+bloom task -w -a main:app.queue
 ```
 
 ### 옵션
 
-| 옵션            | 단축 | 기본값 | 설명         |
-| --------------- | ---- | ------ | ------------ |
-| `--concurrency` | `-c` | 4      | 동시 워커 수 |
+| 옵션            | 단축 | 기본값                    | 설명             |
+| --------------- | ---- | ------------------------- | ---------------- |
+| `--worker`      | `-w` | -                         | 워커 시작        |
+| `--application` | `-a` | `application:application` | Application 경로 |
+| `--concurrency` | `-c` | 4                         | 동시 워커 수     |
 
 ## 내부 구조
 
@@ -527,5 +532,5 @@ docker run -p 6379:6379 redis
 uvicorn main:app.asgi --reload
 
 # 터미널 3: 워커
-bloom worker main:app.queue -c 4
+bloom task -w -a main:app -c 4
 ```
