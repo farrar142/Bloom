@@ -261,17 +261,6 @@ class MethodInvocationManager(AbstractManager["MethodAdviceRegistry"]):
             container=container, instance=instance, args=args, kwargs=kwargs
         )
 
-        # Advice의 invoke_sync 확인 - 값을 반환하면 그대로 반환
-        for advice in advices:
-            result = advice.invoke_sync(
-                context,
-                lambda: self._execute_chain_sync(
-                    [a for a in advices if a is not advice], context, handler
-                ),
-            )
-            if result is not None:
-                return result
-
         return self._execute_chain_sync(advices, context, handler)
 
     def _execute_chain_sync(

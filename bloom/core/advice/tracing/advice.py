@@ -6,6 +6,14 @@ from ..base import MethodAdvice
 from .frame import CallFrame
 from .context import push_frame, pop_frame, get_call_depth
 
+# 성능 최적화: 모듈 수준에서 import (함수 내 동적 import 제거)
+from ...events import (
+    SystemEventBus,
+    MethodEnteredEvent,
+    MethodExitedEvent,
+    MethodErrorEvent,
+)
+
 if TYPE_CHECKING:
     from ..context import InvocationContext
     from ...container import HandlerContainer
@@ -157,8 +165,6 @@ class CallStackTraceAdvice(MethodAdvice):
 
     def _should_publish_event(self, context: "InvocationContext") -> bool:
         """이벤트 발행 여부 결정 (무한 재귀 방지)"""
-        from ...events import SystemEventBus
-
         # SystemEventBus 메서드는 이벤트 발행 건너뜀 (무한 재귀 방지)
         if isinstance(context.instance, SystemEventBus):
             return False
@@ -175,14 +181,17 @@ class CallStackTraceAdvice(MethodAdvice):
         if manager is None:
             return
 
-        from ...events import MethodEnteredEvent
+        # 리스너가 없으면 이벤트 생성도 건너뜀
+        bus = manager.system_events
+        if MethodEnteredEvent not in bus._handlers:
+            return
 
         event = MethodEnteredEvent(
             frame=frame,
             instance=context.instance,
             method_name=frame.method_name,
         )
-        manager.system_events.publish(event)
+        bus.publish(event)
 
     def _publish_exited_event(
         self, context: "InvocationContext", frame: CallFrame
@@ -195,7 +204,10 @@ class CallStackTraceAdvice(MethodAdvice):
         if manager is None:
             return
 
-        from ...events import MethodExitedEvent
+        # 리스너가 없으면 이벤트 생성도 건너뜀
+        bus = manager.system_events
+        if MethodExitedEvent not in bus._handlers:
+            return
 
         event = MethodExitedEvent(
             frame=frame,
@@ -203,7 +215,7 @@ class CallStackTraceAdvice(MethodAdvice):
             method_name=frame.method_name,
             duration_ms=frame.elapsed_ms,
         )
-        manager.system_events.publish(event)
+        bus.publish(event)
 
     def _publish_error_event(
         self, context: "InvocationContext", frame: CallFrame, error: Exception
@@ -216,7 +228,10 @@ class CallStackTraceAdvice(MethodAdvice):
         if manager is None:
             return
 
-        from ...events import MethodErrorEvent
+        # 리스너가 없으면 이벤트 생성도 건너뜀
+        bus = manager.system_events
+        if MethodErrorEvent not in bus._handlers:
+            return
 
         event = MethodErrorEvent(
             frame=frame,
@@ -224,4 +239,4 @@ class CallStackTraceAdvice(MethodAdvice):
             method_name=frame.method_name,
             error=error,
         )
-        manager.system_events.publish(event)
+        bus.publish(event)

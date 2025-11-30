@@ -62,8 +62,9 @@ class MethodAdviceRegistry(AbstractRegistry["MethodAdvice"]):
         # 1. supports() 체크로 적용 가능한 어드바이스 필터링
         applicable = [advice for advice in self._entries if advice.supports(container)]
 
-        if not applicable:
-            return []
+        # Fast path: 0개 또는 1개면 정렬 불필요
+        if len(applicable) <= 1:
+            return applicable
 
         # 2. Container의 Element 순서에 맞게 정렬
         # Element 순서: 데코레이터 실행 순서 (아래→위)

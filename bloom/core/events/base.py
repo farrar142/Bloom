@@ -91,6 +91,8 @@ class InMemoryEventBus(EventBus[E]):
 
     def __init__(self):
         self._handlers: dict[type, list[Callable[[Any], None]]] = {}
+        # 등록된 이벤트 타입들 (부모 검색 최적화용)
+        self._registered_types: set[type] = set()
 
     def publish(self, event: E) -> None:
         """
@@ -99,19 +101,35 @@ class InMemoryEventBus(EventBus[E]):
         이벤트 타입과 그 부모 타입에 등록된 모든 핸들러를 호출합니다.
         """
         event_type = type(event)
-        called_handlers: set[int] = set()  # 중복 호출 방지
 
-        # 이벤트 타입 계층을 순회 (자기 자신 → 부모들)
-        for cls in event_type.__mro__:
+        # Fast path: 정확한 타입 핸들러 호출
+        handlers = self._handlers.get(event_type)
+        if handlers:
+            for handler in handlers:
+                handler(event)
+
+        # 부모 타입 핸들러 호출 (등록된 타입이 2개 이상일 때만)
+        if len(self._registered_types) <= 1:
+            return
+
+        # 부모 타입 중 등록된 것만 확인
+        called_handlers: set[int] = set()
+        if handlers:
+            for handler in handlers:
+                called_handlers.add(id(handler))
+
+        for cls in event_type.__mro__[1:]:  # 자기 자신 제외
             if cls is object:
                 continue
-
-            handlers = self._handlers.get(cls, [])
-            for handler in handlers:
-                handler_id = id(handler)
-                if handler_id not in called_handlers:
-                    handler(event)
-                    called_handlers.add(handler_id)
+            if cls not in self._registered_types:
+                continue
+            parent_handlers = self._handlers.get(cls)
+            if parent_handlers:
+                for handler in parent_handlers:
+                    handler_id = id(handler)
+                    if handler_id not in called_handlers:
+                        handler(event)
+                        called_handlers.add(handler_id)
 
     def subscribe(self, event_type: type[E], handler: Callable[[E], None]) -> None:
         """이벤트 구독"""
@@ -120,6 +138,7 @@ class InMemoryEventBus(EventBus[E]):
 
         if handler not in self._handlers[event_type]:
             self._handlers[event_type].append(handler)
+            self._registered_types.add(event_type)
 
     def unsubscribe(self, event_type: type[E], handler: Callable[[E], None]) -> None:
         """구독 해제"""
@@ -132,6 +151,7 @@ class InMemoryEventBus(EventBus[E]):
     def clear(self) -> None:
         """모든 구독 해제"""
         self._handlers.clear()
+        self._registered_types.clear()
 
     def __len__(self) -> int:
         """등록된 총 핸들러 수"""

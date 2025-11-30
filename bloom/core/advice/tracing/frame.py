@@ -4,16 +4,15 @@ from dataclasses import dataclass, field
 import time
 from typing import Any
 
-# 프레임 ID 카운터 (스레드별로 독립적이므로 안전)
+# 프레임 ID 카운터 (전역 카운터로 충분)
 _frame_counter = 0
 
 
-def _generate_frame_id() -> str:
-    """빠른 프레임 ID 생성 (uuid4 대신 time_ns 기반)"""
+def _generate_frame_id() -> int:
+    """빠른 프레임 ID 생성 (정수 반환으로 최적화)"""
     global _frame_counter
     _frame_counter += 1
-    # time_ns의 하위 비트 + 카운터로 충분히 유니크
-    return f"{time.time_ns():x}{_frame_counter:04x}"[-12:]
+    return _frame_counter
 
 
 @dataclass(frozen=True)
@@ -40,7 +39,7 @@ class CallFrame:
     trace_id: str
     depth: int
     args_summary: str = ""
-    frame_id: str = field(default_factory=_generate_frame_id)
+    frame_id: int = field(default_factory=_generate_frame_id)
 
     @property
     def elapsed_ms(self) -> float:
