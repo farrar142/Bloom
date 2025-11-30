@@ -107,7 +107,7 @@ def cli():
     "--application",
     type=str,
     default=None,
-    help="Application path (default: 'application:application.queue')",
+    help="Application path (default: 'application:application')",
 )
 @click.option(
     "-c",
@@ -121,26 +121,28 @@ def worker(application: str | None, concurrency: int):
 
     \b
     Runs the QueueApplication from the specified application module.
-    Default: application:application.queue
+    Automatically finds .queue attribute if Application is specified.
+    Default: application:application
 
     \b
     Examples:
         bloom worker
         bloom worker --concurrency 8
-        bloom worker --application=main:app.queue
-        bloom worker -a examples.task_example_app:app.queue -c 4
+        bloom worker --application=main:app
+        bloom worker -a examples.task_example_app:app -c 4
     """
     from bloom.logging import configure_logging
     from bloom.task.queue_app import QueueApplication
+    from bloom import Application
 
-    # 기본값: application:application.queue
-    app_path = application or "application:application.queue"
+    # 기본값: application:application
+    app_path = application or "application:application"
 
     click.echo(f"[Bloom] Importing {app_path}")
 
-    # app.queue 임포트
+    # 앱 임포트
     try:
-        queue_app = import_from_string(app_path)
+        obj = import_from_string(app_path)
     except ImportError as e:
         if application:
             # 명시적으로 지정한 경우 에러
@@ -154,17 +156,22 @@ def worker(application: str | None, concurrency: int):
                 f"  application = Application('myapp')\n"
                 f"  # application.queue is your QueueApplication\n\n"
                 f"Or specify explicitly:\n"
-                f"  bloom worker --application=mymodule:app.queue"
+                f"  bloom worker --application=mymodule:app"
             )
+
+    # Application인 경우 .queue 자동 접근
+    if isinstance(obj, Application):
+        click.echo(f"[Bloom] Found Application, accessing .queue")
+        queue_app = obj.queue
+    elif isinstance(obj, QueueApplication):
+        queue_app = obj
+    else:
+        raise click.ClickException(
+            f"Expected Application or QueueApplication, got {type(obj).__name__}"
+        )
 
     # 로깅 설정 (bloom.logging 모듈 사용)
     configure_logging(level="INFO")
-
-    # QueueApplication 확인
-    if not isinstance(queue_app, QueueApplication):
-        raise click.ClickException(
-            f"Expected QueueApplication, got {type(queue_app).__name__}"
-        )
 
     # concurrency 설정
     queue_app._concurrency = concurrency

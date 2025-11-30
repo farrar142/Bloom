@@ -76,18 +76,18 @@ from bloom.db import SessionFactory, create
 class UserService:
     def __init__(self, session_factory: SessionFactory):
         self.session_factory = session_factory
-    
+
     def create_user(self, name: str, email: str) -> User:
         with self.session_factory.session() as session:
             user = create(User, name=name, email=email)
             session.add(user)
             session.commit()
             return user
-    
+
     def get_user(self, user_id: int) -> User | None:
         with self.session_factory.session() as session:
             return session.query(User).filter(User.id == user_id).first()
-    
+
     def update_user(self, user_id: int, **kwargs) -> User | None:
         with self.session_factory.session() as session:
             user = session.query(User).filter(User.id == user_id).first()
@@ -96,7 +96,7 @@ class UserService:
                     setattr(user, key, value)
                 session.commit()
             return user
-    
+
     def delete_user(self, user_id: int) -> bool:
         with self.session_factory.session() as session:
             user = session.query(User).filter(User.id == user_id).first()
@@ -122,24 +122,24 @@ from bloom.db import (
 class Product:
     # 기본키
     id: int = PrimaryKey(auto_increment=True)
-    
+
     # 문자열 (VARCHAR)
     name: str = Column(max_length=200, nullable=False)
     description: str = TextColumn()  # TEXT 타입
-    
+
     # 숫자
     price: float = DecimalColumn(precision=10, scale=2)
     stock: int = IntegerColumn(default=0)
-    
+
     # 불리언
     is_active: bool = BooleanColumn(default=True)
-    
+
     # 날짜/시간
     created_at: str = DateTimeColumn()
-    
+
     # JSON
     metadata: dict = JSONColumn()
-    
+
     # 외래키
     category_id: int = ForeignKey(
         "categories.id",
@@ -150,14 +150,14 @@ class Product:
 
 ### Column 옵션
 
-| 옵션 | 설명 | 기본값 |
-|------|------|--------|
-| `max_length` | VARCHAR 최대 길이 | 255 |
-| `nullable` | NULL 허용 여부 | True |
-| `unique` | 유니크 제약조건 | False |
-| `default` | 기본값 | None |
-| `primary_key` | 기본키 여부 | False |
-| `auto_increment` | 자동 증가 (PK용) | False |
+| 옵션             | 설명              | 기본값 |
+| ---------------- | ----------------- | ------ |
+| `max_length`     | VARCHAR 최대 길이 | 255    |
+| `nullable`       | NULL 허용 여부    | True   |
+| `unique`         | 유니크 제약조건   | False  |
+| `default`        | 기본값            | None   |
+| `primary_key`    | 기본키 여부       | False  |
+| `auto_increment` | 자동 증가 (PK용)  | False  |
 
 ### ForeignKey 옵션
 
@@ -178,10 +178,10 @@ user_id: int = ForeignKey(
 with session_factory.session() as session:
     # 전체 조회
     users = session.query(User).all()
-    
+
     # 단일 조회
     user = session.query(User).filter(User.id == 1).first()
-    
+
     # 조건 조회
     active_users = session.query(User).filter(
         User.is_active == True,
@@ -304,13 +304,13 @@ with session_factory.session() as session:
     # 엔티티 추가
     user = create(User, name="alice", email="alice@example.com")
     session.add(user)
-    
+
     # 변경 (자동 추적)
     user.name = "Alice"
-    
+
     # 삭제
     session.delete(user)
-    
+
     # 커밋 (with 블록 끝에서 자동 커밋)
     session.commit()  # 명시적 커밋도 가능
 ```
@@ -320,11 +320,11 @@ with session_factory.session() as session:
 ```python
 with session_factory.session() as session:
     user = session.query(User).filter(User.id == 1).first()
-    
+
     # 변경 추적
     user.name = "New Name"
     user.age = 30
-    
+
     # commit 시 변경된 필드만 UPDATE
     # UPDATE users SET name = 'New Name', age = 30 WHERE id = 1
     session.commit()
@@ -337,10 +337,10 @@ try:
     with session_factory.session() as session:
         user1 = create(User, name="user1")
         session.add(user1)
-        
+
         user2 = create(User, name="user2")
         session.add(user2)
-        
+
         # 에러 발생 시 자동 롤백
         raise Exception("Something went wrong")
 except Exception:
@@ -447,13 +447,13 @@ class UserRepository(CrudRepository[User, int]):
             return session.query(User).filter(
                 User.email == email
             ).first()
-    
+
     def find_active_users(self) -> list[User]:
         with self.session_factory.session() as session:
             return session.query(User).filter(
                 User.is_active == True
             ).all()
-    
+
     def find_by_age_range(self, min_age: int, max_age: int) -> list[User]:
         with self.session_factory.session() as session:
             return session.query(User).filter(
@@ -548,11 +548,11 @@ migration = Migration(
 
 ### 지원 Dialect
 
-| Dialect | 상태 | 설명 |
-|---------|------|------|
-| `SQLiteDialect` | ✅ 완료 | SQLite 3 |
+| Dialect             | 상태    | 설명           |
+| ------------------- | ------- | -------------- |
+| `SQLiteDialect`     | ✅ 완료 | SQLite 3       |
 | `PostgreSQLDialect` | 🚧 예정 | PostgreSQL 12+ |
-| `MySQLDialect` | 🚧 예정 | MySQL 8+ |
+| `MySQLDialect`      | 🚧 예정 | MySQL 8+       |
 
 ### 커스텀 Dialect
 
@@ -561,7 +561,7 @@ from bloom.db.dialect import Dialect
 
 class CustomDialect(Dialect):
     name = "custom"
-    
+
     def get_type_mapping(self) -> dict[str, str]:
         return {
             "int": "INTEGER",
@@ -569,7 +569,7 @@ class CustomDialect(Dialect):
             "bool": "BOOLEAN",
             "float": "DECIMAL",
         }
-    
+
     def get_placeholder(self) -> str:
         return "%s"  # 또는 "?" 또는 ":name"
 ```
@@ -628,19 +628,19 @@ class BlogService:
     ):
         self.user_repo = user_repo
         self.post_repo = post_repo
-    
+
     def create_post(self, user_email: str, title: str, content: str) -> Post:
         user = self.user_repo.find_by_email(user_email)
         if not user:
             raise ValueError(f"User not found: {user_email}")
-        
+
         post = create(Post, title=title, content=content, user_id=user.id)
         return self.post_repo.save(post)
 
 # 실행
 if __name__ == "__main__":
     application.ready()
-    
+
     blog_service = application.get(BlogService)
     post = blog_service.create_post(
         "alice@example.com",

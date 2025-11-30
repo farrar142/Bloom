@@ -56,24 +56,37 @@ bloom worker [OPTIONS]
 
 ### 옵션
 
-| 옵션 | 단축 | 설명 | 기본값 |
-|------|------|------|--------|
-| `--application` | `-a` | Application 경로 | `application:application.queue` |
-| `--concurrency` | `-c` | 동시 워커 수 | 4 |
+| 옵션            | 단축 | 설명             | 기본값                    |
+| --------------- | ---- | ---------------- | ------------------------- |
+| `--application` | `-a` | Application 경로 | `application:application` |
+| `--concurrency` | `-c` | 동시 워커 수     | 4                         |
 
 ### 예제
 
 ```bash
-# 기본 실행 (application:application.queue 사용)
+# 기본 실행 (application:application 사용, 자동으로 .queue 접근)
 bloom worker
 
 # 동시성 설정
 bloom worker --concurrency 8
 bloom worker -c 8
 
-# 다른 애플리케이션 지정
-bloom worker --application=myapp.main:app.queue
+# 다른 애플리케이션 지정 (Application 또는 QueueApplication 모두 가능)
+bloom worker --application=myapp.main:app
+bloom worker -a myapp.main:app
+
+# 직접 QueueApplication 지정도 가능
 bloom worker -a myapp.main:app.queue
+```
+
+### 자동 .queue 탐색
+
+`--application` 옵션에 `Application` 객체를 지정하면 자동으로 `.queue` 속성에 접근합니다:
+
+```bash
+# 이 두 명령은 동일합니다
+bloom worker --application=myapp:app
+bloom worker --application=myapp:app.queue
 ```
 
 ### Application 설정
@@ -125,12 +138,12 @@ bloom db [OPTIONS] COMMAND [ARGS]...
 
 ### 전역 옵션
 
-| 옵션 | 단축 | 설명 | 기본값 |
-|------|------|------|--------|
-| `--application` | `-a` | Application 경로 | `application:application` |
-| `--migrations-dir` | `-m` | 마이그레이션 디렉토리 | `migrations` |
-| `--entities` | `-e` | 엔티티 모듈 (legacy) | - |
-| `--database` | `-d` | DB URL (legacy) | - |
+| 옵션               | 단축 | 설명                  | 기본값                    |
+| ------------------ | ---- | --------------------- | ------------------------- |
+| `--application`    | `-a` | Application 경로      | `application:application` |
+| `--migrations-dir` | `-m` | 마이그레이션 디렉토리 | `migrations`              |
+| `--entities`       | `-e` | 엔티티 모듈 (legacy)  | -                         |
+| `--database`       | `-d` | DB URL (legacy)       | -                         |
 
 ### 하위 명령어
 
@@ -155,8 +168,8 @@ Commands:
 bloom db init [OPTIONS]
 ```
 
-| 옵션 | 설명 |
-|------|------|
+| 옵션      | 설명               |
+| --------- | ------------------ |
 | `--force` | 기존 설정 덮어쓰기 |
 
 #### 예제
@@ -186,11 +199,11 @@ database_url = "sqlite:///db.sqlite3"
 bloom db makemigrations [OPTIONS]
 ```
 
-| 옵션 | 단축 | 설명 |
-|------|------|------|
-| `--name` | `-n` | 마이그레이션 이름 |
-| `--empty` | | 빈 마이그레이션 생성 |
-| `--dry-run` | | 생성될 내용만 미리보기 |
+| 옵션        | 단축 | 설명                   |
+| ----------- | ---- | ---------------------- |
+| `--name`    | `-n` | 마이그레이션 이름      |
+| `--empty`   |      | 빈 마이그레이션 생성   |
+| `--dry-run` |      | 생성될 내용만 미리보기 |
 
 #### 예제
 
@@ -235,10 +248,10 @@ Created migration: migrations/0001_create_users.py
 bloom db migrate [OPTIONS]
 ```
 
-| 옵션 | 단축 | 설명 |
-|------|------|------|
+| 옵션       | 단축 | 설명                       |
+| ---------- | ---- | -------------------------- |
 | `--target` | `-t` | 특정 마이그레이션까지 적용 |
-| `--fake` | | 실행 없이 적용 기록만 |
+| `--fake`   |      | 실행 없이 적용 기록만      |
 
 #### 예제
 
@@ -345,10 +358,10 @@ CREATE TABLE posts (
 bloom db resetdb [OPTIONS]
 ```
 
-| 옵션 | 단축 | 설명 |
-|------|------|------|
-| `--yes` | `-y` | 확인 없이 실행 |
-| `--keep-migrations` | | 마이그레이션 히스토리 유지 |
+| 옵션                | 단축 | 설명                       |
+| ------------------- | ---- | -------------------------- |
+| `--yes`             | `-y` | 확인 없이 실행             |
+| `--keep-migrations` |      | 마이그레이션 히스토리 유지 |
 
 ⚠️ **경고**: 이 명령은 모든 데이터를 삭제합니다!
 
@@ -402,11 +415,11 @@ bloom db shell
 
 #### 사용 가능한 객체
 
-| 객체 | 설명 |
-|------|------|
-| `session` | 활성 데이터베이스 세션 |
-| `session_factory` | 세션 팩토리 |
-| `User`, `Post`, ... | 엔티티 클래스들 |
+| 객체                | 설명                   |
+| ------------------- | ---------------------- |
+| `session`           | 활성 데이터베이스 세션 |
+| `session_factory`   | 세션 팩토리            |
+| `User`, `Post`, ... | 엔티티 클래스들        |
 
 #### 예제 세션
 
