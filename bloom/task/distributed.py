@@ -287,8 +287,11 @@ class DistributedTaskBackend[**P, T](TaskBackend[P, T]):
         # 동기 컨텍스트에서 비동기 enqueue 호출
         try:
             loop = asyncio.get_running_loop()
-            # 이미 이벤트 루프가 있으면 create_task
-            asyncio.create_task(self._enqueue_message(message))
+            # 이벤트 루프가 실행 중이면 run_coroutine_threadsafe로 완료 대기
+            future = asyncio.run_coroutine_threadsafe(
+                self._enqueue_message(message), loop
+            )
+            future.result(timeout=5.0)  # 완료 대기 (최대 5초)
         except RuntimeError:
             # 이벤트 루프가 없으면 새로 생성
             asyncio.run(self._enqueue_message(message))
@@ -342,8 +345,13 @@ class DistributedTaskBackend[**P, T](TaskBackend[P, T]):
         # 동기 컨텍스트에서 비동기 enqueue 호출
         try:
             loop = asyncio.get_running_loop()
-            asyncio.create_task(self._enqueue_message(message))
+            # 이벤트 루프가 실행 중이면 run_coroutine_threadsafe로 완료 대기
+            future = asyncio.run_coroutine_threadsafe(
+                self._enqueue_message(message), loop
+            )
+            future.result(timeout=5.0)  # 완료 대기 (최대 5초)
         except RuntimeError:
+            # 이벤트 루프가 없으면 새로 생성
             asyncio.run(self._enqueue_message(message))
 
         return DistributedTaskResult(

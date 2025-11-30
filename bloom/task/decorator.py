@@ -146,13 +146,21 @@ class BoundTask[T, **P, R]:
         """Advice 없이 직접 호출"""
         result = self._handler(self._instance, *args, **kwargs)
         if asyncio.iscoroutine(result):
-            # 비동기 함수면 이벤트 루프에서 실행
+            # 이미 이벤트 루프가 실행 중이면 에러 (중첩 불가)
             try:
-                loop = asyncio.get_running_loop()
-                return loop.run_until_complete(result)
-            except RuntimeError:
-                # 이벤트 루프가 없으면 새로 생성
-                return asyncio.run(result)
+                asyncio.get_running_loop()
+                # 코루틴 정리
+                result.close()
+                raise RuntimeError(
+                    f"Cannot call async task '{self._name}' synchronously "
+                    f"inside an event loop. Use 'await service.{self._handler.__name__}()' "
+                    f"or 'service.{self._handler.__name__}.delay()' instead."
+                )
+            except RuntimeError as e:
+                if "no running event loop" in str(e):
+                    # 이벤트 루프가 없으면 새로 생성하여 실행
+                    return asyncio.run(result)
+                raise
         return result
 
     def delay(self, *args: P.args, **kwargs: P.kwargs) -> AbstractTaskResult[R]:
