@@ -1,5 +1,6 @@
 """Configuration binder - binds configuration dict to typed objects"""
 
+from enum import Enum
 from typing import Any, get_type_hints, get_origin, get_args
 from dataclasses import is_dataclass, fields as dataclass_fields, MISSING
 import inspect
@@ -36,7 +37,9 @@ class ConfigurationBinder:
         # 일반 클래스 (기본 생성자 사용)
         return self._bind_generic(config_data, target_class)
 
-    def _extract_config(self, config_dict: dict[str, Any], prefix: str) -> dict[str, Any]:
+    def _extract_config(
+        self, config_dict: dict[str, Any], prefix: str
+    ) -> dict[str, Any]:
         """prefix에 해당하는 설정 추출"""
         if not prefix:
             return config_dict
@@ -85,7 +88,9 @@ class ConfigurationBinder:
                 if isinstance(field_type, type) and is_dataclass(field_type):
                     value = self._bind_dataclass(value, field_type)
                 # 중첩된 Pydantic 모델 처리
-                elif isinstance(field_type, type) and self._is_pydantic_model(field_type):
+                elif isinstance(field_type, type) and self._is_pydantic_model(
+                    field_type
+                ):
                     value = self._bind_pydantic(value, field_type)
                 else:
                     value = self._convert_value(value, field_type)
@@ -134,6 +139,23 @@ class ConfigurationBinder:
                 if value is None:
                     return None
                 return self._convert_value(value, actual_type)
+
+        # Enum 변환
+        if isinstance(target_type, type) and issubclass(target_type, Enum):
+            if isinstance(value, target_type):
+                return value
+            # int Enum인 경우 int로 먼저 변환
+            if issubclass(target_type, int):
+                try:
+                    return target_type(int(value))
+                except (ValueError, KeyError):
+                    return target_type[value]
+            # str Enum 또는 일반 Enum
+            try:
+                return target_type(value)
+            except ValueError:
+                # value로 실패하면 name으로 시도
+                return target_type[value]
 
         # 기본 타입 변환
         if target_type in (int, float, str, bool):

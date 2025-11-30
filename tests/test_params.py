@@ -1291,3 +1291,187 @@ class TestValidationError:
         assert any("input" in e for e in details)
         # 입력값이 "twenty"
         assert any(e.get("input") == "twenty" for e in details)
+
+
+# =============================================================================
+# Enum Parameter Tests
+# =============================================================================
+
+
+from enum import Enum
+
+
+class Status(str, Enum):
+    """테스트용 상태 Enum"""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    PENDING = "pending"
+
+
+class Priority(int, Enum):
+    """테스트용 우선순위 Enum (int 기반)"""
+
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+
+
+class TestEnumPathParameter:
+    """Enum 경로 파라미터 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_enum_path_param_by_value(self, reset_container_manager):
+        """Enum 값으로 경로 파라미터 변환"""
+
+        @Controller
+        class ItemController:
+            @Get("/items/{status}")
+            async def get_items_by_status(self, status: Status) -> dict:
+                return {"status": status.value, "name": status.name}
+
+        app = Application("test").ready()
+
+        request = HttpRequest(method="GET", path="/items/active")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"status": "active", "name": "ACTIVE"}
+
+    @pytest.mark.asyncio
+    async def test_enum_path_param_by_name(self, reset_container_manager):
+        """Enum 이름으로 경로 파라미터 변환"""
+
+        @Controller
+        class ItemController:
+            @Get("/items/{status}")
+            async def get_items_by_status(self, status: Status) -> dict:
+                return {"status": status.value, "name": status.name}
+
+        app = Application("test").ready()
+
+        # Enum name으로 접근 (value 실패 시 name으로 시도)
+        request = HttpRequest(method="GET", path="/items/PENDING")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"status": "pending", "name": "PENDING"}
+
+    @pytest.mark.asyncio
+    async def test_int_enum_path_param(self, reset_container_manager):
+        """int 기반 Enum 경로 파라미터"""
+
+        @Controller
+        class TaskController:
+            @Get("/tasks/priority/{priority}")
+            async def get_by_priority(self, priority: Priority) -> dict:
+                return {"priority": priority.value, "name": priority.name}
+
+        app = Application("test").ready()
+
+        request = HttpRequest(method="GET", path="/tasks/priority/2")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"priority": 2, "name": "MEDIUM"}
+
+    @pytest.mark.asyncio
+    async def test_invalid_enum_path_param_returns_400(self, reset_container_manager):
+        """잘못된 Enum 값은 400 Bad Request 반환"""
+
+        @Controller
+        class ItemController:
+            @Get("/items/{status}")
+            async def get_items_by_status(self, status: Status) -> dict:
+                return {"status": status.value}
+
+        app = Application("test").ready()
+
+        # 존재하지 않는 Enum 값
+        request = HttpRequest(method="GET", path="/items/unknown")
+        response = await app.router.dispatch(request)
+
+        # 잘못된 Enum 값이므로 400
+        assert response.status_code == 400
+        assert "TypeConversionError" in response.body.get("error", "")
+
+
+class TestEnumQueryParameter:
+    """Enum 쿼리 파라미터 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_enum_query_param(self, reset_container_manager):
+        """Enum 쿼리 파라미터"""
+
+        @Controller
+        class ItemController:
+            @Get("/items")
+            async def list_items(self, status: Status) -> dict:
+                return {"status": status.value}
+
+        app = Application("test").ready()
+
+        request = HttpRequest(
+            method="GET",
+            path="/items",
+            query_params={"status": "active"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"status": "active"}
+
+    @pytest.mark.asyncio
+    async def test_optional_enum_query_param(self, reset_container_manager):
+        """Optional Enum 쿼리 파라미터"""
+
+        @Controller
+        class ItemController:
+            @Get("/items")
+            async def list_items(self, status: Status | None = None) -> dict:
+                if status is None:
+                    return {"status": "all"}
+                return {"status": status.value}
+
+        app = Application("test").ready()
+
+        # status 없이 요청
+        request = HttpRequest(method="GET", path="/items")
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"status": "all"}
+
+        # status 있이 요청
+        request = HttpRequest(
+            method="GET",
+            path="/items",
+            query_params={"status": "inactive"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"status": "inactive"}
+
+    @pytest.mark.asyncio
+    async def test_enum_from_json_body(self, reset_container_manager):
+        """JSON body에서 Enum 쿼리 파라미터"""
+
+        @Controller
+        class ItemController:
+            @Post("/items")
+            async def create_item(self, status: Status) -> dict:
+                return {"status": status.value}
+
+        app = Application("test").ready()
+
+        request = HttpRequest(
+            method="POST",
+            path="/items",
+            body=b'{"status": "pending"}',
+            headers={"content-type": "application/json"},
+        )
+        response = await app.router.dispatch(request)
+
+        assert response.status_code == 200
+        assert response.body == {"status": "pending"}

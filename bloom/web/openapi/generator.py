@@ -3,6 +3,7 @@
 RouteManager에서 라우트 정보를 수집하여 OpenAPI 스펙을 생성합니다.
 """
 
+from enum import Enum
 from typing import Any, TYPE_CHECKING, get_origin, get_args, Annotated
 import inspect
 
@@ -331,6 +332,17 @@ class OpenAPIGenerator:
             non_none = [t for t in args if t is not NoneType and t is not type(None)]
             if non_none:
                 param_type = non_none[0]
+
+        # Enum 처리
+        if isinstance(param_type, type) and issubclass(param_type, Enum):
+            # Enum 값 목록
+            enum_values = [e.value for e in param_type]
+
+            # int Enum인지 str Enum인지에 따라 타입 결정
+            if issubclass(param_type, int):
+                return {"type": "integer", "enum": enum_values}
+            else:
+                return {"type": "string", "enum": enum_values}
 
         type_map = {
             str: {"type": "string"},

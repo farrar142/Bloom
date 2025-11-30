@@ -550,6 +550,75 @@ class OAuth2RequestError(OAuth2Error):
         self.status_code = status_code
 
 
+# -----------------------------------------------------------------------------
+# JWT Errors
+# -----------------------------------------------------------------------------
+
+
+class JwtError(UnauthorizedError):
+    """JWT 관련 에러 베이스 클래스
+
+    JWT 토큰의 인코딩, 디코딩, 검증 과정에서 발생하는 에러입니다.
+
+    Attributes:
+        error: JWT 에러 코드 (예: "token_expired", "invalid_signature")
+    """
+
+    def __init__(self, error: str = "jwt_error", detail: str = "JWT error"):
+        self.error = error
+        super().__init__(detail)
+
+
+class JwtExpiredError(JwtError):
+    """JWT 토큰 만료
+
+    토큰의 exp claim이 현재 시간을 초과한 경우
+    """
+
+    def __init__(self, detail: str = "Token has expired"):
+        super().__init__("token_expired", detail)
+
+
+class JwtInvalidSignatureError(JwtError):
+    """JWT 서명 불일치
+
+    토큰 서명이 secret_key로 검증되지 않는 경우
+    """
+
+    def __init__(self, detail: str = "Invalid token signature"):
+        super().__init__("invalid_signature", detail)
+
+
+class JwtInvalidTokenError(JwtError):
+    """JWT 토큰 형식 오류
+
+    토큰 디코딩 자체가 실패한 경우 (형식 오류, 손상 등)
+    """
+
+    def __init__(self, detail: str = "Invalid token"):
+        super().__init__("invalid_token", detail)
+
+
+class JwtInvalidAudienceError(JwtError):
+    """JWT audience 불일치
+
+    토큰의 aud claim이 예상 audience와 일치하지 않는 경우
+    """
+
+    def __init__(self, detail: str = "Invalid token audience"):
+        super().__init__("invalid_audience", detail)
+
+
+class JwtInvalidIssuerError(JwtError):
+    """JWT issuer 불일치
+
+    토큰의 iss claim이 예상 issuer와 일치하지 않는 경우
+    """
+
+    def __init__(self, detail: str = "Invalid token issuer"):
+        super().__init__("invalid_issuer", detail)
+
+
 # =============================================================================
 # System Exceptions (시스템/내부 관련)
 # =============================================================================

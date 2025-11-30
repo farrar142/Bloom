@@ -72,6 +72,7 @@ from .abstract import (
     AbstractManager,
 )
 from .orchestrator import ContainerOrchestrator
+from .protocols import Serializable
 
 __all__ = [
     "ContainerManager",
@@ -137,4 +138,6 @@ __all__ = [
     "AbstractManager",
     # Orchestrator
     "ContainerOrchestrator",
+    # Protocols
+    "Serializable",
 ]

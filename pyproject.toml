@@ -8,6 +8,7 @@ dependencies = [
     "aiohttp>=3.13.2",
     "httpx>=0.28.1",
     "pydantic>=2.0",
+    "pyjwt>=2.10.1",
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pyyaml>=6.0.3",
@@ -24,3 +25,8 @@ markers = [
     "performance: 성능 벤치마크 테스트 (기본 실행에서 제외)",
 ]
 addopts = "-m 'not performance'"
+
+[dependency-groups]
+dev = [
+    "pyjwt>=2.10.1",
+]

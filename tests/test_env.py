@@ -2,10 +2,37 @@
 
 import os
 import pytest
+from enum import Enum
 from typing import Literal
 
 from bloom import Application, Component
-from bloom.config.env import Env, EnvStr, EnvInt, EnvFloat, EnvBool
+from bloom.config.env import Env, EnvStr, EnvInt, EnvFloat, EnvBool, EnvEnum
+
+
+# 테스트용 Enum 정의
+class Environment(str, Enum):
+    """환경 Enum"""
+
+    DEV = "dev"
+    STAGING = "staging"
+    PROD = "prod"
+
+
+class LogLevel(str, Enum):
+    """로그 레벨 Enum"""
+
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+
+
+class Priority(int, Enum):
+    """우선순위 Enum (int 기반)"""
+
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
 
 
 class TestEnvInjection:
@@ -168,3 +195,128 @@ class TestEnvInjection:
         assert client.call() == "[LOG] Using key: my-api-key"
 
         del os.environ["API_KEY"]
+
+
+class TestEnvEnumInjection:
+    """EnvEnum 환경변수 주입 테스트"""
+
+    def test_env_enum_by_name(self, reset_container_manager):
+        """Enum 이름으로 환경변수 주입"""
+        os.environ["APP_ENV"] = "PROD"  # Enum 이름
+
+        @Component
+        class Service:
+            env: EnvEnum[Environment, Literal["APP_ENV"]]
+
+        app = Application("test").scan(Service).ready()
+        service = app.manager.get_instance(Service)
+
+        assert service.env == Environment.PROD
+        assert service.env.value == "prod"
+
+        del os.environ["APP_ENV"]
+
+    def test_env_enum_by_value(self, reset_container_manager):
+        """Enum 값으로 환경변수 주입"""
+        os.environ["APP_ENV"] = "staging"  # Enum 값
+
+        @Component
+        class Service:
+            env: EnvEnum[Environment, Literal["APP_ENV"]]
+
+        app = Application("test").scan(Service).ready()
+        service = app.manager.get_instance(Service)
+
+        assert service.env == Environment.STAGING
+        assert service.env.value == "staging"
+
+        del os.environ["APP_ENV"]
+
+    def test_env_enum_log_level(self, reset_container_manager):
+        """로그 레벨 Enum 주입"""
+        os.environ["LOG_LEVEL"] = "WARNING"
+
+        @Component
+        class LogConfig:
+            level: EnvEnum[LogLevel, Literal["LOG_LEVEL"]]
+
+        app = Application("test").scan(LogConfig).ready()
+        config = app.manager.get_instance(LogConfig)
+
+        assert config.level == LogLevel.WARNING
+
+        del os.environ["LOG_LEVEL"]
+
+    def test_env_enum_missing_variable(self, reset_container_manager):
+        """Enum 환경변수가 없는 경우"""
+        if "NONEXISTENT_ENV" in os.environ:
+            del os.environ["NONEXISTENT_ENV"]
+
+        @Component
+        class Service:
+            env: EnvEnum[Environment, Literal["NONEXISTENT_ENV"]]
+
+        app = Application("test").scan(Service).ready()
+        service = app.manager.get_instance(Service)
+
+        # 환경변수가 없으면 None
+        assert not hasattr(service, "env") or service.env is None
+
+    def test_env_enum_invalid_value(self, reset_container_manager):
+        """잘못된 Enum 값인 경우"""
+        os.environ["APP_ENV"] = "invalid_value"
+
+        @Component
+        class Service:
+            env: EnvEnum[Environment, Literal["APP_ENV"]]
+
+        app = Application("test").scan(Service).ready()
+        service = app.manager.get_instance(Service)
+
+        # 잘못된 값이면 None 반환 (기본값)
+        assert not hasattr(service, "env") or service.env is None
+
+        del os.environ["APP_ENV"]
+
+    def test_env_enum_with_other_env_types(self, reset_container_manager):
+        """EnvEnum과 다른 Env 타입 혼합"""
+        os.environ["APP_NAME"] = "MyApp"
+        os.environ["APP_PORT"] = "8080"
+        os.environ["APP_ENV"] = "prod"
+        os.environ["APP_DEBUG"] = "false"
+
+        @Component
+        class AppConfig:
+            name: EnvStr[Literal["APP_NAME"]]
+            port: EnvInt[Literal["APP_PORT"]]
+            env: EnvEnum[Environment, Literal["APP_ENV"]]
+            debug: EnvBool[Literal["APP_DEBUG"]]
+
+        app = Application("test").scan(AppConfig).ready()
+        config = app.manager.get_instance(AppConfig)
+
+        assert config.name == "MyApp"
+        assert config.port == 8080
+        assert config.env == Environment.PROD
+        assert config.debug is False
+
+        del os.environ["APP_NAME"]
+        del os.environ["APP_PORT"]
+        del os.environ["APP_ENV"]
+        del os.environ["APP_DEBUG"]
+
+    def test_env_enum_case_sensitivity(self, reset_container_manager):
+        """Enum 이름은 대소문자 구분"""
+        # LogLevel.DEBUG (이름) vs "DEBUG" (값)
+        os.environ["LOG_LEVEL"] = "DEBUG"  # 이름과 값이 같음
+
+        @Component
+        class Config:
+            level: EnvEnum[LogLevel, Literal["LOG_LEVEL"]]
+
+        app = Application("test").scan(Config).ready()
+        config = app.manager.get_instance(Config)
+
+        assert config.level == LogLevel.DEBUG
+
+        del os.environ["LOG_LEVEL"]

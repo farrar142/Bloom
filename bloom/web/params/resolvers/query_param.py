@@ -1,7 +1,9 @@
 """쿼리 파라미터 리졸버"""
 
+from enum import Enum
 from typing import Any
 
+from bloom.core.exceptions import TypeConversionError
 from bloom.web.http import HttpRequest
 
 from ..base import ParameterResolver, is_optional, unwrap_optional
@@ -18,6 +20,7 @@ class QueryParamResolver(ParameterResolver):
 
     PathParamResolver보다 낮은 우선순위로 동작합니다.
     Optional[T] 지원: 값이 없으면 None 반환.
+    Enum 타입도 지원합니다.
 
     사용법:
         @Post("/users")
@@ -33,7 +36,14 @@ class QueryParamResolver(ParameterResolver):
         # Optional[T] 처리
         if is_optional(param_type):
             inner_type = unwrap_optional(param_type)
+            # Optional[Enum]
+            if isinstance(inner_type, type) and issubclass(inner_type, Enum):
+                return True
             return inner_type in self._SUPPORTED_TYPES
+
+        # Enum 타입 지원
+        if isinstance(param_type, type) and issubclass(param_type, Enum):
+            return True
 
         # 기본 타입
         return origin is None and param_type in self._SUPPORTED_TYPES
@@ -66,22 +76,42 @@ class QueryParamResolver(ParameterResolver):
             return None if optional else UNRESOLVED
 
         # 타입 변환
-        return self._convert_value(value, actual_type)
+        return self._convert_value(value, actual_type, param_name)
 
-    def _convert_value(self, value: Any, target_type: type) -> Any:
+    def _convert_value(
+        self, value: Any, target_type: type, param_name: str = ""
+    ) -> Any:
         """값을 타겟 타입으로 변환"""
-        # 이미 올바른 타입이면 그대로 반환
-        if isinstance(value, target_type):
-            return value
-
-        # 문자열에서 변환
-        if target_type is int:
-            return int(value)
-        elif target_type is float:
-            return float(value)
-        elif target_type is bool:
-            if isinstance(value, bool):
+        try:
+            # 이미 올바른 타입이면 그대로 반환
+            if isinstance(value, target_type):
                 return value
-            return str(value).lower() in ("true", "1", "yes")
 
-        return value
+            # Enum 변환
+            if isinstance(target_type, type) and issubclass(target_type, Enum):
+                # int Enum인 경우 int로 먼저 변환
+                if issubclass(target_type, int):
+                    try:
+                        return target_type(int(value))
+                    except (ValueError, KeyError):
+                        return target_type[value]
+                # str Enum 또는 일반 Enum
+                try:
+                    return target_type(value)
+                except ValueError:
+                    # value로 실패하면 name으로 시도
+                    return target_type[value]
+
+            # 문자열에서 변환
+            if target_type is int:
+                return int(value)
+            elif target_type is float:
+                return float(value)
+            elif target_type is bool:
+                if isinstance(value, bool):
+                    return value
+                return str(value).lower() in ("true", "1", "yes")
+
+            return value
+        except (ValueError, KeyError) as e:
+            raise TypeConversionError(param_name, target_type, value) from e

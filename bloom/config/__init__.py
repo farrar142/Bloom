@@ -2,7 +2,7 @@
 
 from .properties import ConfigurationProperties
 from .manager import ConfigManager
-from .env import Env, EnvStr, EnvInt, EnvFloat, EnvBool
+from .env import Env, EnvStr, EnvInt, EnvFloat, EnvBool, EnvEnum, EnvEnumMarker
 
 __all__ = [
     "ConfigurationProperties",
@@ -12,4 +12,6 @@ __all__ = [
     "EnvInt",
     "EnvFloat",
     "EnvBool",
+    "EnvEnum",
+    "EnvEnumMarker",
 ]

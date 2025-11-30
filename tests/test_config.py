@@ -461,3 +461,119 @@ cache:
 
         del os.environ["TEST_REDIS_HOST"]
         del os.environ["TEST_REDIS_PORT"]
+
+
+# =============================================================================
+# Enum Configuration Tests
+# =============================================================================
+
+
+from enum import Enum
+
+
+class Environment(str, Enum):
+    """환경 Enum"""
+
+    DEV = "dev"
+    STAGING = "staging"
+    PROD = "prod"
+
+
+class LogLevel(str, Enum):
+    """로그 레벨 Enum"""
+
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+
+
+class TestConfigurationPropertiesEnum:
+    """ConfigurationProperties Enum 지원 테스트"""
+
+    def test_enum_field_by_value(self, reset_container_manager):
+        """Enum 필드 - value로 변환"""
+
+        @ConfigurationProperties("app")
+        @dataclass
+        class AppConfig:
+            name: str = "MyApp"
+            environment: Environment = Environment.DEV
+            log_level: LogLevel = LogLevel.INFO
+
+        app = Application("test")
+        app.load_config(
+            {
+                "app": {
+                    "name": "TestApp",
+                    "environment": "prod",  # value로 지정
+                    "log_level": "DEBUG",
+                }
+            },
+            source_type="dict",
+        )
+        app.scan(__name__).ready()
+
+        config = app.manager.get_instance(AppConfig)
+        assert config.name == "TestApp"
+        assert config.environment == Environment.PROD
+        assert config.log_level == LogLevel.DEBUG
+
+    def test_enum_field_by_name(self, reset_container_manager):
+        """Enum 필드 - name으로 변환"""
+
+        @ConfigurationProperties("app")
+        @dataclass
+        class AppConfig:
+            environment: Environment = Environment.DEV
+
+        app = Application("test")
+        app.load_config(
+            {
+                "app": {
+                    "environment": "STAGING",  # name으로 지정 (value "staging" 실패 시)
+                }
+            },
+            source_type="dict",
+        )
+        app.scan(__name__).ready()
+
+        config = app.manager.get_instance(AppConfig)
+        assert config.environment == Environment.STAGING
+
+    def test_enum_field_default(self, reset_container_manager):
+        """Enum 필드 기본값 사용"""
+
+        @ConfigurationProperties("app")
+        @dataclass
+        class AppConfig:
+            environment: Environment = Environment.DEV
+
+        app = Application("test")
+        app.load_config({"app": {}}, source_type="dict")
+        app.scan(__name__).ready()
+
+        config = app.manager.get_instance(AppConfig)
+        assert config.environment == Environment.DEV
+
+    def test_optional_enum_field(self, reset_container_manager):
+        """Optional Enum 필드"""
+
+        @ConfigurationProperties("app")
+        @dataclass
+        class AppConfig:
+            environment: Environment | None = None
+
+        app = Application("test")
+        app.load_config(
+            {
+                "app": {
+                    "environment": "staging",
+                }
+            },
+            source_type="dict",
+        )
+        app.scan(__name__).ready()
+
+        config = app.manager.get_instance(AppConfig)
+        assert config.environment == Environment.STAGING
