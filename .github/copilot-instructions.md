@@ -139,6 +139,10 @@ class Consumer:
    - `_request_containers: ContextVar[dict[type, Container]]` - 컨테이너 저장 (라이프사이클용)
    - `RequestScopeMiddleware`가 요청 시작 시 `RequestContext.start()`, 종료 시 `RequestContext.end()` 호출
    - `RequestContext.end()`에서 역순으로 `@PreDestroy` 호출 후 저장소 초기화
+   - **async `@PostConstruct` 지원**: pending 리스트에 저장 후 미들웨어 진입 전 실행
+   - 커넥션 풀과 함께 사용 시 요청별 커넥션 관리 가능
+
+   자세한 내용은 `docs/request-scope-pool.md` 참조.
 
 **PROTOTYPE 라이프사이클 (Spring과 다름!):**
 
