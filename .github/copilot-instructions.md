@@ -86,6 +86,36 @@ class Consumer:
 2. **PROTOTYPE**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
 3. 모든 필드는 `LazyFieldProxy`로 주입되어 Scope 정보를 활용
 
+**스코프별 인스턴스 저장 위치:**
+
+| Scope       | 저장 위치                            | 관리 주체                | 라이프사이클               |
+| ----------- | ------------------------------------ | ------------------------ | -------------------------- |
+| `SINGLETON` | `ContainerManager.instance_registry` | `ContainerManager`       | 앱 시작 ~ 앱 종료          |
+| `PROTOTYPE` | 저장하지 않음 (비관리)               | GC (Garbage Collector)   | 생성 ~ 참조 해제 (GC 정리) |
+| `REQUEST`   | `RequestContext` (ContextVar)        | `RequestScopeMiddleware` | 요청 시작 ~ 요청 종료      |
+
+**상세 동작:**
+
+1. **SINGLETON** (`bloom/core/manager.py`):
+
+   - `ContainerManager.instance_registry: dict[type, list[Any]]`에 저장
+   - `LazyFieldProxy._lfp_resolve()`에서 최초 접근 시 한 번만 resolve하고 프록시 내부 캐시
+   - `Application.shutdown()` 시 `LifecycleManager`가 역순으로 `@PreDestroy` 호출
+
+2. **PROTOTYPE** (`bloom/core/lazy.py`):
+
+   - 컨테이너가 인스턴스를 **추적하지 않음** (Spring과 동일)
+   - `LazyFieldProxy._lfp_resolve()`에서 매 접근마다 새 인스턴스 생성
+   - 생성 직후 `LifecycleManager.invoke_prototype_post_construct()` 호출
+   - `@PreDestroy`는 호출되지 않음 - GC가 자연스럽게 정리
+
+3. **REQUEST** (`bloom/core/request_context.py`):
+   - `ContextVar` 기반으로 요청(코루틴)마다 독립적인 저장소
+   - `_request_instances: ContextVar[dict[type, Any]]` - 인스턴스 저장
+   - `_request_containers: ContextVar[dict[type, Container]]` - 컨테이너 저장 (라이프사이클용)
+   - `RequestScopeMiddleware`가 요청 시작 시 `RequestContext.start()`, 종료 시 `RequestContext.end()` 호출
+   - `RequestContext.end()`에서 역순으로 `@PreDestroy` 호출 후 저장소 초기화
+
 **PROTOTYPE 라이프사이클 (Spring과 동일):**
 
 PROTOTYPE은 Spring과 동일하게 컨테이너가 생성만 담당하고, 이후 관리는 클라이언트 책임입니다:

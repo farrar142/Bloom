@@ -42,6 +42,15 @@ from .context import InvocationContext
 from .registry import MethodAdviceRegistry
 from .manager import MethodInvocationManager
 from .proxy import MethodProxy
+from .tracing import (
+    CallFrame,
+    CallStackTraceAdvice,
+    get_call_stack,
+    get_current_frame,
+    get_call_depth,
+    get_trace_id,
+    set_trace_id,
+)
 
 __all__ = [
     "MethodAdvice",
@@ -49,4 +58,12 @@ __all__ = [
     "MethodAdviceRegistry",
     "MethodInvocationManager",
     "MethodProxy",
+    # Tracing
+    "CallFrame",
+    "CallStackTraceAdvice",
+    "get_call_stack",
+    "get_current_frame",
+    "get_call_depth",
+    "get_trace_id",
+    "set_trace_id",
 ]

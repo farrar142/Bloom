@@ -225,10 +225,16 @@ class Application:
         """
         인스턴스의 HandlerContainer 메서드들에 프록시를 적용합니다.
         ProxyableDescriptor를 구현한 디스크립터도 처리합니다.
+
+        MethodAdvice 및 관련 인프라 클래스는 무한 재귀 방지를 위해 제외됩니다.
         """
-        from .core.advice import MethodProxy
+        from .core.advice import MethodProxy, MethodAdvice, MethodAdviceRegistry
         from .core.container import HandlerContainer
         from .core.abstract import ProxyableDescriptor
+
+        # MethodAdvice 및 관련 인프라 클래스는 프록시 적용 제외 (무한 재귀 방지)
+        if isinstance(instance, (MethodAdvice, MethodAdviceRegistry)):
+            return
 
         cls = type(instance)
 
@@ -266,7 +272,10 @@ class Application:
             # 일반 메서드 처리
             container = HandlerContainer.get_container(attr)
             if container is None:
-                continue
+                # HandlerContainer가 없으면 자동 생성 (모든 메서드 추적 지원)
+                # method 객체에서 원본 함수 추출 (__func__)
+                original_func = getattr(attr, "__func__", attr)
+                container = HandlerContainer.get_or_create(original_func)
 
             # 프록시 생성 및 적용
             proxy = MethodProxy(
