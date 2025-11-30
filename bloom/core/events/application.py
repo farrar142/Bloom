@@ -9,7 +9,7 @@ from typing import Any, Callable, TYPE_CHECKING
 
 from .base import Event, EventMixin, InMemoryEventBus
 from ..container import HandlerContainer
-from ..container.element import Element
+from ..container.element import Element, SingletonOnlyElement
 
 if TYPE_CHECKING:
     pass
@@ -85,6 +85,10 @@ def EventListener(event_type: type[Event]) -> Callable[[Callable], Callable]:
     Args:
         event_type: 구독할 이벤트 타입
 
+    Note:
+        @EventListener는 SINGLETON 스코프 컴포넌트에서만 사용 가능합니다.
+        PROTOTYPE/REQUEST 스코프에서 사용하면 InvalidScopeError가 발생합니다.
+
     사용 예시:
         @Component
         class EmailService:
@@ -94,9 +98,10 @@ def EventListener(event_type: type[Event]) -> Callable[[Callable], Callable]:
     """
 
     def decorator(method: Callable) -> Callable:
-        # HandlerContainer에 EventListenerElement 추가
+        # HandlerContainer에 EventListenerElement와 SingletonOnlyElement 추가
         container = HandlerContainer.get_or_create(method)
         container.add_elements(EventListenerElement(event_type))
+        container.add_elements(SingletonOnlyElement("EventListener"))
         return method
 
     return decorator

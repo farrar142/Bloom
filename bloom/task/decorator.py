@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Callable, Concatenate, Generic, TypeVar, 
 
 from bloom.core.abstract import ProxyableDescriptor
 from bloom.core.container import HandlerContainer
-from bloom.core.container.element import Element
+from bloom.core.container.element import Element, SingletonOnlyElement
 
 from .result import AbstractTaskResult, AsyncTaskResult, ScheduledTask, TaskResult
 from .trigger import CronTrigger, FixedDelayTrigger, FixedRateTrigger, Trigger
@@ -411,6 +411,7 @@ def Task[T, **P, R](
         # HandlerContainer에 Element 추가
         container = HandlerContainer.get_or_create(fn)
         container.add_elements(element)
+        container.add_elements(SingletonOnlyElement("Task"))
 
         return TaskDescriptor(fn, element)
 

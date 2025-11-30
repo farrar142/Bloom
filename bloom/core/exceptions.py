@@ -643,3 +643,56 @@ class ConfigurationError(SystemException):
         self.key = key
         self.value = value
         super().__init__(message)
+
+
+class InvalidScopeError(ContainerException):
+    """잘못된 스코프 사용 예외
+
+    PROTOTYPE 또는 REQUEST 스코프의 컴포넌트에 @Factory, @EventListener, @Task 등
+    SINGLETON에서만 사용 가능한 핸들러를 정의했을 때 발생합니다.
+
+    예시:
+        @Component
+        @Scope(Scope.PROTOTYPE)  # ❌ 오류 발생
+        class MyService:
+            @Factory
+            def create_something(self) -> Something:
+                return Something()
+
+            @EventListener(MyEvent)
+            def on_event(self, event: MyEvent):
+                pass
+
+            @Task
+            def background_task(self):
+                pass
+
+    이유:
+        - PROTOTYPE 스코프는 주입될 때마다 새 인스턴스가 생성됩니다.
+        - @Factory, @EventListener, @Task는 애플리케이션 시작 시 한 번만 등록됩니다.
+        - PROTOTYPE 컴포넌트의 핸들러가 등록되면, 어떤 인스턴스에서 실행될지 모호해집니다.
+        - REQUEST 스코프도 동일한 이유로 허용되지 않습니다.
+    """
+
+    def __init__(
+        self,
+        component_type: type,
+        handler_name: str,
+        handler_type: str,
+        scope: str,
+    ):
+        self.component_type = component_type
+        self.handler_name = handler_name
+        self.handler_type = handler_type
+        self.scope = scope
+
+        message = (
+            f"Cannot use @{handler_type} on {scope.upper()} scoped component.\n"
+            f"  Component: {component_type.__name__}\n"
+            f"  Handler: {handler_name}\n"
+            f"  Scope: {scope}\n\n"
+            f"@{handler_type} is only allowed on SINGLETON scoped components.\n"
+            f"These handlers are registered once at application startup and must have "
+            f"a stable instance reference."
+        )
+        super().__init__(message)

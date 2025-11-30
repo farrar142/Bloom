@@ -11,6 +11,7 @@ from bloom.core.container import (
 from bloom.core.container.element import (
     OrderElement,
     ScopeElement,
+    SingletonOnlyElement,
     Scope as ScopeEnum,
     PrototypeMode,
 )
@@ -58,8 +59,13 @@ def Factory[**P, R](method: Callable[P, R]) -> Callable[P, R]:
     """
     Factory 데코레이터: 메서드를 팩토리로 등록
     해당 메서드가 속한 클래스가 @Component로 등록되어 있어야 함
+
+    Note:
+        @Factory는 SINGLETON 스코프 컴포넌트에서만 사용 가능합니다.
+        PROTOTYPE/REQUEST 스코프에서 사용하면 InvalidScopeError가 발생합니다.
     """
-    FactoryContainer.get_or_create(method)
+    container = FactoryContainer.get_or_create(method)
+    container.add_elements(SingletonOnlyElement("Factory"))
     return method
 
 

@@ -55,6 +55,7 @@ from .exceptions import (
     # System
     SystemException,
     ConfigurationError,
+    InvalidScopeError,
 )
 from .lifecycle import LifecycleManager
 from .lazy import (
@@ -124,6 +125,7 @@ __all__ = [
     # Exceptions - System
     "SystemException",
     "ConfigurationError",
+    "InvalidScopeError",
     # Lifecycle
     "LifecycleManager",
     "Lazy",

@@ -87,6 +87,10 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
             self._target = self._get_target_type()
         return self._target
 
+    def get_callable_name(self) -> str:
+        """Factory 메서드 이름 반환"""
+        return getattr(self.factory_method, "__name__", str(self.factory_method))
+
     def get_dependencies(self) -> list[type]:
         """이 팩토리 컨테이너가 의존하는 타입들을 반환"""
         dependencies = []

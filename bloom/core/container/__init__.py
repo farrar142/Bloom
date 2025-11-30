@@ -1,6 +1,13 @@
 """container 패키지"""
 
-from .element import Element, OrderElement, Scope, PrototypeMode, ScopeElement
+from .element import (
+    Element,
+    OrderElement,
+    Scope,
+    PrototypeMode,
+    ScopeElement,
+    SingletonOnlyElement,
+)
 from .base import Container
 from .callable import CallableContainer
 from .component import ComponentContainer
@@ -13,6 +20,7 @@ __all__ = [
     "Scope",
     "PrototypeMode",
     "ScopeElement",
+    "SingletonOnlyElement",
     "Container",
     "CallableContainer",
     "ComponentContainer",

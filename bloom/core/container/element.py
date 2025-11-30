@@ -113,3 +113,26 @@ class ScopeElement(Element):
         - CALL_SCOPED: 같은 핸들러 호출 내에서 같은 인스턴스 반환
         """
         return self.metadata.get("prototype_mode", PrototypeMode.DEFAULT)
+
+
+class SingletonOnlyElement(Element):
+    """
+    SINGLETON 스코프에서만 사용 가능한 핸들러임을 표시하는 Element
+
+    @Factory, @EventListener, @Task 등 애플리케이션 시작 시 한 번만 등록되는
+    핸들러에 사용됩니다. PROTOTYPE 또는 REQUEST 스코프 컴포넌트에서
+    이 Element가 있는 핸들러를 사용하면 InvalidScopeError가 발생합니다.
+
+    Attributes:
+        handler_type: 핸들러 타입명 (예: "Factory", "EventListener", "Task")
+    """
+
+    key = "singleton_only"
+
+    def __init__(self, handler_type: str):
+        super().__init__()
+        self.metadata["handler_type"] = handler_type
+
+    @property
+    def handler_type(self) -> str:
+        return self.metadata.get("handler_type", "Handler")

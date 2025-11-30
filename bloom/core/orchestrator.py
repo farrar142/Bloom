@@ -53,6 +53,7 @@ class ContainerOrchestrator:
         """
         all_containers = self._collect_all_containers()
         self._validate_factory_chains(all_containers)
+        self._validate_singleton_only_handlers(all_containers)
 
         try:
             sorted_containers = topological_sort(all_containers)
@@ -83,6 +84,7 @@ class ContainerOrchestrator:
         """
         all_containers = self._collect_all_containers()
         self._validate_factory_chains(all_containers)
+        self._validate_singleton_only_handlers(all_containers)
 
         try:
             levels = group_by_dependency_level(all_containers)
@@ -136,6 +138,21 @@ class ContainerOrchestrator:
             if len(factory_chain) > 1:
                 for factory in factory_chain[:-1]:
                     factory._is_chain_intermediate = True
+
+    def _validate_singleton_only_handlers(
+        self, all_containers: list["Container"]
+    ) -> None:
+        """
+        SINGLETON-only 핸들러가 PROTOTYPE/REQUEST 스코프에서 사용되는지 검증
+
+        @Factory, @EventListener, @Task 등은 SINGLETON 스코프에서만 사용 가능합니다.
+        PROTOTYPE 또는 REQUEST 스코프 컴포넌트에서 사용되면 InvalidScopeError가 발생합니다.
+        """
+        from .container.callable import CallableContainer
+
+        for container in all_containers:
+            if isinstance(container, CallableContainer):
+                container.validate_owner_scope()
 
     def _initialize_single_container(
         self, container: "Container"
