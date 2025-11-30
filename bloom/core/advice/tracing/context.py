@@ -188,12 +188,10 @@ def register_prototype(instance: Any, container: "Container") -> None:
     target_depth = depth - 1
 
     instances = _prototype_instances.get()
-    # 딕셔너리 복사 후 수정 (불변성 유지)
-    new_instances = dict(instances)
-    if target_depth not in new_instances:
-        new_instances[target_depth] = []
-    new_instances[target_depth] = new_instances[target_depth] + [(instance, container)]
-    _prototype_instances.set(new_instances)
+    # ContextVar는 코루틴별로 격리되므로 직접 수정해도 안전
+    if target_depth not in instances:
+        instances[target_depth] = []
+    instances[target_depth].append((instance, container))
 
 
 def cleanup_prototypes_at_depth(depth: int) -> None:
@@ -206,15 +204,12 @@ def cleanup_prototypes_at_depth(depth: int) -> None:
         depth: 콜스택 깊이
     """
     instances = _prototype_instances.get()
-    if depth not in instances:
-        # 캐시도 정리
-        _cleanup_scoped_cache_at_depth(depth)
-        return
+    prototypes = instances.pop(depth, None)
 
-    prototypes = instances[depth]
+    # 캐시 정리 (depth=0일 때만)
+    _cleanup_scoped_cache_at_depth(depth)
+
     if not prototypes:
-        # 캐시도 정리
-        _cleanup_scoped_cache_at_depth(depth)
         return
 
     # 라이프사이클 매니저를 통해 PreDestroy 호출
@@ -229,14 +224,6 @@ def cleanup_prototypes_at_depth(depth: int) -> None:
             manager.lifecycle.invoke_prototype_pre_destroy(instance, container)
         except Exception:
             pass  # PreDestroy 에러는 무시
-
-    # 해당 depth 정리
-    new_instances = dict(instances)
-    del new_instances[depth]
-    _prototype_instances.set(new_instances)
-
-    # 캐시도 정리
-    _cleanup_scoped_cache_at_depth(depth)
 
 
 def get_prototype_count_at_depth(depth: int) -> int:
@@ -340,15 +327,11 @@ def set_scoped_prototype(component_type: type, instance: Any) -> None:
         return
 
     cache = _scoped_prototype_cache.get()
-    new_cache = dict(cache)
+    # ContextVar는 코루틴별로 격리되므로 직접 수정해도 안전
+    if frame_id not in cache:
+        cache[frame_id] = {}
 
-    if frame_id not in new_cache:
-        new_cache[frame_id] = {}
-    else:
-        new_cache[frame_id] = dict(new_cache[frame_id])
-
-    new_cache[frame_id][component_type] = instance
-    _scoped_prototype_cache.set(new_cache)
+    cache[frame_id][component_type] = instance
 
 
 def _cleanup_scoped_cache_at_depth(depth: int) -> None:
@@ -365,9 +348,4 @@ def _cleanup_scoped_cache_at_depth(depth: int) -> None:
         return
 
     cache = _scoped_prototype_cache.get()
-    if frame_id not in cache:
-        return
-
-    new_cache = dict(cache)
-    del new_cache[frame_id]
-    _scoped_prototype_cache.set(new_cache)
+    cache.pop(frame_id, None)

@@ -104,12 +104,13 @@ class MethodInvocationManager(AbstractManager["MethodAdviceRegistry"]):
         Returns:
             핸들러 실행 결과 (Advice에 의해 수정될 수 있음)
         """
-        # Registry가 없으면 직접 호출
-        if self._advice_registry is None:
+        # Fast path: Registry가 없으면 직접 호출
+        registry = self._advice_registry
+        if registry is None:
             return await self._call_handler(handler, instance, *args, **kwargs)
 
-        # 적용 가능한 Advice 수집 (Element 순서대로)
-        advices = self._advice_registry.find_applicable(container)
+        # 적용 가능한 Advice 수집 (캐싱됨)
+        advices = registry.find_applicable(container)
 
         if not advices:
             # Advice가 없으면 직접 호출

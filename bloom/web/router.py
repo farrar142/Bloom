@@ -211,14 +211,18 @@ class Router:
                     result = await handler(**resolved_params)
 
                     # 결과 타입에 따라 응답 생성
-                    # HttpResponse가 가장 흔하므로 먼저 체크
-                    if result.__class__ is HttpResponse:
+                    # 정확한 타입 체크 (상속 체크보다 빠름)
+                    result_type = type(result)
+                    if result_type is HttpResponse:
                         ctx.set_response(result)
-                    elif isinstance(result, HttpResponse):
+                    elif result_type is StreamingResponse:
+                        # 스트리밍 응답은 미들웨어를 거치지 않고 직접 반환
+                        return result
+                    elif issubclass(result_type, HttpResponse):
                         # HttpResponse 서브클래스
                         ctx.set_response(result)
-                    elif isinstance(result, StreamingResponse):
-                        # 스트리밍 응답은 미들웨어를 거치지 않고 직접 반환
+                    elif issubclass(result_type, StreamingResponse):
+                        # StreamingResponse 서브클래스
                         return result
                     else:
                         # response_type이 있으면 변환

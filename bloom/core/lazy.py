@@ -79,7 +79,19 @@ class LazyFieldProxy[T]:
 
     def _lfp_resolve(self) -> T:
         """실제 인스턴스를 해결합니다. Scope에 따라 동작이 다릅니다."""
+        # Fast path: SINGLETON이 이미 resolve된 경우 (가장 흔한 케이스)
+        if object.__getattribute__(self, "_lfp_resolved"):
+            return object.__getattribute__(self, "_lfp_instance")
+
         scope = object.__getattribute__(self, "_lfp_scope")
+
+        # SINGLETON (기본값): 캐시 사용
+        if scope == Scope.SINGLETON:
+            resolver = object.__getattribute__(self, "_lfp_resolver")
+            instance = resolver()
+            object.__setattr__(self, "_lfp_instance", instance)
+            object.__setattr__(self, "_lfp_resolved", True)
+            return instance
 
         # PROTOTYPE: 매번 새 인스턴스 생성
         # 콜스택 내에서 생성되면 메서드 종료 시 자동으로 @PreDestroy 호출
@@ -158,13 +170,8 @@ class LazyFieldProxy[T]:
 
             return instance
 
-        # SINGLETON (기본값): 캐시 사용
-        if not object.__getattribute__(self, "_lfp_resolved"):
-            resolver = object.__getattribute__(self, "_lfp_resolver")
-            instance = resolver()
-            object.__setattr__(self, "_lfp_instance", instance)
-            object.__setattr__(self, "_lfp_resolved", True)
-        return object.__getattribute__(self, "_lfp_instance")
+        # 여기에 도달하면 안 됨 (알 수 없는 scope)
+        raise RuntimeError(f"Unknown scope: {scope}")
 
     def _lfp_publish_instance_created(
         self, manager: Any, instance: Any, scope: Scope
