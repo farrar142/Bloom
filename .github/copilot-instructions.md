@@ -716,6 +716,63 @@ class TaskDescriptor(ProxyableDescriptor, Generic[T]):
 
 자세한 내용은 `docs/method-advice-pattern.md` 참조.
 
+### 콜스택 추적 시스템 (Tracing)
+
+모든 컴포넌트의 메서드 호출을 자동으로 추적합니다. `ContextVar` + 불변 튜플로 **async/multithread 안전**합니다.
+
+```python
+from bloom import Component
+from bloom.core.decorators import Factory
+from bloom.core.advice import (
+    MethodAdvice, MethodAdviceRegistry,
+    CallStackTraceAdvice, CallFrame, get_call_stack
+)
+
+@Component
+class LoggingTraceAdvice(CallStackTraceAdvice):
+    include_args = True  # 인자 요약 포함
+    
+    def on_enter(self, frame: CallFrame) -> None:
+        indent = "  " * frame.depth
+        print(f"{indent}→ {frame.full_name}({frame.args_summary})")
+    
+    def on_exit(self, frame: CallFrame, duration_ms: float) -> None:
+        indent = "  " * frame.depth
+        print(f"{indent}← {frame.full_name} [{duration_ms:.2f}ms]")
+
+@Component
+class AdviceConfig:
+    @Factory
+    def advice_registry(self, *advices: MethodAdvice) -> MethodAdviceRegistry:
+        registry = MethodAdviceRegistry()
+        for advice in advices:
+            registry.register(advice)
+        return registry
+```
+
+**출력 예시:**
+```
+→ UserController.get_user_detail(42)
+  → UserService.get_user(42)
+    → UserRepository.find_by_id(42)
+    ← UserRepository.find_by_id [0.01ms]
+  ← UserService.get_user [0.06ms]
+← UserController.get_user_detail [0.14ms]
+```
+
+**Context API** - 어디서든 현재 콜스택 조회:
+```python
+from bloom.core.advice import get_call_stack, get_current_frame
+
+for frame in get_call_stack():
+    print(f"  {frame.full_name}")
+```
+
+**자동 프록시**: `@Handler` 없이도 모든 컴포넌트 메서드에 자동 적용됩니다.
+(`MethodAdvice`, `MethodAdviceRegistry`는 무한 재귀 방지를 위해 제외)
+
+자세한 내용은 `docs/tracing-system.md` 참조.
+
 ### Task 패턴 (@Task) - Celery 스타일
 
 `@Task` 데코레이터로 메서드를 비동기 태스크로 정의합니다. Celery와 유사한 인터페이스를 제공합니다.
