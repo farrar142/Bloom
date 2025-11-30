@@ -120,6 +120,28 @@
 | `WebSocketSession`         | ✅   | WebSocket 세션 관리     |
 | @Controller 메시징 지원    | ✅   | HTTP와 WebSocket 통합   |
 
+#### Task System (비동기 작업)
+
+| 기능                       | 상태 | 설명                     |
+| -------------------------- | ---- | ------------------------ |
+| `@Task`                    | ✅   | 비동기 태스크 데코레이터 |
+| `TaskDescriptor`           | ✅   | 태스크 디스크립터        |
+| `BoundTask`                | ✅   | 바인딩된 태스크 인스턴스 |
+| `TaskResult`               | ✅   | 태스크 실행 결과         |
+| `ScheduledTask`            | ✅   | 스케줄된 태스크          |
+| `AsyncioTaskBackend`       | ✅   | 로컬 asyncio 백엔드      |
+| `DistributedTaskBackend`   | ✅   | 분산 태스크 백엔드       |
+| `InMemoryBroker`           | ✅   | 개발용 인메모리 브로커   |
+| `RedisBroker`              | ✅   | 프로덕션용 Redis 브로커  |
+| `TaskRegistry`             | ✅   | 태스크 레지스트리        |
+| `QueueApplication`         | ✅   | 워커 애플리케이션        |
+| `bloom worker` CLI         | ✅   | 워커 CLI 명령어          |
+| `FixedRateTrigger`         | ✅   | 고정 주기 트리거         |
+| `FixedDelayTrigger`        | ✅   | 고정 지연 트리거         |
+| `CronTrigger`              | ✅   | Cron 표현식 트리거       |
+| `TaskMethodAdvice`         | ✅   | 태스크 메서드 어드바이스 |
+| `.delay()` / `.schedule()` | ✅   | Celery 스타일 API        |
+
 #### 문서화
 
 | 기능                       | 상태 | 설명                    |
@@ -128,6 +150,7 @@
 | `architecture-patterns.md` | ✅   | 아키텍처 패턴 문서      |
 | `config-properties.md`     | ✅   | 설정 바인딩 문서        |
 | `testing-testcase.md`      | ✅   | TestCase 클래스 문서    |
+| `task-system.md`           | ✅   | Task 시스템 문서        |
 | `method-advice-pattern.md` | ✅   | AOP 패턴 문서           |
 | `tracing-system.md`        | ✅   | 콜스택 추적 시스템 문서 |
 | `prototype-scope.md`       | ✅   | PROTOTYPE 스코프 문서   |
