@@ -5,26 +5,26 @@ bloom.tests.TestCase를 사용한 Django 스타일 테스트입니다.
 (unittest.TestCase 기반)
 
 사용법:
-    $ bloom test                    # 모든 테스트 실행
-    $ bloom test --coverage         # 커버리지 포함
-    $ bloom test tests/test_example.py  # 특정 파일만 실행
+    $ bloom tests                   # 모든 테스트 실행
+    $ bloom tests --coverage        # 커버리지 포함
+    $ bloom tests tests/test_example.py  # 특정 파일만 실행
 """
 
-import {{ project_name }}.application  # Application 모듈 임포트
+import application  # 프로젝트 루트의 application.py
 from bloom.tests import TestCase
 
 
 class TestApplication(TestCase):
     """애플리케이션 테스트
-    
+
     TestCase는 자동으로:
     - Application 인스턴스 생성 (self.app)
-    - TestClient 생성 (self.client)  
+    - TestClient 생성 (self.client)
     - HTTP 메서드 래퍼 제공 (self.get(), self.post(), ...)
     """
 
-    # 애플리케이션 모듈 스캔
-    components = [{{ project_name }}.application]
+    # 애플리케이션 모듈 스캔 (application.py의 application 객체 사용)
+    components = [application]
 
     def test_app_ready(self):
         """Application이 정상적으로 초기화되는지 확인"""
@@ -32,10 +32,11 @@ class TestApplication(TestCase):
 
     def test_health_endpoint(self):
         """GET /health 테스트
-        
+
         TODO: 헬스체크 엔드포인트 구현 후 활성화
         """
         # response = self.get("/health")
         # self.assert_status(response, 200)
         # self.assertEqual(response.json()["status"], "ok")
         pass
+
