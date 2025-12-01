@@ -20,7 +20,7 @@ from bloom.db import (
     Query,
     create,
 )
-from bloom.db.dialect import SQLiteDialect
+from bloom.db.backends import SQLiteBackend
 from bloom.db.session import SessionFactory
 from bloom.application import Application
 from bloom.core.decorators import Component, Factory
@@ -39,8 +39,8 @@ class DatabaseConfig:
     @Factory
     def session_factory(self) -> SessionFactory:
         """SessionFactory DI 등록"""
-        dialect = SQLiteDialect()
-        return SessionFactory("db.sqlite3", dialect)
+        backend = SQLiteBackend("db.sqlite3")
+        return SessionFactory(backend)
 
 
 # Application 인스턴스
@@ -244,6 +244,7 @@ def migration_examples():
     print("\n=== Django 스타일 마이그레이션 ===")
 
     from bloom.db.entity import get_entity_meta
+    from bloom.db.dialect import SQLiteDialect
 
     # 엔티티 메타데이터에서 테이블 생성 SQL 생성
     print("\n--- 테이블 생성 SQL 생성 ---")

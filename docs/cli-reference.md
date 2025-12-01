@@ -599,7 +599,8 @@ Bob
 # application.py
 from bloom import Application
 from bloom.core import Component, Factory
-from bloom.db import SessionFactory, SQLiteDialect, Entity, PrimaryKey, Column
+from bloom.db import SessionFactory, Entity, PrimaryKey, Column
+from bloom.db.backends import SQLiteBackend
 from bloom.task import QueueApplication
 
 # Application 생성
@@ -625,7 +626,8 @@ class Post:
 class DatabaseConfig:
     @Factory
     def session_factory(self) -> SessionFactory:
-        return SessionFactory("db.sqlite3", SQLiteDialect())
+        backend = SQLiteBackend("db.sqlite3")
+        return SessionFactory(backend)
 
 # 태스크 정의
 @application.queue.task
@@ -655,7 +657,8 @@ Error: Could not import default application.
 Make sure you have 'application.py' with:
 
   from bloom import Application
-  from bloom.db import SessionFactory, SQLiteDialect
+  from bloom.db import SessionFactory
+  from bloom.db.backends import SQLiteBackend
   from bloom.core import Component, Factory
 
   application = Application('myapp')
@@ -664,7 +667,8 @@ Make sure you have 'application.py' with:
   class DatabaseConfig:
       @Factory
       def session_factory(self) -> SessionFactory:
-          return SessionFactory('db.sqlite3', SQLiteDialect())
+          backend = SQLiteBackend('db.sqlite3')
+          return SessionFactory(backend)
 
 Or specify explicitly:
   bloom db --application=mymodule:app makemigrations
@@ -684,8 +688,8 @@ Please register SessionFactory in your Application:
   class DatabaseConfig:
       @Factory
       def session_factory(self) -> SessionFactory:
-          dialect = SQLiteDialect()
-          return SessionFactory('db.sqlite3', dialect)
+          backend = SQLiteBackend('db.sqlite3')
+          return SessionFactory(backend)
 ```
 
 ---

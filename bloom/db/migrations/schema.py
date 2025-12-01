@@ -90,36 +90,36 @@ class SchemaIntrospector:
 
     def get_tables(self) -> list[str]:
         """모든 테이블 목록"""
-        cursor = self._connection.execute(
+        result = self._connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
-        return [row[0] for row in cursor.fetchall()]
+        return [row["name"] for row in result.fetchall()]
 
     def get_table_info(self, table_name: str) -> TableInfo:
         """테이블 상세 정보"""
         info = TableInfo(name=table_name)
 
-        # 컬럼 정보
-        cursor = self._connection.execute(f"PRAGMA table_info({table_name})")
-        for row in cursor.fetchall():
+        # 컬럼 정보 (PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk)
+        result = self._connection.execute(f"PRAGMA table_info({table_name})")
+        for row in result.fetchall():
             col = ColumnInfo(
-                name=row[1],
-                type=row[2],
-                nullable=not row[3],
-                default=row[4],
-                primary_key=bool(row[5]),
+                name=row["name"],
+                type=row["type"],
+                nullable=not row["notnull"],
+                default=row["dflt_value"],
+                primary_key=bool(row["pk"]),
             )
             info.columns[col.name] = col
 
-        # 인덱스 정보
-        cursor = self._connection.execute(f"PRAGMA index_list({table_name})")
-        for row in cursor.fetchall():
-            info.indexes.append(row[1])
+        # 인덱스 정보 (PRAGMA index_list returns: seq, name, unique, origin, partial)
+        result = self._connection.execute(f"PRAGMA index_list({table_name})")
+        for row in result.fetchall():
+            info.indexes.append(row["name"])
 
-        # FK 정보
-        cursor = self._connection.execute(f"PRAGMA foreign_key_list({table_name})")
-        for row in cursor.fetchall():
-            info.foreign_keys.append((row[3], row[2], row[4]))  # from, table, to
+        # FK 정보 (PRAGMA foreign_key_list returns: id, seq, table, from, to, on_update, on_delete, match)
+        result = self._connection.execute(f"PRAGMA foreign_key_list({table_name})")
+        for row in result.fetchall():
+            info.foreign_keys.append((row["from"], row["table"], row["to"]))
 
         return info
 

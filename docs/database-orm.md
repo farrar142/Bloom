@@ -18,7 +18,8 @@ Bloom의 데이터베이스 ORM은 Spring JPA와 Django ORM의 장점을 결합�
 # application.py
 from bloom import Application
 from bloom.core import Component, Factory
-from bloom.db import SessionFactory, SQLiteDialect
+from bloom.db import SessionFactory
+from bloom.db.backends import SQLiteBackend
 
 application = Application("myapp")
 
@@ -26,7 +27,8 @@ application = Application("myapp")
 class DatabaseConfig:
     @Factory
     def session_factory(self) -> SessionFactory:
-        return SessionFactory("db.sqlite3", SQLiteDialect())
+        backend = SQLiteBackend("db.sqlite3")
+        return SessionFactory(backend)
 ```
 
 ### 2. Entity 정의
@@ -353,27 +355,52 @@ except Exception:
 ### SQLite
 
 ```python
-from bloom.db import SessionFactory, SQLiteDialect
+from bloom.db import SessionFactory
+from bloom.db.backends import SQLiteBackend
 
 # 파일 기반
-session_factory = SessionFactory("db.sqlite3", SQLiteDialect())
+backend = SQLiteBackend("db.sqlite3")
+session_factory = SessionFactory(backend)
 
 # 메모리 DB
-session_factory = SessionFactory(":memory:", SQLiteDialect())
-
-# URL 형식
-session_factory = SessionFactory("sqlite:///db.sqlite3", SQLiteDialect())
+backend = SQLiteBackend(":memory:")
+session_factory = SessionFactory(backend)
 ```
 
-### PostgreSQL (예정)
+### PostgreSQL
 
 ```python
-from bloom.db import SessionFactory, PostgreSQLDialect
+from bloom.db import SessionFactory
+from bloom.db.backends import PostgreSQLBackend
 
-session_factory = SessionFactory(
-    "postgresql://user:pass@localhost:5432/mydb",
-    PostgreSQLDialect()
+backend = PostgreSQLBackend(
+    host="localhost",
+    port=5432,
+    database="mydb",
+    user="user",
+    password="pass",
 )
+session_factory = SessionFactory(backend)
+
+# 또는 URL 형식
+backend = PostgreSQLBackend("postgresql://user:pass@localhost:5432/mydb")
+session_factory = SessionFactory(backend)
+```
+
+### MySQL
+
+```python
+from bloom.db import SessionFactory
+from bloom.db.backends import MySQLBackend
+
+backend = MySQLBackend(
+    host="localhost",
+    port=3306,
+    database="mydb",
+    user="user",
+    password="pass",
+)
+session_factory = SessionFactory(backend)
 ```
 
 ### DI 통합
@@ -381,7 +408,8 @@ session_factory = SessionFactory(
 ```python
 from bloom import Application
 from bloom.core import Component, Factory
-from bloom.db import SessionFactory, SQLiteDialect
+from bloom.db import SessionFactory
+from bloom.db.backends import SQLiteBackend
 
 application = Application("myapp")
 
@@ -389,7 +417,8 @@ application = Application("myapp")
 class DatabaseConfig:
     @Factory
     def session_factory(self) -> SessionFactory:
-        return SessionFactory("db.sqlite3", SQLiteDialect())
+        backend = SQLiteBackend("db.sqlite3")
+        return SessionFactory(backend)
 
 # 다른 컴포넌트에서 주입받기
 @Component
@@ -582,8 +611,9 @@ from bloom import Application
 from bloom.core import Component, Factory
 from bloom.db import (
     Entity, PrimaryKey, Column, ForeignKey,
-    SessionFactory, SQLiteDialect, CrudRepository, create
+    SessionFactory, CrudRepository, create
 )
+from bloom.db.backends import SQLiteBackend
 
 application = Application("blog")
 
@@ -617,7 +647,8 @@ class PostRepository(CrudRepository[Post, int]):
 class DatabaseConfig:
     @Factory
     def session_factory(self) -> SessionFactory:
-        return SessionFactory("blog.sqlite3", SQLiteDialect())
+        backend = SQLiteBackend("blog.sqlite3")
+        return SessionFactory(backend)
 
 @Component
 class BlogService:

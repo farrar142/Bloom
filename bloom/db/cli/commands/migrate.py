@@ -111,7 +111,9 @@ def resetdb(ctx: DBContext, yes: bool, keep_migrations: bool):
                     click.echo(f"  - {meta.table_name}")
 
         if not keep_migrations:
-            click.echo("  - bloom_migrations (migration history)")
+            from bloom.db.migrations import MigrationManager
+
+            click.echo(f"  - {MigrationManager.MIGRATION_TABLE} (migration history)")
 
         click.echo("")
         if not click.confirm("Are you sure you want to continue?"):
@@ -152,11 +154,14 @@ def resetdb(ctx: DBContext, yes: bool, keep_migrations: bool):
 
         # 마이그레이션 히스토리 테이블 삭제
         if not keep_migrations:
+            from bloom.db.migrations import MigrationManager
+
+            migration_table = MigrationManager.MIGRATION_TABLE
             try:
-                conn.execute("DROP TABLE IF EXISTS bloom_migrations")
-                click.echo("  Dropped: bloom_migrations")
+                conn.execute(f"DROP TABLE IF EXISTS {migration_table}")
+                click.echo(f"  Dropped: {migration_table}")
             except Exception as e:
-                click.echo(f"  Error dropping bloom_migrations: {e}")
+                click.echo(f"  Error dropping {migration_table}: {e}")
 
         # 외래키 제약 다시 활성화
         try:

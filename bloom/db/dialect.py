@@ -39,7 +39,7 @@ class Dialect(ABC):
 
         for name, column in meta.columns.items():
             col_def = self._get_column_definition(column)
-            columns_sql.append(col_def)
+            columns_sql.append(f"{self.quote_identifier(name)} {col_def}")
 
             # FK 제약조건 수집
             from .columns import ForeignKey
@@ -158,8 +158,8 @@ class SQLiteDialect(Dialect):
         return f'"{name}"'
 
     def insert_returning_sql(self, meta: EntityMeta, columns: list[str]) -> str:
-        """SQLite는 RETURNING 지원 (3.35+)"""
-        return super().insert_returning_sql(meta, columns)
+        """SQLite는 lastrowid를 사용하므로 RETURNING 없이 INSERT만 사용"""
+        return self.insert_sql(meta, columns)
 
 
 class PostgreSQLDialect(Dialect):

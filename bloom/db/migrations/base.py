@@ -12,7 +12,8 @@ from .operations import Operation
 from .schema import SchemaEditor, SchemaIntrospector
 
 if TYPE_CHECKING:
-    from ..session import SessionFactory, Connection
+    from ..session import SessionFactory
+    from ..backends.base import Connection
     from ..entity import EntityMeta
 
 
@@ -178,10 +179,10 @@ class MigrationManager:
         with self._session_factory.session() as session:
             self._ensure_migration_table(session._connection)
 
-            cursor = session._connection.execute(
+            result = session._connection.execute(
                 f"SELECT name FROM {self.MIGRATION_TABLE}"
             )
-            return {row[0] for row in cursor.fetchall()}
+            return {row["name"] for row in result.fetchall()}
 
     def get_pending_migrations(self) -> list[Migration]:
         """미적용 마이그레이션 목록"""
@@ -248,11 +249,11 @@ class MigrationManager:
             schema = SchemaEditor(connection)
 
             # 최근 적용된 순서로 조회
-            cursor = connection.execute(
+            result = connection.execute(
                 f"SELECT name FROM {self.MIGRATION_TABLE} ORDER BY id DESC LIMIT :steps",
                 {"steps": steps},
             )
-            to_rollback = [row[0] for row in cursor.fetchall()]
+            to_rollback = [row["name"] for row in result.fetchall()]
 
             for name in to_rollback:
                 migration = self._registry.get(name)
@@ -288,7 +289,7 @@ class MigrationManager:
             schema = SchemaEditor(connection)
 
             # target 이후 적용된 마이그레이션들
-            cursor = connection.execute(
+            result = connection.execute(
                 f"""
                 SELECT name FROM {self.MIGRATION_TABLE}
                 WHERE id > (SELECT id FROM {self.MIGRATION_TABLE} WHERE name = :target)
@@ -296,7 +297,7 @@ class MigrationManager:
                 """,
                 {"target": target},
             )
-            to_rollback = [row[0] for row in cursor.fetchall()]
+            to_rollback = [row["name"] for row in result.fetchall()]
 
             for name in to_rollback:
                 migration = self._registry.get(name)

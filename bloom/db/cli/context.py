@@ -83,9 +83,17 @@ class DBContext:
 
     def _show_connection_info(self, session_factory: "SessionFactory") -> None:
         """연결 정보 표시"""
-        dialect_name = session_factory._dialect.name
-        db_url = session_factory._url
-        click.echo(f"Database: {dialect_name}://{db_url}")
+        dialect_name = session_factory.dialect.name
+        backend = session_factory.backend
+        # Backend에서 연결 정보 추출
+        if hasattr(backend, "config") and backend.config:
+            config = backend.config
+            if config.database:
+                click.echo(f"Database: {dialect_name}://{config.database}")
+            else:
+                click.echo(f"Database: {dialect_name}")
+        else:
+            click.echo(f"Database: {dialect_name}")
 
     def get_session_factory(self) -> "SessionFactory":
         """세션 팩토리 생성 또는 DI에서 가져오기"""
@@ -94,6 +102,7 @@ class DBContext:
 
         from bloom.db.session import SessionFactory
         from bloom.db.dialect import SQLiteDialect
+        from bloom.db.backends import SQLiteBackend
 
         # 1. Application DI에서 SessionFactory 찾기
         if self.application:
@@ -115,8 +124,8 @@ class DBContext:
                 "  class DatabaseConfig:\n"
                 "      @Factory\n"
                 "      def session_factory(self) -> SessionFactory:\n"
-                "          dialect = SQLiteDialect()\n"
-                "          return SessionFactory('db.sqlite3', dialect)\n"
+                "          backend = SQLiteBackend('db.sqlite3')\n"
+                "          return SessionFactory(backend)\n"
             )
 
         # 2. --entities 모드: --database 옵션이나 설정 파일에서 DB URL 사용
@@ -132,9 +141,9 @@ class DBContext:
             )
 
         if db_url.startswith("sqlite"):
-            dialect = SQLiteDialect()
             db_path = db_url.replace("sqlite:///", "")
-            self._session_factory = SessionFactory(db_path, dialect)
+            backend = SQLiteBackend(db_path)
+            self._session_factory = SessionFactory(backend)
         else:
             raise click.ClickException(f"Unsupported database type: {db_url}")
 

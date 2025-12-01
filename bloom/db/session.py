@@ -4,7 +4,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, Generic, Iterator, TYPE_CHECKING
 from contextlib import contextmanager
-import sqlite3
 from weakref import WeakValueDictionary
 
 from .entity import (
@@ -17,62 +16,14 @@ from .entity import (
     dict_to_entity,
 )
 from .tracker import DirtyTracker, EntityState
-from .dialect import Dialect, SQLiteDialect, get_dialect
+from .dialect import Dialect
 from .query import Query, QueryBuilder
+from .backends.base import DatabaseBackend, Connection
 
 if TYPE_CHECKING:
     from .columns import Column
 
 T = TypeVar("T")
-
-
-# =============================================================================
-# Connection Wrapper
-# =============================================================================
-
-
-class Connection:
-    """데이터베이스 연결 래퍼"""
-
-    def __init__(self, connection: Any, dialect: Dialect):
-        self._conn = connection
-        self._dialect = dialect
-
-    @property
-    def raw(self) -> Any:
-        """원본 연결 객체"""
-        return self._conn
-
-    @property
-    def dialect(self) -> Dialect:
-        return self._dialect
-
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> Any:
-        """SQL 실행"""
-        cursor = self._conn.cursor()
-        if params:
-            cursor.execute(sql, params)
-        else:
-            cursor.execute(sql)
-        return cursor
-
-    def executemany(self, sql: str, params_list: list[dict[str, Any]]) -> Any:
-        """여러 SQL 실행"""
-        cursor = self._conn.cursor()
-        cursor.executemany(sql, params_list)
-        return cursor
-
-    def commit(self) -> None:
-        """커밋"""
-        self._conn.commit()
-
-    def rollback(self) -> None:
-        """롤백"""
-        self._conn.rollback()
-
-    def close(self) -> None:
-        """연결 닫기"""
-        self._conn.close()
 
 
 # =============================================================================
@@ -233,6 +184,14 @@ class Session:
                 if meta:
                     for name in meta.columns:
                         setattr(existing, name, getattr(entity, name, None))
+
+                # dirty tracking: 값이 변경되었으면 _dirty에 추가
+                tracker: DirtyTracker | None = getattr(
+                    existing, "__bloom_tracker__", None
+                )
+                if tracker and tracker.is_dirty:
+                    self._dirty.add(existing)
+
                 return existing  # type: ignore
 
         # 새 엔티티로 추가
@@ -244,16 +203,15 @@ class Session:
 
     def execute(
         self, sql: str, params: dict[str, Any] | None = None
-    ) -> Iterator[sqlite3.Row]:
+    ) -> Iterator[dict[str, Any]]:
         """SQL 실행 (SELECT용)"""
         self._check_closed()
 
         if self._autoflush:
             self.flush()
 
-        cursor = self._connection.execute(sql, params or {})
-        cursor.row_factory = sqlite3.Row
-        return iter(cursor.fetchall())
+        result = self._connection.execute(sql, params or {})
+        return iter(result.fetchall())
 
     def execute_update(self, sql: str, params: dict[str, Any] | None = None) -> int:
         """SQL 실행 (UPDATE/DELETE용) - 영향받은 행 수 반환"""
@@ -262,8 +220,8 @@ class Session:
         if self._autoflush:
             self.flush()
 
-        cursor = self._connection.execute(sql, params or {})
-        return cursor.rowcount
+        result = self._connection.execute(sql, params or {})
+        return result.rowcount
 
     # -------------------------------------------------------------------------
     # Flush & Commit
@@ -343,11 +301,11 @@ class Session:
         columns = list(data.keys())
         sql = self._dialect.insert_returning_sql(meta, columns)
 
-        cursor = self._connection.execute(sql, data)
+        result = self._connection.execute(sql, data)
 
         # auto_increment PK 값 설정
         if pk_col and pk_col not in data:
-            pk_value = cursor.lastrowid
+            pk_value = result.lastrowid
             set_pk_value(entity, pk_value)
 
         # Identity Map에 등록
@@ -428,8 +386,18 @@ class Session:
 class SessionFactory:
     """세션 팩토리
 
+    DatabaseBackend를 통해 다양한 데이터베이스를 지원합니다.
+
     Examples:
-        factory = SessionFactory("sqlite:///test.db")
+        from bloom.db.backends import SQLiteBackend, PostgreSQLBackend
+
+        # SQLite
+        backend = SQLiteBackend(":memory:")
+        factory = SessionFactory(backend)
+
+        # PostgreSQL
+        backend = PostgreSQLBackend("postgresql://user:pass@localhost/mydb")
+        factory = SessionFactory(backend)
 
         with factory.create() as session:
             user = User(name="alice")
@@ -439,44 +407,29 @@ class SessionFactory:
 
     def __init__(
         self,
-        url: str | None = None,
-        dialect: str | Dialect = "sqlite",
+        backend: DatabaseBackend,
         *,
         autoflush: bool = True,
-        **connection_kwargs: Any,
     ):
-        self._url = url or ":memory:"
         self._autoflush = autoflush
-        self._connection_kwargs = connection_kwargs
+        self._backend = backend
 
-        # Dialect 설정
-        if isinstance(dialect, str):
-            self._dialect = get_dialect(dialect)
-        else:
-            self._dialect = dialect
+        # Dialect는 백엔드에서 가져옴
+        self._dialect = self._backend.dialect
 
-        # URL 파싱
-        self._db_path = self._parse_url(self._url)
+    @property
+    def dialect(self) -> Dialect:
+        """현재 Dialect 반환"""
+        return self._dialect
 
-    def _parse_url(self, url: str) -> str:
-        """DB URL 파싱"""
-        if url.startswith("sqlite:///"):
-            return url[len("sqlite:///") :]
-        if url.startswith("sqlite://"):
-            return url[len("sqlite://") :]
-        return url
+    @property
+    def backend(self) -> DatabaseBackend:
+        """현재 Backend 반환"""
+        return self._backend
 
     def _create_connection(self) -> Connection:
-        """연결 생성"""
-        # SQLite
-        if isinstance(self._dialect, SQLiteDialect):
-            conn = sqlite3.connect(self._db_path, **self._connection_kwargs)
-            conn.row_factory = sqlite3.Row
-            # FK 활성화
-            conn.execute("PRAGMA foreign_keys = ON")
-            return Connection(conn, self._dialect)
-
-        raise NotImplementedError(f"Dialect {self._dialect.name} not implemented")
+        """연결 생성 - 백엔드에서 커넥션을 가져옴"""
+        return self._backend.connect()
 
     def create(self) -> Session:
         """새 세션 생성"""
