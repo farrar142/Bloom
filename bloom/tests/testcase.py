@@ -119,7 +119,10 @@ class TestCase(UnitTestCase):
         if self._loop and not self._loop.is_running():
             self._loop.close()
 
-        # ContainerManager 정리
+        # ContainerManager 정리 (인스턴스 레지스트리 초기화)
+        if hasattr(self, 'manager') and self.manager:
+            self.manager.clear()
+
         set_current_manager(None)
 
     # === 이벤트 루프 ===
