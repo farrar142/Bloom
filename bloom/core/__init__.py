@@ -76,13 +76,14 @@ from .abstract import (
     AbstractManager,
 )
 from .orchestrator import ContainerOrchestrator
-from .protocols import Serializable
+from .protocols import Serializable, AutoCloseable
 
 __all__ = [
     "ContainerManager",
     "get_current_manager",
     "set_current_manager",
     "try_get_current_manager",
+    "AutoCloseable",
     "Element",
     "Container",
     "ComponentContainer",

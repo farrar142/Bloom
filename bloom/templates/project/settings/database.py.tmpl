@@ -1,11 +1,17 @@
 """Database Configuration
 
 데이터베이스 연결 설정입니다.
-필요시 bloom.db 모듈을 사용하여 ORM 기능을 추가할 수 있습니다.
+bloom.db 모듈을 사용하여 ORM 기능을 제공합니다.
 """
 
 import os
 
+from bloom import Component
+from bloom.core import AutoCloseable
+from bloom.core.decorators import Factory, Scope
+from bloom.core.container import ScopeType, PrototypeMode
+from bloom.db import Session, SessionFactory
+from bloom.db.backends import get_backend
 
 # =============================================================================
 # Database Settings
@@ -15,19 +21,74 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///db.sqlite3")
 
 
 # =============================================================================
-# Database 사용 예시 (필요시 주석 해제)
+# Database Configuration
 # =============================================================================
 
-# from bloom import Component
-# from bloom.core.decorators import Factory
-# from bloom.db import SessionFactory
-# from bloom.db.backends.sqlite import SQLiteBackend
-#
-# @Component
-# class DatabaseConfig:
-#     """데이터베이스 설정 컴포넌트"""
-#
-#     @Factory
-#     def session_factory(self) -> SessionFactory:
-#         backend = SQLiteBackend(DATABASE_URL.replace("sqlite:///", ""))
-#         return SessionFactory(backend)
+
+@Component
+class DatabaseConfig:
+    """데이터베이스 설정 컴포넌트"""
+
+    @Factory
+    def session_factory(self) -> SessionFactory:
+        """SessionFactory를 DI 컨테이너에 등록"""
+        backend = get_backend(DATABASE_URL)
+        return SessionFactory(backend)
+
+
+@Component
+@Scope(ScopeType.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+class DbSession(AutoCloseable):
+    """DB 세션 풀 획득 컴포넌트
+
+    PROTOTYPE + CALL_SCOPED로 동작하여:
+    - 메서드 호출 시 새 세션 획득 (initialize/initialize_async)
+    - 메서드 종료 시 자동으로 세션 반환 (close/close_async)
+
+    Usage (동기):
+        @Component
+        class UserRepository:
+            db: DbSession  # 자동으로 세션 획득/반환
+
+            def find_by_id(self, user_id: int) -> User | None:
+                return self.db.session.get(User, user_id)
+
+    Usage (비동기):
+        @Component
+        class AsyncUserRepository:
+            db: DbSession
+
+            async def find_by_id(self, user_id: int) -> User | None:
+                return await self.db.async_session.get(User, user_id)
+    """
+
+    session_factory: SessionFactory
+
+    def initialize(self) -> None:
+        """동기 세션 획득"""
+        self._session = self.session_factory.create()
+
+    def close(self) -> None:
+        """동기 세션 반환"""
+        if hasattr(self, "_session") and self._session:
+            self._session.close()
+
+    async def initialize_async(self) -> None:
+        """비동기 세션 획득"""
+        self._async_session = await self.session_factory.create_async()
+
+    async def close_async(self) -> None:
+        """비동기 세션 반환"""
+        if hasattr(self, "_async_session") and self._async_session:
+            await self._async_session.close()
+
+    @property
+    def session(self) -> Session:
+        """현재 동기 세션 반환"""
+        return self._session
+
+    @property
+    def async_session(self) -> Session:
+        """현재 비동기 세션 반환"""
+        return self._async_session
+

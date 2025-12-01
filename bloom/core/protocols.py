@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol, Self, runtime_checkable
+from abc import ABC, abstractmethod
+from typing import Any, Coroutine, Protocol, Self, runtime_checkable
 
 
 @runtime_checkable
@@ -56,32 +57,17 @@ class Serializable(Protocol):
 # =============================================================================
 
 
-@runtime_checkable
-class Initializable(Protocol):
-    """
-    초기화 프로토콜 - @PostConstruct 대안
-
-    이 프로토콜을 구현하면 DI 컨테이너가 인스턴스 생성 후
-    자동으로 initialize()를 호출합니다.
-
-    Example:
-        ```python
-        @Component
-        class DatabaseConnection(Initializable):
-            config: Config
-
-            def initialize(self) -> None:
-                self.connection = create_connection(self.config.url)
-        ```
-    """
-
+class Initializable(ABC):
     def initialize(self) -> None:
-        """인스턴스 초기화 (의존성 주입 후 호출)"""
+        """동기 초기화 (의존성 주입 후 호출)"""
+        pass
+
+    async def initialize_async(self) -> Coroutine[Any, None, None]:
+        """비동기 초기화"""
         ...
 
 
-@runtime_checkable
-class Closeable(Protocol):
+class Closeable(ABC):
     """
     리소스 정리 프로토콜 - @PreDestroy 대안
 
@@ -100,17 +86,23 @@ class Closeable(Protocol):
         ```
     """
 
+    @abstractmethod
     def close(self) -> None:
         """리소스 정리"""
         ...
 
+    @abstractmethod
+    def close_async(self) -> Coroutine[Any, None, None]:
+        """비동기 리소스 정리"""
+        ...
 
-@runtime_checkable
-class AutoCloseable(Initializable, Closeable, Protocol):
+
+class AutoCloseable(Closeable, Initializable):
     """
-    초기화 + 정리 프로토콜 조합
+    초기화 + 정리를 위한 추상 클래스
 
     Java의 AutoCloseable과 유사하게, 리소스의 전체 라이프사이클을 관리합니다.
+    동기/비동기 모두 지원합니다.
 
     Example:
         ```python
@@ -124,39 +116,51 @@ class AutoCloseable(Initializable, Closeable, Protocol):
 
             def close(self) -> None:
                 self._raw.close()
+
+        # 비동기 예시
+        @Component
+        class AsyncDatabasePool(AutoCloseable):
+            async def initialize_async(self) -> None:
+                self._pool = await asyncpg.create_pool(...)
+
+            async def close_async(self) -> None:
+                await self._pool.close()
         ```
     """
 
-    pass
 
-
-@runtime_checkable
-class ContextManageable(Protocol):
+class ContextManageable(AutoCloseable):
     """
     Python 컨텍스트 매니저 프로토콜
 
     with 문과 함께 사용 가능한 객체입니다.
-    DI 컨테이너는 __exit__를 PreDestroy로 사용할 수 있습니다.
+    AutoCloseable을 상속하여 동기/비동기 컨텍스트 매니저를 모두 지원합니다.
 
     Example:
         ```python
         @Component
         class Transaction(ContextManageable):
-            def __enter__(self) -> "Transaction":
+            def initialize(self) -> None:
                 self.begin()
-                return self
 
-            def __exit__(self, *args) -> None:
-                if args[0]:  # 예외 발생
-                    self.rollback()
-                else:
-                    self.commit()
+            def close(self) -> None:
+                self.commit()
+
+        # 비동기 예시
+        @Component
+        class AsyncTransaction(ContextManageable):
+            async def initialize_async(self) -> None:
+                await self.begin()
+
+            async def close_async(self) -> None:
+                await self.commit()
         ```
     """
 
     def __enter__(self) -> Self:
-        """컨텍스트 진입"""
-        ...
+        """동기 컨텍스트 진입"""
+        self.initialize()
+        return self
 
     def __exit__(
         self,
@@ -164,5 +168,19 @@ class ContextManageable(Protocol):
         exc_val: BaseException | None,
         exc_tb: Any,
     ) -> None:
-        """컨텍스트 종료"""
-        ...
+        """동기 컨텍스트 종료"""
+        self.close()
+
+    async def __aenter__(self) -> Self:
+        """비동기 컨텍스트 진입"""
+        await self.initialize_async()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
+        """비동기 컨텍스트 종료"""
+        await self.close_async()
