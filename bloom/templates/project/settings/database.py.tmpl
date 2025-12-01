@@ -1,13 +1,10 @@
 """Database Configuration
 
-데이터베이스 연결 및 세션 팩토리 설정입니다.
+데이터베이스 연결 설정입니다.
+필요시 bloom.db 모듈을 사용하여 ORM 기능을 추가할 수 있습니다.
 """
 
 import os
-
-from bloom import Component
-from bloom.core.decorators import Factory
-from bloom.db import SessionFactory
 
 
 # =============================================================================
@@ -18,18 +15,19 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///db.sqlite3")
 
 
 # =============================================================================
-# SessionFactory
+# Database 사용 예시 (필요시 주석 해제)
 # =============================================================================
 
-@Component
-class DatabaseConfig:
-    """데이터베이스 설정 컴포넌트"""
-
-    @Factory
-    def session_factory(self) -> SessionFactory:
-        """SessionFactory를 생성합니다.
-        
-        Returns:
-            SessionFactory: 데이터베이스 세션 팩토리
-        """
-        return SessionFactory(DATABASE_URL)
+# from bloom import Component
+# from bloom.core.decorators import Factory
+# from bloom.db import SessionFactory
+# from bloom.db.backends.sqlite import SQLiteBackend
+#
+# @Component
+# class DatabaseConfig:
+#     """데이터베이스 설정 컴포넌트"""
+#
+#     @Factory
+#     def session_factory(self) -> SessionFactory:
+#         backend = SQLiteBackend(DATABASE_URL.replace("sqlite:///", ""))
+#         return SessionFactory(backend)

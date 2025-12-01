@@ -3,53 +3,45 @@
 백그라운드 태스크 설정입니다.
 """
 
-import os
-
-from bloom import Component
+from bloom import Component, Lazy, PostConstruct, PreDestroy
 from bloom.core.decorators import Factory
-from bloom.task import TaskRegistry, TaskBackend, AsyncioTaskBackend
-
-
-# =============================================================================
-# Task Settings
-# =============================================================================
-
-# Redis URL for distributed tasks (optional)
-REDIS_URL = os.getenv("REDIS_URL", None)
+from bloom.task import TaskBackend, DistributedTaskBackend, InMemoryBroker
 
 
 # =============================================================================
 # TaskRegistry & TaskBackend
 # =============================================================================
 
+
 @Component
 class TaskConfig:
-    """태스크 설정 컴포넌트"""
+    """태스크 설정 컴포넌트
+
+    @Factory로 TaskBackend를 생성하고,
+    Lazy[TaskBackend]로 지연 주입받아 사용합니다.
+    """
+
+    backend: Lazy[TaskBackend]  # @Factory의 결과가 자동 주입됨
 
     @Factory
     def task_backend(self) -> TaskBackend:
         """TaskBackend를 생성합니다.
-        
+
         REDIS_URL이 설정된 경우 DistributedTaskBackend를,
-        그렇지 않으면 AsyncioTaskBackend를 사용합니다.
-        
+        그렇지 않으면 InMemoryBroker를 사용합니다.
+
         Returns:
             TaskBackend: 태스크 백엔드
         """
-        if REDIS_URL:
-            from bloom.task import DistributedTaskBackend
-            return DistributedTaskBackend(REDIS_URL)
-        
-        return AsyncioTaskBackend()
+        return DistributedTaskBackend(InMemoryBroker())
 
-    @Factory
-    def task_registry(self, backend: TaskBackend) -> TaskRegistry:
-        """TaskRegistry를 생성합니다.
-        
-        Args:
-            backend: 주입된 TaskBackend
-            
-        Returns:
-            TaskRegistry: 태스크 레지스트리
-        """
-        return TaskRegistry(backend=backend)
+    @PostConstruct
+    async def start_backend(self):
+        """백엔드 시작"""
+        await self.backend.start()
+
+    @PreDestroy
+    async def stop_backend(self):
+        """백엔드 종료"""
+        await self.backend.shutdown()
+

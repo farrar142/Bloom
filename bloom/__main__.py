@@ -189,11 +189,17 @@ def server(application: str | None, host: str, port: int, reload: bool):
         click.echo("[Bloom] Auto-reload enabled")
     click.echo()
 
+    # sys.path에도 현재 디렉토리 추가 (import 시점에 필요)
+    import sys
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+
     uvicorn.run(
         asgi_path,
         host=host,
         port=port,
         reload=reload,
+        reload_dirs=[cwd] if reload else None,
     )
 
 
@@ -289,6 +295,7 @@ def _copy_template(template_dir: Path, target_path: Path, project_name: str):
             # .tmpl 파일: 변수 치환 후 확장자 제거
             content = src_file.read_text(encoding="utf-8")
             content = content.replace("{{project_name}}", project_name)
+            content = content.replace("{{ project_name }}", project_name)
 
             # .tmpl 확장자 제거
             final_dest = dest_file.with_suffix("")
