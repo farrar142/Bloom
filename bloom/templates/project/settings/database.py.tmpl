@@ -7,9 +7,8 @@ bloom.db 모듈을 사용하여 ORM 기능을 제공합니다.
 import os
 
 from bloom import Component
-from bloom.core import AutoCloseable
+from bloom.core import AutoCloseable, ScopeEnum, PrototypeMode
 from bloom.core.decorators import Factory, Scope
-from bloom.core.container import ScopeType, PrototypeMode
 from bloom.db import Session, SessionFactory
 from bloom.db.backends import get_backend
 
@@ -37,7 +36,7 @@ class DatabaseConfig:
 
 
 @Component
-@Scope(ScopeType.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+@Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
 class DbSession(AutoCloseable):
     """DB 세션 풀 획득 컴포넌트
 
