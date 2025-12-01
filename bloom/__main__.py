@@ -153,21 +153,10 @@ def server(application: str | None, host: str, port: int, reload: bool):
         bloom server --application=main:app --no-reload
         bloom server --application=backend/application:app
     """
-    try:
-        import uvicorn
-    except ImportError:
-        raise click.ClickException(
-            "uvicorn is required for the server command.\n"
-            "Install it with: pip install uvicorn[standard]"
-        )
+    import subprocess
 
-    # 현재 디렉토리를 PYTHONPATH에 추가 (reload 프로세스에서도 작동하도록)
+    # 현재 디렉토리
     cwd = os.getcwd()
-    python_path = os.environ.get("PYTHONPATH", "")
-    if cwd not in python_path.split(os.pathsep):
-        os.environ["PYTHONPATH"] = (
-            f"{cwd}{os.pathsep}{python_path}" if python_path else cwd
-        )
 
     # 기본값: application:application
     app_path = application or "application:application"
@@ -189,18 +178,32 @@ def server(application: str | None, host: str, port: int, reload: bool):
         click.echo("[Bloom] Auto-reload enabled")
     click.echo()
 
-    # sys.path에도 현재 디렉토리 추가 (import 시점에 필요)
-    import sys
-    if cwd not in sys.path:
-        sys.path.insert(0, cwd)
+    # 환경변수 설정 (PYTHONPATH에 현재 디렉토리 추가)
+    env = os.environ.copy()
+    python_path = env.get("PYTHONPATH", "")
+    if cwd not in python_path.split(os.pathsep):
+        env["PYTHONPATH"] = f"{cwd}{os.pathsep}{python_path}" if python_path else cwd
 
-    uvicorn.run(
+    # uvicorn 명령어 구성
+    cmd = [
+        sys.executable, "-m", "uvicorn",
         asgi_path,
-        host=host,
-        port=port,
-        reload=reload,
-        reload_dirs=[cwd] if reload else None,
-    )
+        "--host", host,
+        "--port", str(port),
+    ]
+    if reload:
+        cmd.extend(["--reload", "--reload-dir", cwd])
+
+    # subprocess로 실행 (환경변수 전달)
+    try:
+        subprocess.run(cmd, env=env, cwd=cwd)
+    except FileNotFoundError:
+        raise click.ClickException(
+            "uvicorn is required for the server command.\n"
+            "Install it with: pip install uvicorn[standard]"
+        )
+    except KeyboardInterrupt:
+        pass
 
 
 # =============================================================================
