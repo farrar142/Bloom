@@ -89,6 +89,7 @@ class TestCase(UnitTestCase):
         # Application 생성
         self.app = Application(self.app_name)
         self.manager = self.app.manager
+        self.manager.clear()
 
         # 설정 로드
         if self.config:
