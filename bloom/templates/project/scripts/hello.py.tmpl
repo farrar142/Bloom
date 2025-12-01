@@ -1,0 +1,27 @@
+"""Example script - Hello World
+
+사용법:
+    bloom run hello
+    bloom run hello --name Alice
+    bloom run hello -n Bob --greeting "Good morning"
+"""
+
+import click
+
+from bloom.scripts import script
+
+
+@script
+@click.option("--name", "-n", default="World", help="인사할 대상")
+@click.option("--greeting", "-g", default="Hello", help="인사말")
+def hello(name: str, greeting: str, app):
+    """Hello World 스크립트
+
+    간단한 인사 메시지를 출력합니다.
+    """
+    click.secho(f"{greeting}, {name}!", fg="green")
+
+    # DI 컨테이너 사용 예시 (주석 처리)
+    # if app:
+    #     service = app.container.get(MyService)
+    #     service.do_something()

@@ -186,10 +186,14 @@ def server(application: str | None, host: str, port: int, reload: bool):
 
     # uvicorn 명령어 구성
     cmd = [
-        sys.executable, "-m", "uvicorn",
+        sys.executable,
+        "-m",
+        "uvicorn",
         asgi_path,
-        "--host", host,
-        "--port", str(port),
+        "--host",
+        host,
+        "--port",
+        str(port),
     ]
     if reload:
         cmd.extend(["--reload", "--reload-dir", cwd])
@@ -336,6 +340,15 @@ cli.add_command(task_cli)
 from bloom.tests.cli import tests as tests_cli
 
 cli.add_command(tests_cli)
+
+
+# =============================================================================
+# run command (from bloom.scripts.cli)
+# =============================================================================
+
+from bloom.scripts.cli import run as run_cli
+
+cli.add_command(run_cli)
 
 
 # =============================================================================
