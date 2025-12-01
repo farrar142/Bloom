@@ -87,3 +87,4 @@ uv.lock
 
 /migrations
 *.sqlite3
+custom_app/
