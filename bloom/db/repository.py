@@ -1,10 +1,19 @@
 """Repository pattern - Spring Data JPA style"""
 
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from typing import Any, Generic, TypeVar, Iterator, TYPE_CHECKING
+from abc import ABC
+from typing import (
+    Any,
+    Generic,
+    TypeVar,
+    Iterator,
+    TYPE_CHECKING,
+    get_origin,
+    get_args,
+    Self,
+)
 
-from .entity import get_entity_meta, get_entity_pk, get_pk_value
+from .entity import get_entity_meta, get_entity_pk, get_pk_value, EntityMeta
 from .query import Query
 from .session import Session, SessionFactory
 from .expressions import Condition, ConditionGroup, OrderBy
@@ -17,61 +26,54 @@ ID = TypeVar("ID")
 
 
 # =============================================================================
-# Repository Interface
+# Helper Functions
+# =============================================================================
+
+
+def _get_entity_class_from_generic(cls: type) -> type | None:
+    """Generic 타입에서 Entity 클래스 추출
+
+    Repository[User, int]에서 User를 추출합니다.
+    """
+    for base in getattr(cls, "__orig_bases__", []):
+        origin = get_origin(base)
+        if origin is not None:
+            args = get_args(base)
+            if args:
+                entity_cls = args[0]
+                if isinstance(entity_cls, type):
+                    return entity_cls
+    return None
+
+
+# =============================================================================
+# Repository
 # =============================================================================
 
 
 class Repository(ABC, Generic[T, ID]):
-    """리포지토리 추상 인터페이스
-
-    Spring Data JPA의 Repository 인터페이스와 유사합니다.
-    """
-
-    @abstractmethod
-    def find_by_id(self, id: ID) -> T | None:
-        """ID로 엔티티 조회"""
-        ...
-
-    @abstractmethod
-    def find_all(self) -> list[T]:
-        """모든 엔티티 조회"""
-        ...
-
-    @abstractmethod
-    def save(self, entity: T) -> T:
-        """엔티티 저장 (INSERT or UPDATE)"""
-        ...
-
-    @abstractmethod
-    def delete(self, entity: T) -> None:
-        """엔티티 삭제"""
-        ...
-
-    @abstractmethod
-    def delete_by_id(self, id: ID) -> bool:
-        """ID로 삭제"""
-        ...
-
-    @abstractmethod
-    def exists_by_id(self, id: ID) -> bool:
-        """ID 존재 여부"""
-        ...
-
-    @abstractmethod
-    def count(self) -> int:
-        """전체 개수"""
-        ...
-
-
-# =============================================================================
-# CRUD Repository Implementation
-# =============================================================================
-
-
-class CrudRepository(Repository[T, ID]):
-    """CRUD 리포지토리 구현
+    """리포지토리 베이스 클래스
 
     Spring Data JPA의 CrudRepository와 유사합니다.
+
+    사용법 1: 팩토리 메서드 (context manager 내 사용)
+        with session_factory.session() as session:
+            repo = Repository.for_entity(User, session)
+            user = repo.find_by_id(1)
+
+    사용법 2: Bloom DI 필드 주입 (권장)
+        @Component
+        class DatabaseConfig:
+            @Factory
+            def get_session(self, sf: SessionFactory) -> Session:
+                return sf.create()
+
+        @Component
+        class UserRepository(Repository[User, int]):
+            session: Session  # 필드 주입
+
+            def find_by_email(self, email: str) -> User | None:
+                return self.find_one_by(email=email)
 
     Examples:
         @Entity
@@ -79,33 +81,73 @@ class CrudRepository(Repository[T, ID]):
             id = PrimaryKey[int](auto_increment=True)
             name = Column[str](nullable=False)
 
-        class UserRepository(CrudRepository[User, int]):
-            pass
-
-        # 사용
-        repo = UserRepository(User, session)
-        user = User(name="alice")
-        repo.save(user)
-
-        found = repo.find_by_id(1)
-        all_users = repo.find_all()
+        class UserRepository(Repository[User, int]):
+            def find_by_email(self, email: str) -> User | None:
+                return self.find_one_by(email=email)
     """
 
-    def __init__(self, entity_cls: type[T], session: Session):
-        self._entity_cls = entity_cls
-        self._session = session
-        self._meta = get_entity_meta(entity_cls)
+    # 필드 주입용
+    session: "Session | None" = None
 
+    # 지연 초기화 캐시
+    _entity_cls: "type[T] | None" = None
+    _meta: "EntityMeta | None" = None
+
+    @classmethod
+    def for_entity(cls, entity_cls: type[T], session: "Session") -> Self:
+        """Entity와 Session으로 Repository 생성 (팩토리 메서드)
+
+        Args:
+            entity_cls: Entity 클래스
+            session: Session 인스턴스
+
+        Returns:
+            Repository 인스턴스
+
+        Examples:
+            with session_factory.session() as session:
+                repo = Repository.for_entity(User, session)
+                user = repo.find_by_id(1)
+        """
+        repo = cls()
+        repo._entity_cls = entity_cls  # type: ignore
+        repo.session = session
+        return repo
+
+    def _get_session(self) -> Session:
+        """Session 반환"""
+        if self.session is None:
+            raise ValueError(
+                f"{type(self).__name__}: Session is required. "
+                "Configure DI with session: Session field."
+            )
+        return self.session
+
+    def _get_entity_class(self) -> type[T]:
+        """Entity 클래스 반환 (지연 초기화)"""
+        if self._entity_cls is None:
+            inferred = _get_entity_class_from_generic(type(self))
+            if inferred is None:
+                raise ValueError(
+                    f"{type(self).__name__}: Entity class not specified. "
+                    "Use Generic (e.g., class UserRepo(Repository[User, int]))"
+                )
+            self._entity_cls = inferred  # type: ignore
+        return self._entity_cls  # type: ignore
+
+    def _get_meta(self) -> EntityMeta:
+        """Entity 메타데이터 반환 (지연 초기화)"""
         if self._meta is None:
-            raise ValueError(f"{entity_cls.__name__} is not an Entity")
+            entity_cls = self._get_entity_class()
+            meta = get_entity_meta(entity_cls)
+            if meta is None:
+                raise ValueError(f"{entity_cls.__name__} is not an Entity")
+            self._meta = meta
+        return self._meta
 
     @property
     def entity_class(self) -> type[T]:
-        return self._entity_cls
-
-    @property
-    def session(self) -> Session:
-        return self._session
+        return self._get_entity_class()
 
     # -------------------------------------------------------------------------
     # Query DSL
@@ -113,7 +155,7 @@ class CrudRepository(Repository[T, ID]):
 
     def query(self) -> Query[T]:
         """쿼리 빌더 반환"""
-        return Query(self._entity_cls).with_session(self._session)
+        return Query(self._get_entity_class()).with_session(self._get_session())
 
     # -------------------------------------------------------------------------
     # CRUD Operations
@@ -121,7 +163,7 @@ class CrudRepository(Repository[T, ID]):
 
     def find_by_id(self, id: ID) -> T | None:
         """ID로 엔티티 조회"""
-        return self._session.get(self._entity_cls, id)
+        return self._get_session().get(self._get_entity_class(), id)
 
     def find_all(self) -> list[T]:
         """모든 엔티티 조회"""
@@ -132,9 +174,10 @@ class CrudRepository(Repository[T, ID]):
         if not ids:
             return []
 
-        pk_name = get_entity_pk(self._entity_cls)
+        entity_cls = self._get_entity_class()
+        pk_name = get_entity_pk(entity_cls)
         if pk_name is None:
-            raise ValueError(f"{self._entity_cls.__name__} has no primary key")
+            raise ValueError(f"{entity_cls.__name__} has no primary key")
 
         return self.query().filter(Condition(pk_name, "IN", ids)).all()
 
@@ -144,15 +187,14 @@ class CrudRepository(Repository[T, ID]):
         새 엔티티면 INSERT, 기존이면 UPDATE
         """
         pk = get_pk_value(entity)
+        session = self._get_session()
 
         if pk is None:
-            # 새 엔티티 → INSERT
-            self._session.add(entity)
+            session.add(entity)
         else:
-            # 기존 엔티티 → merge (dirty tracking으로 자동 UPDATE)
-            entity = self._session.merge(entity)
+            entity = session.merge(entity)
 
-        self._session.flush()
+        session.flush()
         return entity
 
     def save_all(self, entities: list[T]) -> list[T]:
@@ -161,8 +203,9 @@ class CrudRepository(Repository[T, ID]):
 
     def delete(self, entity: T) -> None:
         """엔티티 삭제"""
-        self._session.delete(entity)
-        self._session.flush()
+        session = self._get_session()
+        session.delete(entity)
+        session.flush()
 
     def delete_by_id(self, id: ID) -> bool:
         """ID로 삭제"""
@@ -175,7 +218,6 @@ class CrudRepository(Repository[T, ID]):
     def delete_all(self, entities: list[T] | None = None) -> None:
         """여러 엔티티 삭제"""
         if entities is None:
-            # 전체 삭제
             self.query().delete()
         else:
             for entity in entities:
@@ -186,17 +228,19 @@ class CrudRepository(Repository[T, ID]):
         if not ids:
             return
 
-        pk_name = get_entity_pk(self._entity_cls)
+        entity_cls = self._get_entity_class()
+        pk_name = get_entity_pk(entity_cls)
         if pk_name is None:
-            raise ValueError(f"{self._entity_cls.__name__} has no primary key")
+            raise ValueError(f"{entity_cls.__name__} has no primary key")
 
         self.query().filter(Condition(pk_name, "IN", ids)).delete()
 
     def exists_by_id(self, id: ID) -> bool:
         """ID 존재 여부"""
-        pk_name = get_entity_pk(self._entity_cls)
+        entity_cls = self._get_entity_class()
+        pk_name = get_entity_pk(entity_cls)
         if pk_name is None:
-            raise ValueError(f"{self._entity_cls.__name__} has no primary key")
+            raise ValueError(f"{entity_cls.__name__} has no primary key")
 
         return self.query().filter(Condition(pk_name, "=", id)).exists()
 
@@ -248,47 +292,5 @@ class CrudRepository(Repository[T, ID]):
         return self.count()
 
 
-# =============================================================================
-# Repository Factory
-# =============================================================================
-
-
-class RepositoryFactory:
-    """리포지토리 팩토리
-
-    Examples:
-        factory = RepositoryFactory(session_factory)
-
-        with factory.session() as repos:
-            user_repo = repos.get(User)
-            user_repo.save(User(name="alice"))
-    """
-
-    def __init__(self, session_factory: SessionFactory):
-        self._session_factory = session_factory
-
-    def create(self, entity_cls: type[T], session: Session) -> CrudRepository[T, Any]:
-        """리포지토리 생성"""
-        return CrudRepository(entity_cls, session)
-
-    def for_session(self, session: Session) -> RepositoryProvider:
-        """세션에 바인딩된 프로바이더 반환"""
-        return RepositoryProvider(self, session)
-
-
-class RepositoryProvider:
-    """세션에 바인딩된 리포지토리 프로바이더"""
-
-    def __init__(self, factory: RepositoryFactory, session: Session):
-        self._factory = factory
-        self._session = session
-        self._cache: dict[type, CrudRepository[Any, Any]] = {}
-
-    def get(self, entity_cls: type[T]) -> CrudRepository[T, Any]:
-        """리포지토리 반환 (캐싱)"""
-        if entity_cls not in self._cache:
-            self._cache[entity_cls] = self._factory.create(entity_cls, self._session)
-        return self._cache[entity_cls]
-
-    def __getitem__(self, entity_cls: type[T]) -> CrudRepository[T, Any]:
-        return self.get(entity_cls)
+# Alias for backward compatibility
+CrudRepository = Repository

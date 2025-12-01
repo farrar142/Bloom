@@ -6,6 +6,11 @@ SINGLETON, PROTOTYPE, REQUEST 스코프별 라이프사이클 관리:
 - SINGLETON: ready() 시점에 PostConstruct, shutdown() 시점에 PreDestroy
 - PROTOTYPE: 필드 접근 시 PostConstruct (Spring과 동일하게 PreDestroy 미호출, GC가 정리)
 - REQUEST: 요청 내 첫 접근 시 PostConstruct, 요청 종료 시 PreDestroy (RequestContext)
+
+프로토콜 기반 라이프사이클:
+- Initializable: initialize() 메서드가 PostConstruct로 동작
+- Closeable: close() 메서드가 PreDestroy로 동작
+- AutoCloseable: 둘 다 지원
 """
 
 import asyncio
@@ -13,6 +18,7 @@ import inspect
 from typing import Any, Callable, ClassVar, TYPE_CHECKING
 
 from bloom.core.abstract import AbstractManager
+from bloom.core.protocols import Initializable, Closeable
 from .container import LifecycleHandlerContainer, LifecycleType, LifecycleTypeElement
 from .registry import LifecycleRegistry
 
@@ -129,25 +135,57 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         """
         특정 컨테이너 인스턴스의 @PostConstruct 메서드들 호출
 
+        Initializable 프로토콜을 구현한 경우 initialize()도 호출합니다.
+
         Args:
             container: 대상 컨테이너
             instance: 컨테이너의 인스턴스
         """
+        # 1. @PostConstruct 데코레이터로 지정된 메서드들
         handlers = self.registry.get_post_construct_handlers(container)
         for handler in handlers:
             self._invoke_handler(handler, instance)
+
+        # 2. Initializable 프로토콜 (initialize 메서드가 @PostConstruct가 아닌 경우만)
+        if isinstance(instance, Initializable):
+            # 이미 @PostConstruct로 initialize가 등록되었는지 확인
+            handler_names = [h.handler_method.__name__ for h in handlers]
+            if "initialize" not in handler_names:
+                result = instance.initialize()
+                if inspect.iscoroutine(result):
+                    coro = result  # 캡처
+                    self._pending_async_post_construct.append(
+                        lambda c=coro: asyncio.ensure_future(c)  # type: ignore
+                    )
 
     def invoke_pre_destroy(self, container: "Container", instance: Any) -> None:
         """
         특정 컨테이너 인스턴스의 @PreDestroy 메서드들 호출
 
+        Closeable 프로토콜을 구현한 경우 close()도 호출합니다.
+
         Args:
             container: 대상 컨테이너
             instance: 컨테이너의 인스턴스
         """
+        # 1. @PreDestroy 데코레이터로 지정된 메서드들
         handlers = self.registry.get_pre_destroy_handlers(container)
         for handler in handlers:
             self._invoke_handler_for_destroy(handler, instance)
+
+        # 2. Closeable 프로토콜 (close 메서드가 @PreDestroy가 아닌 경우만)
+        if isinstance(instance, Closeable):
+            handler_names = [h.handler_method.__name__ for h in handlers]
+            if "close" not in handler_names:
+                try:
+                    result = instance.close()
+                    if inspect.iscoroutine(result):
+                        coro = result  # 캡처
+                        self._pending_async_pre_destroy.append(
+                            lambda c=coro: asyncio.ensure_future(c)  # type: ignore
+                        )
+                except Exception:
+                    pass  # PreDestroy 에러는 무시
 
     def invoke_all_pre_destroy(self, containers_order: list["Container"]) -> None:
         """
@@ -203,6 +241,8 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         """
         PROTOTYPE 인스턴스의 @PostConstruct 메서드들을 호출합니다.
 
+        Initializable 프로토콜을 구현한 경우 initialize()도 호출합니다.
+
         PROTOTYPE은 필드 접근 시마다 새 인스턴스가 생성되므로,
         LazyFieldProxy에서 인스턴스 생성 직후 이 메서드를 호출합니다.
 
@@ -228,6 +268,17 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
                     raise RuntimeError(
                         f"Async @PostConstruct is not supported for PROTOTYPE scope: "
                         f"{target_cls.__name__}.{method_name}"
+                    )
+
+        # Initializable 프로토콜 지원 (initialize가 @PostConstruct가 아닌 경우만)
+        if isinstance(instance, Initializable):
+            if "initialize" not in method_names:
+                result = instance.initialize()
+                if inspect.iscoroutine(result):
+                    result.close()  # 코루틴 정리
+                    raise RuntimeError(
+                        f"Async initialize() is not supported for PROTOTYPE scope: "
+                        f"{target_cls.__name__}.initialize"
                     )
 
     def invoke_request_post_construct(
@@ -417,5 +468,15 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
                     # 비동기 메서드인 경우 코루틴 정리
                     if inspect.iscoroutine(result):
                         result.close()
+                except Exception:
+                    pass  # PreDestroy 에러는 무시
+
+        # Closeable 프로토콜 지원 (close 메서드가 @PreDestroy가 아닌 경우만)
+        if isinstance(instance, Closeable):
+            if "close" not in method_names:
+                try:
+                    result = instance.close()
+                    if inspect.iscoroutine(result):
+                        result.close()  # 코루틴 정리
                 except Exception:
                     pass  # PreDestroy 에러는 무시

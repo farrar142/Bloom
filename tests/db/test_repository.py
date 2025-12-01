@@ -10,10 +10,15 @@ from bloom.db import (
     IntegerColumn,
     create,
 )
-from bloom.db.session import SessionFactory
-from bloom.db.repository import CrudRepository, RepositoryFactory, RepositoryProvider
+from bloom.db.session import Session, SessionFactory
+from bloom.db.repository import CrudRepository
 from bloom.db.expressions import Condition, OrderBy
 from bloom.db.backends.sqlite import SQLiteBackend
+
+# DI 테스트용
+from bloom import Application
+from bloom.core import Component, Factory, Scope, PrototypeMode
+from bloom.core.container.element import Scope as ScopeEnum
 
 
 # =============================================================================
@@ -87,7 +92,7 @@ class TestCrudRepositoryBasic:
     def test_create_repository(self, session_factory):
         """리포지토리 생성"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             assert repo.entity_class == User
             assert repo.session is session
@@ -95,24 +100,26 @@ class TestCrudRepositoryBasic:
     def test_entity_class_property(self, session_factory):
         """entity_class 프로퍼티"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
             assert repo.entity_class == User
 
     def test_session_property(self, session_factory):
         """session 프로퍼티"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
             assert repo.session is session
 
     def test_non_entity_raises_error(self, session_factory):
-        """Entity가 아닌 클래스는 에러"""
+        """Entity가 아닌 클래스는 사용 시점에 에러"""
 
         class NotAnEntity:
             pass
 
         with session_factory.session() as session:
+            repo = CrudRepository.for_entity(NotAnEntity, session)
+            # 지연 초기화이므로 사용 시점에 에러 발생
             with pytest.raises(ValueError, match="not an Entity"):
-                CrudRepository(NotAnEntity, session)
+                repo.find_all()
 
 
 # =============================================================================
@@ -126,7 +133,7 @@ class TestCrudOperations:
     def test_save_new_entity(self, session_factory):
         """새 엔티티 저장"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             user = create(User, name="alice")
             saved = repo.save(user)
@@ -137,7 +144,7 @@ class TestCrudOperations:
     def test_save_existing_entity(self, session_factory):
         """기존 엔티티 저장 (UPDATE)"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             user = create(User, name="alice")
             repo.save(user)
@@ -147,16 +154,16 @@ class TestCrudOperations:
 
         # 새 세션에서 조회 후 수정
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
             user = repo.find_by_id(pk)
             assert user is not None
-            
+
             user.name = "alice_updated"
             repo.save(user)  # save는 merge 후 flush
             session.commit()
 
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
             found = repo.find_by_id(pk)
 
             assert found is not None
@@ -165,7 +172,7 @@ class TestCrudOperations:
     def test_save_all(self, session_factory):
         """여러 엔티티 저장"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             users = [create(User, name=f"user{i}") for i in range(3)]
             saved = repo.save_all(users)
@@ -176,7 +183,7 @@ class TestCrudOperations:
     def test_find_by_id(self, session_factory):
         """ID로 조회"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             user = create(User, name="alice")
             repo.save(user)
@@ -190,7 +197,7 @@ class TestCrudOperations:
     def test_find_by_id_not_found(self, session_factory):
         """ID로 조회 - 없음"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             found = repo.find_by_id(999)
 
@@ -199,7 +206,7 @@ class TestCrudOperations:
     def test_find_all(self, session_factory):
         """전체 조회"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             for i in range(5):
                 repo.save(create(User, name=f"user{i}"))
@@ -212,7 +219,7 @@ class TestCrudOperations:
     def test_find_all_by_id(self, session_factory):
         """여러 ID로 조회"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             users = [create(User, name=f"user{i}") for i in range(5)]
             repo.save_all(users)
@@ -226,7 +233,7 @@ class TestCrudOperations:
     def test_find_all_by_id_empty(self, session_factory):
         """빈 ID 목록"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             found = repo.find_all_by_id([])
 
@@ -235,7 +242,7 @@ class TestCrudOperations:
     def test_delete(self, session_factory):
         """엔티티 삭제"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             user = create(User, name="alice")
             repo.save(user)
@@ -246,7 +253,7 @@ class TestCrudOperations:
             session.commit()
 
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
             found = repo.find_by_id(pk)
 
             assert found is None
@@ -254,7 +261,7 @@ class TestCrudOperations:
     def test_delete_by_id(self, session_factory):
         """ID로 삭제"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             user = create(User, name="alice")
             repo.save(user)
@@ -267,7 +274,7 @@ class TestCrudOperations:
             assert result is True
 
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
             found = repo.find_by_id(pk)
 
             assert found is None
@@ -275,7 +282,7 @@ class TestCrudOperations:
     def test_delete_by_id_not_found(self, session_factory):
         """없는 ID 삭제"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             result = repo.delete_by_id(999)
 
@@ -284,7 +291,7 @@ class TestCrudOperations:
     def test_delete_all_entities(self, session_factory):
         """여러 엔티티 삭제"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             users = [create(User, name=f"user{i}") for i in range(3)]
             repo.save_all(users)
@@ -299,7 +306,7 @@ class TestCrudOperations:
     def test_delete_all_by_id(self, session_factory):
         """여러 ID로 삭제"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             users = [create(User, name=f"user{i}") for i in range(5)]
             repo.save_all(users)
@@ -324,7 +331,7 @@ class TestQueryMethods:
     def test_exists_by_id(self, session_factory):
         """ID 존재 여부"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             user = create(User, name="alice")
             repo.save(user)
@@ -336,7 +343,7 @@ class TestQueryMethods:
     def test_count(self, session_factory):
         """개수 조회"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             assert repo.count() == 0
 
@@ -349,13 +356,15 @@ class TestQueryMethods:
     def test_find_by(self, session_factory):
         """필드 조건 조회"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
-            repo.save_all([
-                create(User, name="alice", status="active"),
-                create(User, name="bob", status="inactive"),
-                create(User, name="charlie", status="active"),
-            ])
+            repo.save_all(
+                [
+                    create(User, name="alice", status="active"),
+                    create(User, name="bob", status="inactive"),
+                    create(User, name="charlie", status="active"),
+                ]
+            )
             session.commit()
 
             active_users = repo.find_by(status="active")
@@ -365,7 +374,7 @@ class TestQueryMethods:
     def test_find_one_by(self, session_factory):
         """단일 조건 조회"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             repo.save(create(User, name="alice", email="alice@example.com"))
             session.commit()
@@ -378,7 +387,7 @@ class TestQueryMethods:
     def test_find_one_by_not_found(self, session_factory):
         """단일 조건 조회 - 없음"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             found = repo.find_one_by(email="nonexistent@example.com")
 
@@ -387,13 +396,15 @@ class TestQueryMethods:
     def test_find_all_ordered(self, session_factory):
         """정렬 조회"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
-            repo.save_all([
-                create(User, name="charlie"),
-                create(User, name="alice"),
-                create(User, name="bob"),
-            ])
+            repo.save_all(
+                [
+                    create(User, name="charlie"),
+                    create(User, name="alice"),
+                    create(User, name="bob"),
+                ]
+            )
             session.commit()
 
             users = repo.find_all_ordered(OrderBy("name", "ASC"))
@@ -404,7 +415,7 @@ class TestQueryMethods:
     def test_find_page(self, session_factory):
         """페이지네이션"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             for i in range(10):
                 repo.save(create(User, name=f"user{i:02d}"))
@@ -421,7 +432,7 @@ class TestQueryMethods:
     def test_find_slice(self, session_factory):
         """슬라이스 조회"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             for i in range(10):
                 repo.save(create(User, name=f"user{i}"))
@@ -443,13 +454,15 @@ class TestQueryBuilderIntegration:
     def test_query_with_filter(self, session_factory):
         """필터 쿼리"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
-            repo.save_all([
-                create(User, name="alice", age=25),
-                create(User, name="bob", age=17),
-                create(User, name="charlie", age=30),
-            ])
+            repo.save_all(
+                [
+                    create(User, name="alice", age=25),
+                    create(User, name="bob", age=17),
+                    create(User, name="charlie", age=30),
+                ]
+            )
             session.commit()
 
             adults = repo.query().filter(Condition("age", ">=", 18)).all()
@@ -459,13 +472,15 @@ class TestQueryBuilderIntegration:
     def test_query_with_multiple_filters(self, session_factory):
         """다중 필터"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
-            repo.save_all([
-                create(User, name="alice", age=25, status="active"),
-                create(User, name="bob", age=30, status="inactive"),
-                create(User, name="charlie", age=35, status="active"),
-            ])
+            repo.save_all(
+                [
+                    create(User, name="alice", age=25, status="active"),
+                    create(User, name="bob", age=30, status="inactive"),
+                    create(User, name="charlie", age=35, status="active"),
+                ]
+            )
             session.commit()
 
             result = (
@@ -480,18 +495,13 @@ class TestQueryBuilderIntegration:
     def test_query_with_order_and_limit(self, session_factory):
         """정렬과 제한"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             for i in range(10):
                 repo.save(create(User, name=f"user{i}", age=20 + i))
             session.commit()
 
-            result = (
-                repo.query()
-                .order_by(OrderBy("age", "DESC"))
-                .limit(3)
-                .all()
-            )
+            result = repo.query().order_by(OrderBy("age", "DESC")).limit(3).all()
 
             assert len(result) == 3
             assert result[0].age == 29  # 가장 나이 많은
@@ -508,7 +518,7 @@ class TestRepositoryIterator:
     def test_iterate_repository(self, session_factory):
         """리포지토리 순회"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             repo.save_all([create(User, name=f"user{i}") for i in range(3)])
             session.commit()
@@ -520,7 +530,7 @@ class TestRepositoryIterator:
     def test_len_repository(self, session_factory):
         """리포지토리 길이"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             repo.save_all([create(User, name=f"user{i}") for i in range(5)])
             session.commit()
@@ -539,7 +549,7 @@ class TestCustomRepository:
     def test_custom_find_by_email(self, session_factory):
         """커스텀 메서드 - 이메일로 찾기"""
         with session_factory.session() as session:
-            repo = UserRepository(User, session)
+            repo = UserRepository.for_entity(User, session)
 
             repo.save(create(User, name="alice", email="alice@example.com"))
             session.commit()
@@ -552,13 +562,15 @@ class TestCustomRepository:
     def test_custom_find_active_users(self, session_factory):
         """커스텀 메서드 - 활성 사용자 찾기"""
         with session_factory.session() as session:
-            repo = UserRepository(User, session)
+            repo = UserRepository.for_entity(User, session)
 
-            repo.save_all([
-                create(User, name="alice", status="active"),
-                create(User, name="bob", status="inactive"),
-                create(User, name="charlie", status="active"),
-            ])
+            repo.save_all(
+                [
+                    create(User, name="alice", status="active"),
+                    create(User, name="bob", status="inactive"),
+                    create(User, name="charlie", status="active"),
+                ]
+            )
             session.commit()
 
             active = repo.find_active_users()
@@ -568,102 +580,20 @@ class TestCustomRepository:
     def test_custom_find_adults(self, session_factory):
         """커스텀 메서드 - 성인 찾기"""
         with session_factory.session() as session:
-            repo = UserRepository(User, session)
+            repo = UserRepository.for_entity(User, session)
 
-            repo.save_all([
-                create(User, name="alice", age=25),
-                create(User, name="bob", age=15),
-                create(User, name="charlie", age=30),
-            ])
+            repo.save_all(
+                [
+                    create(User, name="alice", age=25),
+                    create(User, name="bob", age=15),
+                    create(User, name="charlie", age=30),
+                ]
+            )
             session.commit()
 
             adults = repo.find_adults()
 
             assert len(adults) == 2
-
-
-# =============================================================================
-# Repository Factory Tests
-# =============================================================================
-
-
-class TestRepositoryFactory:
-    """RepositoryFactory 테스트"""
-
-    def test_create_repository(self, session_factory):
-        """리포지토리 생성"""
-        factory = RepositoryFactory(session_factory)
-
-        with session_factory.session() as session:
-            repo = factory.create(User, session)
-
-            assert isinstance(repo, CrudRepository)
-            assert repo.entity_class == User
-
-    def test_for_session(self, session_factory):
-        """세션 바인딩 프로바이더"""
-        factory = RepositoryFactory(session_factory)
-
-        with session_factory.session() as session:
-            provider = factory.for_session(session)
-
-            assert isinstance(provider, RepositoryProvider)
-
-
-# =============================================================================
-# Repository Provider Tests
-# =============================================================================
-
-
-class TestRepositoryProvider:
-    """RepositoryProvider 테스트"""
-
-    def test_get_repository(self, session_factory):
-        """리포지토리 가져오기"""
-        factory = RepositoryFactory(session_factory)
-
-        with session_factory.session() as session:
-            provider = factory.for_session(session)
-            repo = provider.get(User)
-
-            assert isinstance(repo, CrudRepository)
-            assert repo.entity_class == User
-
-    def test_repository_caching(self, session_factory):
-        """리포지토리 캐싱"""
-        factory = RepositoryFactory(session_factory)
-
-        with session_factory.session() as session:
-            provider = factory.for_session(session)
-
-            repo1 = provider.get(User)
-            repo2 = provider.get(User)
-
-            assert repo1 is repo2  # 같은 인스턴스
-
-    def test_getitem_syntax(self, session_factory):
-        """[] 문법"""
-        factory = RepositoryFactory(session_factory)
-
-        with session_factory.session() as session:
-            provider = factory.for_session(session)
-            repo = provider[User]
-
-            assert isinstance(repo, CrudRepository)
-
-    def test_multiple_entity_types(self, session_factory):
-        """여러 엔티티 타입"""
-        factory = RepositoryFactory(session_factory)
-
-        with session_factory.session() as session:
-            provider = factory.for_session(session)
-
-            user_repo = provider[User]
-            post_repo = provider[Post]
-
-            assert user_repo.entity_class == User
-            assert post_repo.entity_class == Post
-            assert user_repo is not post_repo
 
 
 # =============================================================================
@@ -677,7 +607,7 @@ class TestRepositoryTransaction:
     def test_repository_uses_session_transaction(self, session_factory):
         """리포지토리는 세션 트랜잭션 사용"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             user = create(User, name="alice")
             repo.save(user)
@@ -685,14 +615,14 @@ class TestRepositoryTransaction:
 
         # 커밋 후 보임
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
             found = repo.find_by_id(user.id)
             assert found is not None
 
     def test_rollback_affects_repository(self, session_factory):
         """롤백 시 리포지토리 변경도 취소"""
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
 
             user = create(User, name="alice")
             repo.save(user)
@@ -703,6 +633,119 @@ class TestRepositoryTransaction:
 
         # 롤백되어 없음
         with session_factory.session() as session:
-            repo = CrudRepository(User, session)
+            repo = CrudRepository.for_entity(User, session)
             found = repo.find_by_id(pk)
             assert found is None
+
+
+# =============================================================================
+# DI Integration Tests - Session via Factory
+# =============================================================================
+
+
+class TestRepositoryWithDI:
+    """DI를 통한 Repository 테스트
+
+    Bloom의 DI는 필드 주입 방식이므로, Repository도 필드 주입 패턴 사용
+    """
+
+    @pytest.fixture
+    def di_setup(self, tmp_path):
+        """DI가 설정된 Application과 Repository 클래스 반환"""
+        app = Application("test_repo_di")
+
+        # SQLite 백엔드
+        db_path = tmp_path / "di_test.db"
+        backend = SQLiteBackend(str(db_path))
+        session_factory = SessionFactory(backend)
+        session_factory.create_tables(User, Post)
+
+        # SessionFactory를 싱글톤으로 등록하고 Session을 Factory로 제공
+        @Component
+        class DatabaseConfig:
+            @Factory
+            def get_session_factory(self) -> SessionFactory:
+                return session_factory
+
+            @Factory
+            def get_session(self, sf: SessionFactory) -> Session:
+                return sf.create()
+
+        # Bloom의 필드 주입 패턴을 사용한 Repository
+        @Component
+        class DIUserRepository(CrudRepository[User, int]):
+            session: Session  # 필드 주입
+
+            def __init__(self):
+                # session은 DI가 필드로 주입하므로, 생성자에서는 처리 안함
+                # entity_class는 Generic에서 자동 추론
+                super().__init__()
+
+            def find_by_email(self, email: str) -> User | None:
+                return self.find_one_by(email=email)
+
+        app.scan(DatabaseConfig, DIUserRepository)
+        app.ready()
+
+        return app, DIUserRepository
+
+    def test_repository_receives_session_via_di(self, di_setup):
+        """Repository가 DI로 Session을 주입받음"""
+        app, DIUserRepository = di_setup
+        repo = app.manager.get_instance(DIUserRepository)
+
+        assert repo is not None
+        assert repo.session is not None
+        assert isinstance(repo.session, Session)
+
+    def test_repository_crud_with_di(self, di_setup):
+        """DI로 주입받은 Repository로 CRUD 수행"""
+        app, DIUserRepository = di_setup
+        repo = app.manager.get_instance(DIUserRepository)
+
+        # Create
+        user = create(User, name="alice", email="alice@example.com")
+        saved = repo.save(user)
+        assert saved.id is not None
+
+        # Read
+        found = repo.find_by_email("alice@example.com")
+        assert found is not None
+        assert found.name == "alice"
+
+        # Session commit
+        repo.session.commit()
+
+    def test_same_call_shares_session(self, di_setup):
+        """SINGLETON Repository는 같은 인스턴스"""
+        app, DIUserRepository = di_setup
+
+        # SINGLETON이므로 같은 Repository 인스턴스
+        repo1 = app.manager.get_instance(DIUserRepository)
+        repo2 = app.manager.get_instance(DIUserRepository)
+
+        assert repo1 is repo2
+        assert repo1.session is repo2.session
+
+    def test_generic_entity_class_inference(self, di_setup):
+        """Generic 타입에서 Entity 클래스 추론"""
+        app, DIUserRepository = di_setup
+        repo = app.manager.get_instance(DIUserRepository)
+
+        # CrudRepository[User, int]에서 User를 자동 추론
+        assert repo.entity_class == User
+
+    def test_custom_method_works_with_di(self, di_setup):
+        """커스텀 메서드도 DI 환경에서 동작"""
+        app, DIUserRepository = di_setup
+        repo = app.manager.get_instance(DIUserRepository)
+
+        # 데이터 추가
+        repo.save(create(User, name="alice", email="alice@test.com"))
+        repo.save(create(User, name="bob", email="bob@test.com"))
+        repo.session.commit()
+
+        # 커스텀 메서드
+        found = repo.find_by_email("alice@test.com")
+        assert found is not None
+        assert found.name == "alice"
