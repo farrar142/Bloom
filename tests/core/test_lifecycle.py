@@ -7,7 +7,7 @@ from bloom import Application, Component, PostConstruct, PreDestroy
 class TestLifecycleHooks:
     """@PostConstruct, @PreDestroy 라이프사이클 훅 테스트"""
 
-    def test_post_construct_called_on_ready(self, reset_container_manager):
+    async def test_post_construct_called_on_ready(self, reset_container_manager):
         """@PostConstruct 메서드가 ready() 시 호출됨"""
         call_log = []
 
@@ -17,12 +17,12 @@ class TestLifecycleHooks:
             def init(self):
                 call_log.append("init")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         assert "init" in call_log
         assert len(call_log) == 1
 
-    def test_pre_destroy_called_on_shutdown(self, reset_container_manager):
+    async def test_pre_destroy_called_on_shutdown(self, reset_container_manager):
         """@PreDestroy 메서드가 shutdown() 시 호출됨"""
         call_log = []
 
@@ -32,13 +32,13 @@ class TestLifecycleHooks:
             def cleanup(self):
                 call_log.append("cleanup")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         assert "cleanup" not in call_log
 
         app.shutdown()
         assert "cleanup" in call_log
 
-    def test_multiple_post_construct_methods(self, reset_container_manager):
+    async def test_multiple_post_construct_methods(self, reset_container_manager):
         """여러 @PostConstruct 메서드가 모두 호출됨"""
         call_log = []
 
@@ -52,13 +52,13 @@ class TestLifecycleHooks:
             def init2(self):
                 call_log.append("init2")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         assert "init1" in call_log
         assert "init2" in call_log
         assert len(call_log) == 2
 
-    def test_multiple_pre_destroy_methods(self, reset_container_manager):
+    async def test_multiple_pre_destroy_methods(self, reset_container_manager):
         """여러 @PreDestroy 메서드가 모두 호출됨"""
         call_log = []
 
@@ -72,14 +72,16 @@ class TestLifecycleHooks:
             def cleanup2(self):
                 call_log.append("cleanup2")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         app.shutdown()
 
         assert "cleanup1" in call_log
         assert "cleanup2" in call_log
         assert len(call_log) == 2
 
-    def test_post_construct_has_access_to_dependencies(self, reset_container_manager):
+    async def test_post_construct_has_access_to_dependencies(
+        self, reset_container_manager
+    ):
         """@PostConstruct에서 주입된 의존성에 접근 가능"""
         call_log = []
 
@@ -97,11 +99,11 @@ class TestLifecycleHooks:
                 # 의존성이 이미 주입되어 있어야 함
                 call_log.append(self.repository.get_data())
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         assert "data" in call_log
 
-    def test_pre_destroy_called_in_reverse_order(self, reset_container_manager):
+    async def test_pre_destroy_called_in_reverse_order(self, reset_container_manager):
         """@PreDestroy가 초기화 역순으로 호출됨"""
         call_log = []
 
@@ -119,13 +121,15 @@ class TestLifecycleHooks:
             def cleanup(self):
                 call_log.append("service")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         app.shutdown()
 
         # Service가 나중에 초기화되므로 먼저 정리됨
         assert call_log.index("service") < call_log.index("repository")
 
-    def test_post_construct_and_pre_destroy_together(self, reset_container_manager):
+    async def test_post_construct_and_pre_destroy_together(
+        self, reset_container_manager
+    ):
         """@PostConstruct와 @PreDestroy를 함께 사용"""
         call_log = []
 
@@ -139,13 +143,13 @@ class TestLifecycleHooks:
             def disconnect(self):
                 call_log.append("disconnected")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         assert call_log == ["connected"]
 
         app.shutdown()
         assert call_log == ["connected", "disconnected"]
 
-    def test_shutdown_without_ready_does_nothing(self, reset_container_manager):
+    async def test_shutdown_without_ready_does_nothing(self, reset_container_manager):
         """ready() 없이 shutdown() 호출하면 아무 일도 안 함"""
         call_log = []
 
@@ -160,7 +164,7 @@ class TestLifecycleHooks:
 
         assert call_log == []
 
-    def test_lifecycle_with_factory(self, reset_container_manager):
+    async def test_lifecycle_with_factory(self, reset_container_manager):
         """Factory로 생성된 컴포넌트의 라이프사이클"""
         call_log = []
 
@@ -185,14 +189,14 @@ class TestLifecycleHooks:
             def init(self):
                 call_log.append("config_init")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # Config의 PostConstruct가 호출됨
         assert "config_init" in call_log
         # Factory로 생성된 ExternalClient도 connect 호출됨
         assert "client_connected" in call_log
 
-    def test_post_construct_container_attribute(self, reset_container_manager):
+    async def test_post_construct_container_attribute(self, reset_container_manager):
         """@PostConstruct 메서드에 __container__ 속성이 있음"""
 
         @Component
@@ -210,7 +214,7 @@ class TestLifecycleHooks:
         assert isinstance(container, LifecycleHandlerContainer)
         assert container.lifecycle_type == LifecycleType.POST_CONSTRUCT
 
-    def test_pre_destroy_container_attribute(self, reset_container_manager):
+    async def test_pre_destroy_container_attribute(self, reset_container_manager):
         """@PreDestroy 메서드에 __container__ 속성이 있음"""
 
         @Component
@@ -232,7 +236,7 @@ class TestLifecycleHooks:
 class TestPrototypePostConstruct:
     """PROTOTYPE 스코프에서 PostConstruct 호출 테스트 (Spring과 동일하게 PreDestroy는 미호출)"""
 
-    def test_prototype_post_construct_on_access(self, reset_container_manager):
+    async def test_prototype_post_construct_on_access(self, reset_container_manager):
         """PROTOTYPE 인스턴스 생성 시 @PostConstruct가 호출됨"""
         from bloom import Scope
         from bloom.core import ScopeEnum
@@ -253,7 +257,7 @@ class TestPrototypePostConstruct:
         class Consumer:
             service: PrototypeService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         # ready() 시점에는 PROTOTYPE 인스턴스가 생성되지 않음
@@ -272,7 +276,7 @@ class TestPrototypePostConstruct:
         assert f"init:{service2_id}" in call_log
         assert service1_id != service2_id
 
-    def test_prototype_pre_destroy_not_called(self, reset_container_manager):
+    async def test_prototype_pre_destroy_not_called(self, reset_container_manager):
         """PROTOTYPE 인스턴스는 PreDestroy가 호출되지 않음 (Spring과 동일)"""
         import gc
         from bloom import Scope
@@ -298,7 +302,7 @@ class TestPrototypePostConstruct:
         class Consumer:
             service: PrototypeService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         # 인스턴스 생성
@@ -326,7 +330,7 @@ class TestPrototypePostConstruct:
             cleanup_count == 0
         ), f"PreDestroy should NOT be called for PROTOTYPE, logs: {call_log}"
 
-    def test_prototype_no_memory_leak(self, reset_container_manager):
+    async def test_prototype_no_memory_leak(self, reset_container_manager):
         """PROTOTYPE 인스턴스가 참조 제거 후 GC됨 (메모리 누수 없음)"""
         import gc
         import weakref
@@ -347,7 +351,7 @@ class TestPrototypePostConstruct:
         class Consumer:
             service: PrototypeService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         # 인스턴스 생성 및 weak ref 등록
@@ -367,7 +371,7 @@ class TestPrototypePostConstruct:
             gc_count >= 1
         ), f"At least one PROTOTYPE instance should be garbage collected, refs: {[ref() for ref in instance_refs]}"
 
-    def test_singleton_not_affected_by_prototype(self, reset_container_manager):
+    async def test_singleton_not_affected_by_prototype(self, reset_container_manager):
         """SINGLETON은 PROTOTYPE과 독립적으로 동작"""
         from bloom import Scope
         from bloom.core import ScopeEnum
@@ -392,7 +396,7 @@ class TestPrototypePostConstruct:
             singleton: SingletonService
             prototype: PrototypeService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         # 두 서비스 접근
@@ -414,7 +418,9 @@ class TestPrototypePostConstruct:
 class TestAsyncLifecycleInSyncContext:
     """동기 컨텍스트에서 비동기 라이프사이클 테스트"""
 
-    def test_async_post_construct_with_run_async_init(self, reset_container_manager):
+    async def test_async_post_construct_with_run_async_init(
+        self, reset_container_manager
+    ):
         """run_async_init=True 시 비동기 @PostConstruct가 실행됨"""
         call_log = []
 
@@ -432,14 +438,18 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(AsyncService, SyncService)
-        app.ready()
+        await app.ready_async()
 
         assert "sync_init" in call_log
         assert "async_init" in call_log
         assert len(call_log) == 2
 
-    @pytest.mark.skip(reason="run_async_init 파라미터 제거됨 - ready()는 항상 비동기 초기화 수행")
-    def test_async_post_construct_without_run_async_init(self, reset_container_manager):
+    @pytest.mark.skip(
+        reason="run_async_init 파라미터 제거됨 - ready()는 항상 비동기 초기화 수행"
+    )
+    async def test_async_post_construct_without_run_async_init(
+        self, reset_container_manager
+    ):
         """run_async_init=False 시 비동기 @PostConstruct는 지연됨"""
         call_log = []
 
@@ -457,14 +467,14 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(AsyncService, SyncService)
-        app.ready(run_async_init=False)  # 명시적으로 False
+        await app.ready_async()  # 명시적으로 False
 
         # 동기만 실행됨
         assert "sync_init" in call_log
         assert "async_init" not in call_log
         assert len(call_log) == 1
 
-    def test_async_post_construct_order_preserved(self, reset_container_manager):
+    async def test_async_post_construct_order_preserved(self, reset_container_manager):
         """비동기 @PostConstruct 실행 순서가 보존됨"""
         call_log = []
 
@@ -492,12 +502,12 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(First, Second, Third)
-        app.ready()
+        await app.ready_async()
 
         # 의존성 순서대로 실행
         assert call_log == ["first", "second", "third"]
 
-    def test_mixed_sync_async_post_construct_order(self, reset_container_manager):
+    async def test_mixed_sync_async_post_construct_order(self, reset_container_manager):
         """동기/비동기 @PostConstruct 혼합 시 올바른 순서로 실행"""
         call_log = []
 
@@ -525,7 +535,7 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(SyncFirst, AsyncSecond, SyncThird)
-        app.ready()
+        await app.ready_async()
 
         # 동기가 먼저 실행되고, 비동기가 나중에 실행됨
         # (동기: ready() 시점, 비동기: start_async() 시점)
@@ -533,7 +543,7 @@ class TestAsyncLifecycleInSyncContext:
         assert "sync_third" in call_log
         assert "async_second" in call_log
 
-    def test_async_post_construct_actually_awaits(self, reset_container_manager):
+    async def test_async_post_construct_actually_awaits(self, reset_container_manager):
         """비동기 @PostConstruct가 실제로 await됨 (asyncio.sleep 포함)"""
         import asyncio
 
@@ -550,13 +560,15 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(AsyncService)
-        app.ready()
+        await app.ready_async()
 
         # await가 완료되어야 값이 설정됨
         assert result["value"] == "completed"
         assert result["counter"] == 1
 
-    def test_multiple_async_post_construct_all_await(self, reset_container_manager):
+    async def test_multiple_async_post_construct_all_await(
+        self, reset_container_manager
+    ):
         """여러 비동기 @PostConstruct가 모두 await됨"""
         import asyncio
 
@@ -589,12 +601,12 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(ServiceA, ServiceB, ServiceC)
-        app.ready()
+        await app.ready_async()
 
         # 모든 비동기 초기화가 완료됨
         assert results == ["A", "B", "C"]
 
-    def test_async_post_construct_with_async_dependency_setup(
+    async def test_async_post_construct_with_async_dependency_setup(
         self, reset_container_manager
     ):
         """비동기 @PostConstruct에서 설정한 값을 다른 컴포넌트가 사용"""
@@ -619,7 +631,7 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(DatabasePool, Repository)
-        app.ready()
+        await app.ready_async()
 
         repo = app.manager.get_instance(Repository)
         # 비동기 초기화가 완료되어야 connection_string이 설정됨

@@ -8,7 +8,7 @@ from bloom.core import ScopeEnum, RequestContext, request_scope
 class TestRequestScope:
     """REQUEST 스코프 기본 동작 테스트"""
 
-    def test_request_scope_instance_per_context(self, reset_container_manager):
+    async def test_request_scope_instance_per_context(self, reset_container_manager):
         """REQUEST 스코프는 요청 컨텍스트마다 새 인스턴스 생성"""
         instance_ids = []
 
@@ -22,7 +22,7 @@ class TestRequestScope:
         class Consumer:
             service: RequestService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         # 첫 번째 요청 컨텍스트
@@ -41,7 +41,9 @@ class TestRequestScope:
         # 다른 요청은 다른 인스턴스
         assert instance_ids[0] != instance_ids[1]
 
-    def test_request_scope_without_context_raises_error(self, reset_container_manager):
+    async def test_request_scope_without_context_raises_error(
+        self, reset_container_manager
+    ):
         """컨텍스트 없이 REQUEST 스코프 접근 시 에러"""
 
         @Component
@@ -54,14 +56,16 @@ class TestRequestScope:
         class Consumer:
             service: RequestService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         # 컨텍스트 없이 메서드 호출하면 에러
-        with pytest.raises(RuntimeError, match="REQUEST scope requires active request context"):
+        with pytest.raises(
+            RuntimeError, match="REQUEST scope requires active request context"
+        ):
             consumer.service.do_something()
 
-    def test_request_context_is_active(self, reset_container_manager):
+    async def test_request_context_is_active(self, reset_container_manager):
         """RequestContext.is_active() 동작 확인"""
         assert not RequestContext.is_active()
 
@@ -74,7 +78,7 @@ class TestRequestScope:
 class TestRequestScopeLifecycle:
     """REQUEST 스코프 라이프사이클 테스트"""
 
-    def test_post_construct_on_first_access(self, reset_container_manager):
+    async def test_post_construct_on_first_access(self, reset_container_manager):
         """REQUEST 인스턴스 첫 접근 시 @PostConstruct 호출"""
         call_log = []
 
@@ -92,7 +96,7 @@ class TestRequestScopeLifecycle:
         class Consumer:
             service: RequestService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         # 아직 호출 안됨
@@ -108,7 +112,7 @@ class TestRequestScopeLifecycle:
             _ = consumer.service.get_id()
             assert len(call_log) == 1
 
-    def test_pre_destroy_on_context_end(self, reset_container_manager):
+    async def test_pre_destroy_on_context_end(self, reset_container_manager):
         """요청 컨텍스트 종료 시 @PreDestroy 호출"""
         call_log = []
 
@@ -130,7 +134,7 @@ class TestRequestScopeLifecycle:
         class Consumer:
             service: RequestService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         with request_scope():
@@ -142,7 +146,7 @@ class TestRequestScopeLifecycle:
         # 컨텍스트 종료 후 cleanup 호출됨
         assert f"cleanup:{service_id}" in call_log
 
-    def test_multiple_request_instances_cleanup(self, reset_container_manager):
+    async def test_multiple_request_instances_cleanup(self, reset_container_manager):
         """여러 REQUEST 인스턴스가 역순으로 정리됨"""
         call_log = []
 
@@ -171,7 +175,7 @@ class TestRequestScopeLifecycle:
             a: ServiceA
             b: ServiceB
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         with request_scope():
@@ -185,7 +189,9 @@ class TestRequestScopeLifecycle:
 class TestRequestScopeWithSingleton:
     """REQUEST 스코프와 SINGLETON 혼합 테스트"""
 
-    def test_request_scope_with_singleton_dependency(self, reset_container_manager):
+    async def test_request_scope_with_singleton_dependency(
+        self, reset_container_manager
+    ):
         """REQUEST 컴포넌트가 SINGLETON 의존성을 가질 수 있음"""
 
         @Component
@@ -205,7 +211,7 @@ class TestRequestScopeWithSingleton:
         class Consumer:
             request_svc: RequestService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         singleton_ids = []
@@ -219,7 +225,7 @@ class TestRequestScopeWithSingleton:
         # SINGLETON은 동일 인스턴스
         assert singleton_ids[0] == singleton_ids[1]
 
-    def test_singleton_with_request_dependency_fails_outside_context(
+    async def test_singleton_with_request_dependency_fails_outside_context(
         self, reset_container_manager
     ):
         """SINGLETON이 REQUEST 의존성에 접근하면 컨텍스트 필요"""
@@ -237,7 +243,7 @@ class TestRequestScopeWithSingleton:
             def use_request(self):
                 self.request.do_something()
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         singleton = app.manager.get_instance(SingletonService)
 
         # 컨텍스트 없이 접근하면 에러
@@ -275,7 +281,7 @@ class TestRequestScopeAsync:
         class Consumer:
             service: RequestService
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         consumer = app.manager.get_instance(Consumer)
 
         async with request_scope():
@@ -315,10 +321,10 @@ class TestRequestScopeASGI:
             session: RequestSession
 
             @Get("/test")
-            def test_endpoint(self) -> dict:
+            async def test_endpoint(self) -> dict:
                 return {"user": self.session.get_user()}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # ASGI 앱 생성
         asgi = app.asgi
@@ -393,11 +399,11 @@ class TestRequestScopeASGI:
             session: RequestSession
 
             @Get("/test")
-            def test_endpoint(self) -> dict:
+            async def test_endpoint(self) -> dict:
                 # 핸들러에서도 같은 인스턴스 접근
                 return {"request_id": self.session.get_id()}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         asgi = app.asgi
 
         scope = {

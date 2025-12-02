@@ -10,7 +10,7 @@ from bloom.core.utils import group_by_dependency_level
 class TestGroupByDependencyLevel:
     """의존성 레벨 그룹화 테스트"""
 
-    def test_no_dependencies(self, reset_container_manager):
+    async def test_no_dependencies(self, reset_container_manager):
         """의존성 없는 컴포넌트들은 모두 Level 0"""
 
         @Component
@@ -27,7 +27,8 @@ class TestGroupByDependencyLevel:
 
         app = Application("test")
         all_containers = [
-            c for containers in app.manager.get_all_containers().values()
+            c
+            for containers in app.manager.get_all_containers().values()
             for c in containers
         ]
 
@@ -37,7 +38,7 @@ class TestGroupByDependencyLevel:
         assert len(levels) == 1
         assert len(levels[0]) == 3
 
-    def test_linear_dependencies(self, reset_container_manager):
+    async def test_linear_dependencies(self, reset_container_manager):
         """선형 의존성: A -> B -> C"""
 
         @Component
@@ -54,7 +55,8 @@ class TestGroupByDependencyLevel:
 
         app = Application("test")
         all_containers = [
-            c for containers in app.manager.get_all_containers().values()
+            c
+            for containers in app.manager.get_all_containers().values()
             for c in containers
         ]
 
@@ -75,7 +77,7 @@ class TestGroupByDependencyLevel:
         level2_types = {c.target for c in levels[2]}
         assert C in level2_types
 
-    def test_diamond_dependency(self, reset_container_manager):
+    async def test_diamond_dependency(self, reset_container_manager):
         """다이아몬드 의존성: D -> B, C -> A"""
 
         @Component
@@ -97,7 +99,8 @@ class TestGroupByDependencyLevel:
 
         app = Application("test")
         all_containers = [
-            c for containers in app.manager.get_all_containers().values()
+            c
+            for containers in app.manager.get_all_containers().values()
             for c in containers
         ]
 
@@ -123,7 +126,7 @@ class TestGroupByDependencyLevel:
 class TestParallelInitialization:
     """병렬 초기화 테스트"""
 
-    def test_parallel_init_basic(self, reset_container_manager):
+    async def test_parallel_init_basic(self, reset_container_manager):
         """병렬 초기화 기본 동작"""
 
         @Component
@@ -139,7 +142,7 @@ class TestParallelInitialization:
             a: ServiceA
             b: ServiceB
 
-        app = Application("test").ready(parallel=True)
+        app = await Application("test").ready_async(parallel=True)
 
         # 모든 인스턴스가 정상적으로 생성되어야 함
         a = app.manager.get_instance(ServiceA)
@@ -152,7 +155,7 @@ class TestParallelInitialization:
         assert c.a is a
         assert c.b is b
 
-    def test_parallel_init_with_postconstruct(self, reset_container_manager):
+    async def test_parallel_init_with_postconstruct(self, reset_container_manager):
         """병렬 초기화 + @PostConstruct"""
         from bloom.core.decorators import PostConstruct
 
@@ -183,7 +186,7 @@ class TestParallelInitialization:
                 with lock:
                     init_order.append("C")
 
-        app = Application("test").ready(parallel=True)
+        app = await Application("test").ready_async(parallel=True)
 
         # 모든 @PostConstruct가 호출되어야 함
         assert "A" in init_order
@@ -194,7 +197,7 @@ class TestParallelInitialization:
         assert init_order.index("C") > init_order.index("A")
         assert init_order.index("C") > init_order.index("B")
 
-    def test_parallel_vs_sequential_consistency(self, reset_container_manager):
+    async def test_parallel_vs_sequential_consistency(self, reset_container_manager):
         """병렬 초기화와 순차 초기화 결과 일관성 - 같은 구조로 초기화 방식만 다르게"""
 
         @Component
@@ -216,7 +219,7 @@ class TestParallelInitialization:
             base: Base
 
         # 순차 초기화 (기본)
-        app_seq = Application("test").ready(parallel=False)
+        app_seq = await Application("test").ready_async(parallel=False)
 
         a_seq = app_seq.manager.get_instance(ServiceA)
         b_seq = app_seq.manager.get_instance(ServiceB)
@@ -230,7 +233,7 @@ class TestParallelInitialization:
         assert c_seq.b is b_seq
         assert c_seq.base is base_seq
 
-    def test_parallel_init_preserves_singleton(self, reset_container_manager):
+    async def test_parallel_init_preserves_singleton(self, reset_container_manager):
         """병렬 초기화에서도 싱글톤 보장"""
 
         @Component
@@ -249,7 +252,7 @@ class TestParallelInitialization:
         class ConsumerC:
             shared: SharedService
 
-        app = Application("test").ready(parallel=True)
+        app = await Application("test").ready_async(parallel=True)
 
         shared = app.manager.get_instance(SharedService)
         a = app.manager.get_instance(ConsumerA)
@@ -266,11 +269,11 @@ class TestPerformanceComparison:
     """순차 vs 병렬 성능 비교 (마커 없음 - 기본 실행)"""
 
     @pytest.mark.skip(reason="성능 테스트는 환경에 따라 결과가 달라짐")
-    def test_parallel_faster_with_io_bound(self, reset_container_manager):
+    async def test_parallel_faster_with_io_bound(self, reset_container_manager):
         """I/O 바운드 초기화에서 병렬이 더 빠름"""
         from bloom.core.decorators import PostConstruct
 
-        init_times = {"parallel": 0, "sequential": 0}
+        init_times = {"parallel": 0.0, "sequential": 0.0}
 
         # 병렬 테스트를 위한 I/O 시뮬레이션 컴포넌트
         @Component
@@ -299,35 +302,37 @@ class TestPerformanceComparison:
 
         # 병렬 초기화
         start = time.perf_counter()
-        app = Application("test").ready(parallel=True)
+        app = await Application("test").ready_async(parallel=True)
         init_times["parallel"] = time.perf_counter() - start
 
         # 순차로 하면 최소 0.2초 (4 x 0.05)
         # 병렬로 하면 약 0.05초 (모두 독립적이므로)
         # 약간의 오버헤드를 감안하여 0.15초 미만이면 병렬 효과가 있다고 판단
-        assert init_times["parallel"] < 0.15, f"Parallel init took {init_times['parallel']:.3f}s"
+        assert (
+            init_times["parallel"] < 0.15
+        ), f"Parallel init took {init_times['parallel']:.3f}s"
 
 
 class TestEdgeCases:
     """엣지 케이스 테스트"""
 
-    def test_empty_application(self, reset_container_manager):
+    async def test_empty_application(self, reset_container_manager):
         """컴포넌트 없는 애플리케이션"""
-        app = Application("test").ready(parallel=True)
+        app = await Application("test").ready_async(parallel=True)
         assert app is not None
 
-    def test_single_component(self, reset_container_manager):
+    async def test_single_component(self, reset_container_manager):
         """단일 컴포넌트"""
 
         @Component
         class Single:
             pass
 
-        app = Application("test").ready(parallel=True)
+        app = await Application("test").ready_async(parallel=True)
         single = app.manager.get_instance(Single)
         assert single is not None
 
-    def test_deep_dependency_chain(self, reset_container_manager):
+    async def test_deep_dependency_chain(self, reset_container_manager):
         """깊은 의존성 체인 (Level 5)"""
 
         @Component
@@ -354,7 +359,7 @@ class TestEdgeCases:
         class L5:
             l4: L4
 
-        app = Application("test").ready(parallel=True)
+        app = await Application("test").ready_async(parallel=True)
 
         l5 = app.manager.get_instance(L5)
         assert l5 is not None

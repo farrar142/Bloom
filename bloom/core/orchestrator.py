@@ -18,7 +18,7 @@ class ContainerOrchestrator:
 
     컨테이너들을 토폴로지컬 순서로 정렬하고 초기화합니다.
     Factory Chain 검증, 순환 의존성 감지, 병렬 초기화를 지원합니다.
-    
+
     모든 초기화 흐름은 async로 통일:
     - initialize_async(): 동기/비동기 @PostConstruct 모두 처리
     - 동기 환경에서는 asyncio.run()으로 호출
@@ -170,21 +170,21 @@ class ContainerOrchestrator:
             (container, instance) 튜플 또는 @Scope(CALL/REQUEST) 컴포넌트면 None
         """
         from .container.factory import FactoryContainer
-        
+
         # CALL/REQUEST 스코프는 즉시 초기화하지 않음 (접근 시 생성)
         if self._is_lazy_scope(container):
             return None
 
         instance = container.initialize_instance()
-        
+
         # Factory Chain 중간 Factory는 @PostConstruct 호출하지 않음
         # (마지막 Factory만 호출)
         if isinstance(container, FactoryContainer) and container._is_chain_intermediate:
             return (container, instance)
-        
+
         # @PostConstruct 호출 (동기/비동기 모두 처리)
         await self.manager.lifecycle.invoke_post_construct_async(container, instance)
-        
+
         return (container, instance)
 
     async def finalize_async(

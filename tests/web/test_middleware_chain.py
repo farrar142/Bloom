@@ -99,7 +99,7 @@ class EarlyReturnMiddleware(Middleware):
 class TestMiddlewareChain:
     """MiddlewareChain 기본 기능 테스트"""
 
-    def test_default_chain_has_cors(self):
+    async def test_default_chain_has_cors(self):
         """기본 체인에 CorsMiddleware 포함"""
         from bloom.web.middleware import CorsMiddleware
 
@@ -109,7 +109,7 @@ class TestMiddlewareChain:
         cors = chain.get_middleware(CorsMiddleware)
         assert cors is not None
 
-    def test_get_middleware(self):
+    async def test_get_middleware(self):
         """get_middleware로 특정 타입 미들웨어 조회"""
         from bloom.web.middleware import CorsMiddleware
 
@@ -127,7 +127,7 @@ class TestMiddlewareChain:
         result = chain.get_middleware(LoggingMiddleware, raise_exception=False)
         assert result is None
 
-    def test_add_to_default_group(self):
+    async def test_add_to_default_group(self):
         """기본 그룹에 미들웨어 추가"""
         chain = MiddlewareChain()
         middleware = LoggingMiddleware()
@@ -136,7 +136,7 @@ class TestMiddlewareChain:
 
         assert middleware in chain.get_all_middlewares()
 
-    def test_add_group_after(self):
+    async def test_add_group_after(self):
         """그룹 뒤에 새 그룹 추가"""
         chain = MiddlewareChain()
         m1 = LoggingMiddleware()
@@ -148,7 +148,7 @@ class TestMiddlewareChain:
         assert m1 in middlewares
         assert m2 in middlewares
 
-    def test_add_group_before(self):
+    async def test_add_group_before(self):
         """그룹 앞에 새 그룹 추가"""
         chain = MiddlewareChain()
         m1 = LoggingMiddleware()
@@ -163,7 +163,7 @@ class TestMiddlewareChain:
         # m2가 m1보다 먼저 나와야 함
         assert middlewares.index(m2) < middlewares.index(m1)
 
-    def test_disable_middleware(self):
+    async def test_disable_middleware(self):
         """특정 미들웨어 비활성화"""
         chain = MiddlewareChain()
         m1 = LoggingMiddleware()
@@ -176,7 +176,7 @@ class TestMiddlewareChain:
         assert m1 not in middlewares
         assert m2 in middlewares
 
-    def test_enable_middleware(self):
+    async def test_enable_middleware(self):
         """비활성화된 미들웨어 다시 활성화"""
         chain = MiddlewareChain()
         m1 = LoggingMiddleware()
@@ -187,7 +187,7 @@ class TestMiddlewareChain:
 
         assert m1 in chain.get_all_middlewares()
 
-    def test_disable_group(self):
+    async def test_disable_group(self):
         """그룹 비활성화"""
         chain = MiddlewareChain()
         m1 = LoggingMiddleware()
@@ -197,7 +197,7 @@ class TestMiddlewareChain:
 
         assert m1 not in chain.get_all_middlewares()
 
-    def test_enable_group(self):
+    async def test_enable_group(self):
         """비활성화된 그룹 다시 활성화"""
         chain = MiddlewareChain()
         m1 = LoggingMiddleware()
@@ -208,7 +208,7 @@ class TestMiddlewareChain:
 
         assert m1 in chain.get_all_middlewares()
 
-    def test_method_chaining(self):
+    async def test_method_chaining(self):
         """메서드 체이닝 지원"""
         chain = MiddlewareChain()
         m1 = LoggingMiddleware()
@@ -218,7 +218,7 @@ class TestMiddlewareChain:
 
         assert result is chain
 
-    def test_repr(self):
+    async def test_repr(self):
         """__repr__ 출력"""
         chain = MiddlewareChain()
         chain.default_group.add(LoggingMiddleware())
@@ -365,14 +365,14 @@ class TestMiddlewareChainExecution:
 class TestMiddlewareGroup:
     """MiddlewareGroup 단위 테스트"""
 
-    def test_create_group(self):
+    async def test_create_group(self):
         """그룹 생성"""
         group = MiddlewareGroup("auth")
         assert group.name == "auth"
         assert group.enabled is True
         assert len(group.middlewares) == 0
 
-    def test_add_middlewares(self):
+    async def test_add_middlewares(self):
         """미들웨어 추가"""
         group = MiddlewareGroup("test")
         m1 = LoggingMiddleware()
@@ -383,7 +383,7 @@ class TestMiddlewareGroup:
         assert m1 in group.middlewares
         assert m2 in group.middlewares
 
-    def test_disable_enable(self):
+    async def test_disable_enable(self):
         """그룹 활성화/비활성화"""
         group = MiddlewareGroup("test")
 
@@ -393,7 +393,7 @@ class TestMiddlewareGroup:
         group.enable()
         assert group.enabled is True
 
-    def test_method_chaining(self):
+    async def test_method_chaining(self):
         """메서드 체이닝"""
         group = MiddlewareGroup("test")
         m1 = LoggingMiddleware()
@@ -402,7 +402,7 @@ class TestMiddlewareGroup:
 
         assert result is group
 
-    def test_repr(self):
+    async def test_repr(self):
         """__repr__ 출력"""
         group = MiddlewareGroup("auth")
         group.add(LoggingMiddleware())

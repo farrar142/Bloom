@@ -71,7 +71,7 @@ class ConcreteImpl(AbstractBase):
 class TestFactoryReturnTypeEdgeCases:
     """Factory 반환 타입 관련 엣지 케이스"""
 
-    def test_factory_returns_none(self):
+    async def test_factory_returns_none(self):
         """Factory가 None을 반환하는 경우 - None이 인스턴스로 저장됨"""
 
         class MaybeValue:
@@ -84,13 +84,13 @@ class TestFactoryReturnTypeEdgeCases:
                 return None  # type: ignore
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         # None이 MaybeValue 타입으로 등록됨
         result = app.manager.get_instance(MaybeValue, raise_exception=False)
         assert result is None
 
-    def test_factory_returns_dataclass(self):
+    async def test_factory_returns_dataclass(self):
         """Factory가 dataclass를 반환하는 경우"""
 
         @Component
@@ -100,13 +100,13 @@ class TestFactoryReturnTypeEdgeCases:
                 return DataClassValue(name="test", count=42)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         data = app.manager.get_instance(DataClassValue)
         assert data.name == "test"
         assert data.count == 42
 
-    def test_factory_returns_primitive_wrapper(self):
+    async def test_factory_returns_primitive_wrapper(self):
         """Factory가 primitive를 감싸는 클래스를 반환"""
 
         class IntWrapper:
@@ -120,12 +120,12 @@ class TestFactoryReturnTypeEdgeCases:
                 return IntWrapper(12345)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         wrapper = app.manager.get_instance(IntWrapper)
         assert wrapper.value == 12345
 
-    def test_factory_returns_abstract_implementation(self):
+    async def test_factory_returns_abstract_implementation(self):
         """Factory가 추상 클래스의 구현체를 반환"""
 
         @Component
@@ -135,13 +135,13 @@ class TestFactoryReturnTypeEdgeCases:
                 return ConcreteImpl(100)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         instance = app.manager.get_instance(AbstractBase)
         assert isinstance(instance, ConcreteImpl)
         assert instance.get_value() == 100
 
-    def test_factory_returns_nested_class(self):
+    async def test_factory_returns_nested_class(self):
         """Factory가 중첩 클래스 인스턴스를 반환"""
 
         class Outer:
@@ -156,7 +156,7 @@ class TestFactoryReturnTypeEdgeCases:
                 return Outer.Inner("nested")
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         inner = app.manager.get_instance(Outer.Inner)
         assert inner.data == "nested"
@@ -170,7 +170,7 @@ class TestFactoryReturnTypeEdgeCases:
 class TestFactoryParameterEdgeCases:
     """Factory 파라미터 관련 엣지 케이스"""
 
-    def test_factory_with_no_parameters(self):
+    async def test_factory_with_no_parameters(self):
         """파라미터 없는 Factory (self만 있음)"""
 
         @Component
@@ -180,12 +180,12 @@ class TestFactoryParameterEdgeCases:
                 return SimpleValue(999)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         value = app.manager.get_instance(SimpleValue)
         assert value.value == 999
 
-    def test_factory_with_many_parameters(self):
+    async def test_factory_with_many_parameters(self):
         """많은 파라미터를 가진 Factory"""
 
         class A:
@@ -238,7 +238,7 @@ class TestFactoryParameterEdgeCases:
                 return Combined(a, b, c, d, e)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         combined = app.manager.get_instance(Combined)
         assert isinstance(combined.a, A)
@@ -247,7 +247,7 @@ class TestFactoryParameterEdgeCases:
         assert isinstance(combined.d, D)
         assert isinstance(combined.e, E)
 
-    def test_factory_with_self_type_dependency(self):
+    async def test_factory_with_self_type_dependency(self):
         """Factory가 자신의 반환 타입을 파라미터로 받는 경우 (Chain)"""
 
         @Component
@@ -263,12 +263,12 @@ class TestFactoryParameterEdgeCases:
                 return value
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         value = app.manager.get_instance(SimpleValue)
         assert value.value == 10
 
-    def test_factory_with_optional_dependency_present(self):
+    async def test_factory_with_optional_dependency_present(self):
         """Optional 의존성이 존재하는 경우"""
 
         class OptionalDep:
@@ -289,7 +289,7 @@ class TestFactoryParameterEdgeCases:
                 return Target(dep)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         target = app.manager.get_instance(Target)
         assert target.dep is not None
@@ -304,7 +304,7 @@ class TestFactoryParameterEdgeCases:
 class TestFactoryLifecycleEdgeCases:
     """Factory 라이프사이클 관련 엣지 케이스"""
 
-    def test_factory_with_post_construct(self):
+    async def test_factory_with_post_construct(self):
         """Factory가 생성한 인스턴스의 @PostConstruct 호출"""
         post_construct_called = []
 
@@ -325,13 +325,13 @@ class TestFactoryLifecycleEdgeCases:
                 return LifecycleValue(42)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         value = app.manager.get_instance(LifecycleValue)
         assert value.initialized is True
         assert 42 in post_construct_called
 
-    def test_factory_with_pre_destroy(self):
+    async def test_factory_with_pre_destroy(self):
         """Factory가 생성한 인스턴스의 @PreDestroy 호출"""
         pre_destroy_called = []
 
@@ -350,14 +350,14 @@ class TestFactoryLifecycleEdgeCases:
                 return DestroyableValue(123)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         _ = app.manager.get_instance(DestroyableValue)
         app.shutdown()
 
         assert 123 in pre_destroy_called
 
-    def test_factory_chain_lifecycle_order(self):
+    async def test_factory_chain_lifecycle_order(self):
         """Factory Chain에서 라이프사이클 순서"""
         lifecycle_order = []
 
@@ -388,14 +388,14 @@ class TestFactoryLifecycleEdgeCases:
                 return v
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         _ = app.manager.get_instance(ChainValue)
         # 마지막 Factory 후에만 PostConstruct 호출
         assert len(lifecycle_order) == 1
         assert "create,step1,step2" in lifecycle_order[0]
 
-    def test_prototype_factory_pre_destroy_on_scope_end(self):
+    async def test_prototype_factory_pre_destroy_on_scope_end(self):
         """PROTOTYPE Factory의 @PreDestroy는 스코프 종료 시 호출"""
         destroy_count = [0]
 
@@ -419,7 +419,7 @@ class TestFactoryLifecycleEdgeCases:
                 return self.value
 
         app = Application("test")
-        app.scan(Config, Consumer).ready()
+        await app.scan(Config, Consumer).ready_async()
 
         # PROTOTYPE은 접근할 때마다 새 인스턴스
         consumer = app.manager.get_instance(Consumer)
@@ -437,7 +437,7 @@ class TestFactoryLifecycleEdgeCases:
 class TestFactoryErrorEdgeCases:
     """Factory 에러 처리 관련 엣지 케이스"""
 
-    def test_factory_raises_exception(self):
+    async def test_factory_raises_exception(self):
         """Factory 메서드에서 예외 발생"""
 
         class FailValue:
@@ -453,9 +453,9 @@ class TestFactoryErrorEdgeCases:
         app.scan(Config)
 
         with pytest.raises(ValueError, match="Factory failed!"):
-            app.ready()
+            await app.ready_async()
 
-    def test_factory_with_missing_dependency(self):
+    async def test_factory_with_missing_dependency(self):
         """Factory에 필요한 의존성이 없는 경우"""
 
         class MissingDep:
@@ -474,10 +474,10 @@ class TestFactoryErrorEdgeCases:
         app.scan(Config)
 
         with pytest.raises(Exception, match="not found"):
-            app.ready()
+            await app.ready_async()
 
     @pytest.mark.skip(reason="TODO: Factory 반환 타입 검증 미구현")
-    def test_factory_returns_wrong_type(self):
+    async def test_factory_returns_wrong_type(self):
         """Factory가 선언된 타입과 다른 타입 반환 시 TypeError 발생"""
 
         class Expected:
@@ -496,9 +496,9 @@ class TestFactoryErrorEdgeCases:
         app.scan(Config)
 
         with pytest.raises(TypeError, match="expected Expected or its subclass"):
-            app.ready()
+            await app.ready_async()
 
-    def test_factory_returns_subclass_is_allowed(self):
+    async def test_factory_returns_subclass_is_allowed(self):
         """Factory가 서브클래스를 반환하는 것은 허용"""
 
         class Base:
@@ -514,7 +514,7 @@ class TestFactoryErrorEdgeCases:
                 return Derived()  # 서브클래스 반환 OK
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         result = app.manager.get_instance(Base)
         assert isinstance(result, Derived)
@@ -528,7 +528,7 @@ class TestFactoryErrorEdgeCases:
 class TestFactoryComplexDependencyEdgeCases:
     """복잡한 의존성 패턴 엣지 케이스"""
 
-    def test_factory_circular_with_lazy(self):
+    async def test_factory_circular_with_lazy(self):
         """Factory 간 순환 의존성을 Lazy로 해결"""
 
         class ServiceA:
@@ -553,7 +553,7 @@ class TestFactoryComplexDependencyEdgeCases:
                 return ServiceB(a.get_b_value() + 100)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         _ = app.manager.get_instance(ServiceA)
         b = app.manager.get_instance(ServiceB)
@@ -561,7 +561,7 @@ class TestFactoryComplexDependencyEdgeCases:
         # A는 B 없이 생성되므로 B.value = 0 + 100 = 100
         assert b.value == 100
 
-    def test_factory_with_varargs(self):
+    async def test_factory_with_varargs(self):
         """Factory에서 *args로 여러 인스턴스 주입"""
 
         class Plugin:
@@ -599,14 +599,14 @@ class TestFactoryComplexDependencyEdgeCases:
                 return PluginManager(list(plugins))
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         manager = app.manager.get_instance(PluginManager)
         assert len(manager.plugins) == 3
         names = {p.name for p in manager.plugins}
         assert names == {"A", "B", "C"}
 
-    def test_factory_deep_chain(self):
+    async def test_factory_deep_chain(self):
         """10단계 이상의 깊은 Factory Chain"""
 
         class DeepValue:
@@ -680,12 +680,12 @@ class TestFactoryComplexDependencyEdgeCases:
                 return v
 
         app = Application("test")
-        app.scan(DeepConfig).ready()
+        await app.scan(DeepConfig).ready_async()
 
         value = app.manager.get_instance(DeepValue)
         assert value.depth == 10
 
-    def test_factory_with_component_dependency(self):
+    async def test_factory_with_component_dependency(self):
         """Factory가 Component를 의존성으로 가지는 경우"""
 
         @Component
@@ -704,12 +704,12 @@ class TestFactoryComplexDependencyEdgeCases:
                 return Service(repo.get_data())
 
         app = Application("test")
-        app.scan(Repository, Config).ready()
+        await app.scan(Repository, Config).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.data == "data_from_repo"
 
-    def test_multiple_factories_in_different_components(self):
+    async def test_multiple_factories_in_different_components(self):
         """여러 Component에 분산된 Factory들"""
 
         class Value1:
@@ -742,7 +742,7 @@ class TestFactoryComplexDependencyEdgeCases:
                 return Combined(v1, v2)
 
         app = Application("test")
-        app.scan(ConfigA, ConfigB, ConfigC).ready()
+        await app.scan(ConfigA, ConfigB, ConfigC).ready_async()
 
         combined = app.manager.get_instance(Combined)
         assert isinstance(combined.v1, Value1)
@@ -757,7 +757,7 @@ class TestFactoryComplexDependencyEdgeCases:
 class TestFactoryScopeEdgeCases:
     """Factory Scope 관련 엣지 케이스"""
 
-    def test_singleton_factory_same_instance(self):
+    async def test_singleton_factory_same_instance(self):
         """SINGLETON Factory는 항상 같은 인스턴스"""
         create_count = [0]
 
@@ -774,7 +774,7 @@ class TestFactoryScopeEdgeCases:
                 return SingletonValue()
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         v1 = app.manager.get_instance(SingletonValue)
         v2 = app.manager.get_instance(SingletonValue)
@@ -783,7 +783,7 @@ class TestFactoryScopeEdgeCases:
         assert v1 is v2 is v3
         assert create_count[0] == 1
 
-    def test_prototype_factory_different_instances(self):
+    async def test_prototype_factory_different_instances(self):
         """PROTOTYPE Factory는 매번 다른 인스턴스"""
         create_count = [0]
 
@@ -808,7 +808,7 @@ class TestFactoryScopeEdgeCases:
             value: PrototypeValue
 
         app = Application("test")
-        app.scan(Config, Consumer1, Consumer2).ready()
+        await app.scan(Config, Consumer1, Consumer2).ready_async()
 
         c1 = app.manager.get_instance(Consumer1)
         c2 = app.manager.get_instance(Consumer2)
@@ -816,7 +816,7 @@ class TestFactoryScopeEdgeCases:
         assert c1.value.id != c2.value.id
         assert create_count[0] == 2
 
-    def test_call_scoped_factory_shares_in_call_stack(self):
+    async def test_call_scoped_factory_shares_in_call_stack(self):
         """CALL_SCOPED Factory는 같은 호출 스택에서 공유"""
         create_count = [0]
 
@@ -855,7 +855,7 @@ class TestFactoryScopeEdgeCases:
                 return (self.a.get_id(), self.b.get_id())
 
         app = Application("test")
-        app.scan(Config, ServiceA, ServiceB, Orchestrator).ready()
+        await app.scan(Config, ServiceA, ServiceB, Orchestrator).ready_async()
 
         orchestrator = app.manager.get_instance(Orchestrator)
 
@@ -867,7 +867,7 @@ class TestFactoryScopeEdgeCases:
             # 같은 호출 스택에서는 같은 인스턴스
             assert id_a == id_b
 
-    def test_call_scoped_transaction_propagation(self):
+    async def test_call_scoped_transaction_propagation(self):
         """트랜잭션 합류 패턴: 상위 콜스택에서 시작된 인스턴스가 하위 콜스택에서도 유지
 
         시나리오:
@@ -959,9 +959,9 @@ class TestFactoryScopeEdgeCases:
                 }
 
         app = Application("test")
-        app.scan(
+        await app.scan(
             TransactionFactory, DatabaseConfig, Repository, Service, Controller
-        ).ready()
+        ).ready_async()
 
         controller = app.manager.get_instance(Controller)
 
@@ -972,9 +972,9 @@ class TestFactoryScopeEdgeCases:
             result1 = controller.handle("user_create")
 
         # 모든 레이어에서 같은 트랜잭션을 사용해야 함
-        assert result1["controller"] == result1["service"] == result1["repository"], (
-            "모든 레이어에서 같은 트랜잭션을 공유해야 함 (트랜잭션 합류)"
-        )
+        assert (
+            result1["controller"] == result1["service"] == result1["repository"]
+        ), "모든 레이어에서 같은 트랜잭션을 공유해야 함 (트랜잭션 합류)"
 
         # 트랜잭션 로그 검증
         assert "TX-1 created" in transaction_log
@@ -991,15 +991,15 @@ class TestFactoryScopeEdgeCases:
 
         # 새로운 요청은 새로운 트랜잭션
         assert result2["controller"] == result2["service"] == result2["repository"]
-        assert result2["controller"] != result1["controller"], (
-            "새로운 요청은 새로운 트랜잭션이어야 함"
-        )
+        assert (
+            result2["controller"] != result1["controller"]
+        ), "새로운 요청은 새로운 트랜잭션이어야 함"
 
         # 두 번째 트랜잭션 로그
         assert "TX-2 created" in transaction_log
         assert "TX-2 committed" in transaction_log
 
-    def test_call_scoped_nested_call_scope_inheritance(self):
+    async def test_call_scoped_nested_call_scope_inheritance(self):
         """중첩된 call_scope에서 인스턴스 상속 확인
 
         상위 call_scope에서 생성된 인스턴스가
@@ -1050,7 +1050,7 @@ class TestFactoryScopeEdgeCases:
                 return (self.resource.id, inner_id)
 
         app = Application("test")
-        app.scan(ResourceConfig, InnerService, OuterService).ready()
+        await app.scan(ResourceConfig, InnerService, OuterService).ready_async()
 
         outer = app.manager.get_instance(OuterService)
 
@@ -1073,7 +1073,7 @@ class TestFactoryScopeEdgeCases:
             "used:1:by:outer_after",
         ]
 
-    def test_call_scoped_lifecycle_only_at_outermost_scope(self):
+    async def test_call_scoped_lifecycle_only_at_outermost_scope(self):
         """CALL_SCOPED 인스턴스의 라이프사이클은 최상위 콜스택에서만 호출
 
         시나리오:
@@ -1137,7 +1137,7 @@ class TestFactoryScopeEdgeCases:
                 return result
 
         app = Application("test")
-        app.scan(ResourceConfig, Level3, Level2, Level1).ready()
+        await app.scan(ResourceConfig, Level3, Level2, Level1).ready_async()
 
         level1 = app.manager.get_instance(Level1)
 
@@ -1165,7 +1165,7 @@ class TestFactoryScopeEdgeCases:
             assert "post_construct" not in log, f"중간에 post_construct 호출됨: {log}"
             assert "pre_destroy" not in log, f"중간에 pre_destroy 호출됨: {log}"
 
-    def test_call_scoped_context_manager_auto_called(self):
+    async def test_call_scoped_context_manager_auto_called(self):
         """CALL_SCOPED는 컨텍스트 매니저(__enter__/__exit__)를 자동 호출
 
         __enter__: 최상위 call_scope 진입 시 인스턴스 캐싱 후 1회 호출
@@ -1220,7 +1220,7 @@ class TestFactoryScopeEdgeCases:
                 self.conn.execute("COMMIT")
 
         app = Application("test")
-        app.scan(ConnectionConfig, Repository, Service).ready()
+        await app.scan(ConnectionConfig, Repository, Service).ready_async()
 
         service = app.manager.get_instance(Service)
 
@@ -1259,7 +1259,7 @@ class TestFactoryScopeEdgeCases:
             if log.startswith("execute:"):
                 assert enter_idx < i < exit_idx, f"execute가 enter/exit 범위 밖: {log}"
 
-    def test_call_scoped_lifecycle_with_nested_call_scopes(self):
+    async def test_call_scoped_lifecycle_with_nested_call_scopes(self):
         """중첩 call_scope에서도 라이프사이클은 최외곽에서만 호출
 
         외부 call_scope 안에 내부 call_scope가 있을 때,
@@ -1322,7 +1322,7 @@ class TestFactoryScopeEdgeCases:
                 lifecycle_log.append(f"outer_end:{self.res.id}")
 
         app = Application("test")
-        app.scan(Config, Inner, Outer).ready()
+        await app.scan(Config, Inner, Outer).ready_async()
 
         outer = app.manager.get_instance(Outer)
 
@@ -1368,7 +1368,7 @@ class TestFactoryScopeEdgeCases:
 
         비동기 컨텍스트 매니저의 __aexit__은 async_call_scope 종료 시 await으로 호출됩니다.
         이는 비동기 세션 커밋/롤백 같은 정리 작업에 유용합니다.
-        
+
         Note: __aenter__는 DI 시점이 동기이므로 자동 호출되지 않습니다.
               대신 동기 __enter__가 있으면 그것을 호출합니다.
         """
@@ -1376,6 +1376,7 @@ class TestFactoryScopeEdgeCases:
 
         class AsyncSession:
             """비동기 세션 - __aexit__에서 커밋/롤백 처리"""
+
             def __init__(self, id: int):
                 self.id = id
                 self.is_open = True
@@ -1421,7 +1422,7 @@ class TestFactoryScopeEdgeCases:
                 await self.session.execute("END")
 
         app = Application("test")
-        app.scan(SessionConfig, Repository, Service).ready()
+        await app.scan(SessionConfig, Repository, Service).ready_async()
 
         service = app.manager.get_instance(Service)
 
@@ -1486,7 +1487,7 @@ class TestFactoryScopeEdgeCases:
                 return f"work:{self.res.id}"
 
         app = Application("test")
-        app.scan(Config, Service).ready()
+        await app.scan(Config, Service).ready_async()
 
         service = app.manager.get_instance(Service)
 
@@ -1500,10 +1501,10 @@ class TestFactoryScopeEdgeCases:
             # 1. 의존성 접근으로 인스턴스 생성 + pending에 등록
             #    LazyFieldProxy의 속성에 접근해야 실제 인스턴스가 생성됨
             resource_id = service.res.id  # 속성 접근으로 resolve 트리거
-            
+
             # 2. pending async 초기화 실행 (웹에서는 핸들러 호출 전에 실행)
             await RequestContext.run_pending_init()
-            
+
             # 3. 이제 초기화 완료되어 있어야 함
             assert service.res.initialized, "비동기 초기화가 완료되지 않음"
             result = await service.do_work()
@@ -1568,7 +1569,7 @@ class TestFactoryScopeEdgeCases:
                 return "processed"
 
         app = Application("test")
-        app.scan(Config, Service).ready()
+        await app.scan(Config, Service).ready_async()
 
         service = app.manager.get_instance(Service)
 
@@ -1581,10 +1582,10 @@ class TestFactoryScopeEdgeCases:
             # 의존성 접근으로 인스턴스 생성 + pending에 등록
             _ = service.cache.name
             _ = service.queue.name
-            
+
             # pending async 초기화 실행
             await RequestContext.run_pending_init()
-            
+
             result = await service.process()
 
         assert result == "processed"
@@ -1602,7 +1603,7 @@ class TestFactoryScopeEdgeCases:
 class TestFactorySpecialCases:
     """Factory 특수 케이스 테스트"""
 
-    def test_factory_method_name_collision(self):
+    async def test_factory_method_name_collision(self):
         """같은 이름의 Factory 메서드가 다른 Component에 있는 경우"""
 
         class TypeA:
@@ -1624,7 +1625,7 @@ class TestFactorySpecialCases:
                 return TypeB()
 
         app = Application("test")
-        app.scan(ConfigA, ConfigB).ready()
+        await app.scan(ConfigA, ConfigB).ready_async()
 
         a = app.manager.get_instance(TypeA)
         b = app.manager.get_instance(TypeB)
@@ -1632,7 +1633,7 @@ class TestFactorySpecialCases:
         assert isinstance(a, TypeA)
         assert isinstance(b, TypeB)
 
-    def test_factory_with_default_parameter(self):
+    async def test_factory_with_default_parameter(self):
         """기본값이 있는 파라미터를 가진 Factory"""
 
         class ConfigurableValue:
@@ -1646,12 +1647,12 @@ class TestFactorySpecialCases:
                 return ConfigurableValue(10)
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         value = app.manager.get_instance(ConfigurableValue)
         assert value.multiplier == 10
 
-    def test_factory_accessing_owner_state(self):
+    async def test_factory_accessing_owner_state(self):
         """Factory가 owner Component의 상태를 사용"""
 
         class StateBasedValue:
@@ -1668,12 +1669,12 @@ class TestFactorySpecialCases:
                 return StateBasedValue(self.config_state)
 
         app = Application("test")
-        app.scan(StatefulConfig).ready()
+        await app.scan(StatefulConfig).ready_async()
 
         value = app.manager.get_instance(StateBasedValue)
         assert value.state == "initialized"
 
-    def test_factory_with_async_init_component(self):
+    async def test_factory_with_async_init_component(self):
         """@PostConstruct가 있는 Component를 Factory가 사용"""
         init_order = []
 
@@ -1699,14 +1700,14 @@ class TestFactorySpecialCases:
                 return DependentValue(comp.ready)
 
         app = Application("test")
-        app.scan(AsyncInitComponent, Config).ready()
+        await app.scan(AsyncInitComponent, Config).ready_async()
 
         value = app.manager.get_instance(DependentValue)
         # Component의 PostConstruct가 먼저 호출된 후 Factory 실행
         assert value.ready is True
         assert init_order == ["component_init", "factory_create"]
 
-    def test_factory_with_inheritance(self):
+    async def test_factory_with_inheritance(self):
         """Component 상속 시 Factory 메서드 - 각각 독립적으로 스캔"""
 
         class BaseValue:
@@ -1721,13 +1722,13 @@ class TestFactorySpecialCases:
 
         # 상속 없이 별도의 Config로 테스트
         app = Application("test")
-        app.scan(BaseConfig).ready()
+        await app.scan(BaseConfig).ready_async()
 
         value = app.manager.get_instance(BaseValue)
         assert isinstance(value, BaseValue)
         assert value.source == "base"
 
-    def test_factory_override_with_order(self):
+    async def test_factory_override_with_order(self):
         """Factory Chain에서 Order로 순서 제어 - 마지막 Factory가 최종 결과"""
 
         class ConfigValue:
@@ -1748,7 +1749,7 @@ class TestFactorySpecialCases:
                 return v
 
         app = Application("test")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         value = app.manager.get_instance(ConfigValue)
         # Factory Chain에서 마지막 Order가 최종 결과

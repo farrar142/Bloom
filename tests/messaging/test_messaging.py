@@ -32,7 +32,7 @@ from bloom.web.messaging import (
 class TestStompFrame:
     """StompFrame 테스트"""
 
-    def test_parse_connect_frame(self):
+    async def test_parse_connect_frame(self):
         """CONNECT 프레임 파싱"""
         raw = "CONNECT\naccept-version:1.2\nhost:localhost\n\n\x00"
         frame = StompFrame.parse(raw)
@@ -42,7 +42,7 @@ class TestStompFrame:
         assert frame.headers["host"] == "localhost"
         assert frame.body == ""
 
-    def test_parse_send_frame_with_body(self):
+    async def test_parse_send_frame_with_body(self):
         """SEND 프레임 파싱 (body 포함)"""
         raw = 'SEND\ndestination:/app/chat\ncontent-type:application/json\n\n{"text":"hello"}\x00'
         frame = StompFrame.parse(raw)
@@ -51,7 +51,7 @@ class TestStompFrame:
         assert frame.headers["destination"] == "/app/chat"
         assert frame.body == '{"text":"hello"}'
 
-    def test_parse_subscribe_frame(self):
+    async def test_parse_subscribe_frame(self):
         """SUBSCRIBE 프레임 파싱"""
         raw = "SUBSCRIBE\nid:sub-0\ndestination:/topic/chat\n\n\x00"
         frame = StompFrame.parse(raw)
@@ -60,7 +60,7 @@ class TestStompFrame:
         assert frame.headers["id"] == "sub-0"
         assert frame.headers["destination"] == "/topic/chat"
 
-    def test_encode_connected_frame(self):
+    async def test_encode_connected_frame(self):
         """CONNECTED 프레임 인코딩"""
         frame = StompFrame(
             command=StompCommand.CONNECTED,
@@ -73,7 +73,7 @@ class TestStompFrame:
         assert "server:bloom" in encoded
         assert encoded.endswith("\x00")
 
-    def test_encode_message_frame(self):
+    async def test_encode_message_frame(self):
         """MESSAGE 프레임 인코딩"""
         frame = StompFrame(
             command=StompCommand.MESSAGE,
@@ -90,7 +90,7 @@ class TestStompFrame:
 class TestMessage:
     """Message 테스트"""
 
-    def test_create_message(self):
+    async def test_create_message(self):
         """Message 생성"""
         msg = Message(
             destination="/topic/chat",
@@ -102,7 +102,7 @@ class TestMessage:
         assert msg.payload == {"text": "hello"}
         assert msg.user == "alice"
 
-    def test_to_json(self):
+    async def test_to_json(self):
         """Message to JSON"""
         msg = Message(
             destination="/topic/chat",
@@ -112,7 +112,7 @@ class TestMessage:
         json_str = msg.to_json()
         assert '"text": "hello"' in json_str or '"text":"hello"' in json_str
 
-    def test_from_stomp_frame(self):
+    async def test_from_stomp_frame(self):
         """STOMP 프레임에서 Message 생성"""
         frame = StompFrame(
             command=StompCommand.SEND,
@@ -127,7 +127,7 @@ class TestMessage:
         assert msg.session_id == "sess-1"
         assert msg.user == "alice"
 
-    def test_to_stomp_frame(self):
+    async def test_to_stomp_frame(self):
         """Message to STOMP 프레임"""
         msg = Message(
             destination="/topic/chat",
@@ -409,7 +409,7 @@ class TestWebSocketSession:
 class TestDecorators:
     """데코레이터 테스트"""
 
-    def test_message_mapping(self):
+    async def test_message_mapping(self):
         """@MessageMapping 데코레이터"""
 
         class TestController:
@@ -426,7 +426,7 @@ class TestDecorators:
             == "/chat.send"
         )
 
-    def test_send_to(self):
+    async def test_send_to(self):
         """@SendTo 데코레이터"""
 
         class TestController:
@@ -438,9 +438,11 @@ class TestDecorators:
         from bloom.core.container import HandlerContainer
 
         container = HandlerContainer.get_container(TestController.handle_chat)
+        if container is None:
+            raise AssertionError("HandlerContainer not found for handle_chat")
         assert container.get_metadata("send_to", raise_exception=False) == "/topic/chat"
 
-    def test_send_to_user(self):
+    async def test_send_to_user(self):
         """@SendToUser 데코레이터"""
 
         class TestController:
@@ -452,12 +454,14 @@ class TestDecorators:
         from bloom.core.container import HandlerContainer
 
         container = HandlerContainer.get_container(TestController.private_message)
+        if container is None:
+            raise AssertionError("HandlerContainer not found for private_message")
         assert (
             container.get_metadata("send_to_user", raise_exception=False)
             == "/queue/private"
         )
 
-    def test_subscribe_mapping(self):
+    async def test_subscribe_mapping(self):
         """@SubscribeMapping 데코레이터"""
 
         class TestController:
@@ -468,6 +472,8 @@ class TestDecorators:
         from bloom.core.container import HandlerContainer
 
         container = HandlerContainer.get_container(TestController.on_subscribe)
+        if container is None:
+            raise AssertionError("HandlerContainer not found for on_subscribe")
         assert (
             container.get_metadata("subscribe_mapping", raise_exception=False)
             == "/topic/init"
@@ -482,7 +488,7 @@ class TestDecorators:
 class TestMessageController:
     """MessageController 테스트"""
 
-    def test_message_controller_decorator(self):
+    async def test_message_controller_decorator(self):
         """@MessageController 데코레이터"""
 
         @MessageController
@@ -494,7 +500,7 @@ class TestMessageController:
         assert is_message_controller(ChatController)
         assert get_prefix(ChatController) == ""
 
-    def test_message_controller_with_prefix(self):
+    async def test_message_controller_with_prefix(self):
         """@MessageController with prefix"""
 
         @MessageController("/v1")

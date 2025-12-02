@@ -17,7 +17,7 @@ from bloom.core.events import DomainEvent, EventListener
 class TestInvalidScopeError:
     """InvalidScopeError 테스트"""
 
-    def test_factory_on_prototype_scope_raises_error(self):
+    async def test_factory_on_prototype_scope_raises_error(self):
         """PROTOTYPE 스코프 컴포넌트에서 @Factory 사용 시 에러 발생"""
 
         class Something:
@@ -31,7 +31,7 @@ class TestInvalidScopeError:
                 return Something()
 
         with pytest.raises(InvalidScopeError) as exc_info:
-            Application("test").scan(PrototypeConfig).ready()
+            await Application("test").scan(PrototypeConfig).ready_async()
 
         error = exc_info.value
         assert error.component_type == PrototypeConfig
@@ -41,7 +41,7 @@ class TestInvalidScopeError:
         assert "@Factory" in str(error)
         assert "SINGLETON" in str(error)
 
-    def test_factory_on_request_scope_raises_error(self):
+    async def test_factory_on_request_scope_raises_error(self):
         """REQUEST 스코프 컴포넌트에서 @Factory 사용 시 에러 발생"""
 
         class AnotherThing:
@@ -55,14 +55,14 @@ class TestInvalidScopeError:
                 return AnotherThing()
 
         with pytest.raises(InvalidScopeError) as exc_info:
-            Application("test").scan(RequestConfig).ready()
+            await Application("test").scan(RequestConfig).ready_async()
 
         error = exc_info.value
         assert error.component_type == RequestConfig
         assert error.handler_type == "Factory"
         assert error.scope == "request"
 
-    def test_event_listener_on_prototype_scope_raises_error(self):
+    async def test_event_listener_on_prototype_scope_raises_error(self):
         """PROTOTYPE 스코프 컴포넌트에서 @EventListener 사용 시 에러 발생"""
 
         @dataclass
@@ -77,7 +77,7 @@ class TestInvalidScopeError:
                 pass
 
         with pytest.raises(InvalidScopeError) as exc_info:
-            Application("test").scan(PrototypeEventHandler).ready()
+            await Application("test").scan(PrototypeEventHandler).ready_async()
 
         error = exc_info.value
         assert error.component_type == PrototypeEventHandler
@@ -85,7 +85,7 @@ class TestInvalidScopeError:
         assert error.handler_type == "EventListener"
         assert error.scope == "prototype"
 
-    def test_event_listener_on_request_scope_raises_error(self):
+    async def test_event_listener_on_request_scope_raises_error(self):
         """REQUEST 스코프 컴포넌트에서 @EventListener 사용 시 에러 발생"""
 
         @dataclass
@@ -100,13 +100,13 @@ class TestInvalidScopeError:
                 pass
 
         with pytest.raises(InvalidScopeError) as exc_info:
-            Application("test").scan(RequestEventHandler).ready()
+            await Application("test").scan(RequestEventHandler).ready_async()
 
         error = exc_info.value
         assert error.handler_type == "EventListener"
         assert error.scope == "request"
 
-    def test_factory_on_singleton_scope_works(self):
+    async def test_factory_on_singleton_scope_works(self):
         """SINGLETON 스코프 컴포넌트에서 @Factory 사용은 정상 동작"""
 
         class Widget:
@@ -119,12 +119,12 @@ class TestInvalidScopeError:
                 return Widget()
 
         # 에러 없이 정상 동작해야 함
-        app = Application("test").scan(SingletonConfig).ready()
+        app = await Application("test").scan(SingletonConfig).ready_async()
         widget = app.manager.get_instance(Widget)
         assert widget is not None
         assert isinstance(widget, Widget)
 
-    def test_event_listener_on_singleton_scope_works(self):
+    async def test_event_listener_on_singleton_scope_works(self):
         """SINGLETON 스코프 컴포넌트에서 @EventListener 사용은 정상 동작"""
 
         @dataclass
@@ -143,11 +143,11 @@ class TestInvalidScopeError:
                 self.received_events.append(event)
 
         # 에러 없이 정상 동작해야 함
-        app = Application("test").scan(SingletonHandler).ready()
+        app = await Application("test").scan(SingletonHandler).ready_async()
         handler = app.manager.get_instance(SingletonHandler)
         assert handler is not None
 
-    def test_multiple_handlers_on_prototype_all_fail(self):
+    async def test_multiple_handlers_on_prototype_all_fail(self):
         """PROTOTYPE 스코프에서 여러 singleton-only 핸들러가 있으면 첫 번째에서 에러"""
 
         class ThingA:
@@ -177,9 +177,9 @@ class TestInvalidScopeError:
 
         # 첫 번째 싱글톤-only 핸들러에서 에러 발생
         with pytest.raises(InvalidScopeError):
-            Application("test").scan(PrototypeMultiHandler).ready()
+            await Application("test").scan(PrototypeMultiHandler).ready_async()
 
-    def test_error_message_is_informative(self):
+    async def test_error_message_is_informative(self):
         """에러 메시지가 충분히 상세한지 확인"""
 
         class ErrorTestThing:
@@ -193,7 +193,7 @@ class TestInvalidScopeError:
                 return ErrorTestThing()
 
         with pytest.raises(InvalidScopeError) as exc_info:
-            Application("test").scan(ErrorTestConfig).ready()
+            await Application("test").scan(ErrorTestConfig).ready_async()
 
         message = str(exc_info.value)
         # 에러 메시지에 중요 정보가 포함되어야 함
@@ -207,7 +207,7 @@ class TestInvalidScopeError:
 class TestTaskOnInvalidScope:
     """@Task on PROTOTYPE/REQUEST 스코프 테스트"""
 
-    def test_task_on_prototype_scope_raises_error(self):
+    async def test_task_on_prototype_scope_raises_error(self):
         """PROTOTYPE 스코프 컴포넌트에서 @Task 사용 시 에러 발생"""
         # Task는 별도 import 필요
         from bloom.task import Task
@@ -220,7 +220,7 @@ class TestTaskOnInvalidScope:
                 return "done"
 
         with pytest.raises(InvalidScopeError) as exc_info:
-            Application("test").scan(PrototypeTaskService).ready()
+            await Application("test").scan(PrototypeTaskService).ready_async()
 
         error = exc_info.value
         assert error.component_type == PrototypeTaskService
@@ -228,7 +228,7 @@ class TestTaskOnInvalidScope:
         assert error.handler_type == "Task"
         assert error.scope == "prototype"
 
-    def test_task_on_request_scope_raises_error(self):
+    async def test_task_on_request_scope_raises_error(self):
         """REQUEST 스코프 컴포넌트에서 @Task 사용 시 에러 발생"""
         from bloom.task import Task
 
@@ -240,13 +240,13 @@ class TestTaskOnInvalidScope:
                 return "result"
 
         with pytest.raises(InvalidScopeError) as exc_info:
-            Application("test").scan(RequestTaskService).ready()
+            await Application("test").scan(RequestTaskService).ready_async()
 
         error = exc_info.value
         assert error.handler_type == "Task"
         assert error.scope == "request"
 
-    def test_task_on_singleton_scope_works(self):
+    async def test_task_on_singleton_scope_works(self):
         """SINGLETON 스코프 컴포넌트에서 @Task 사용은 정상 동작"""
         from bloom.task import Task
 
@@ -257,6 +257,6 @@ class TestTaskOnInvalidScope:
                 return "works"
 
         # 에러 없이 정상 동작해야 함
-        app = Application("test").scan(SingletonTaskService).ready()
+        app = await Application("test").scan(SingletonTaskService).ready_async()
         service = app.manager.get_instance(SingletonTaskService)
         assert service is not None

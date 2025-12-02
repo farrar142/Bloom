@@ -49,7 +49,7 @@ class CallableContainer[**P, R](Container[Callable[P, R]]):
     def get_prototype_mode(self) -> "PrototypeMode":
         """컨테이너의 프로토타입 모드 반환 (기본값: DEFAULT)"""
         from .element import PrototypeMode
-        
+
         for elem in self.elements:
             if isinstance(elem, ScopeElement):
                 return elem.prototype_mode

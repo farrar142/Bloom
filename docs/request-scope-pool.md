@@ -209,7 +209,7 @@ class DbLoggingMiddleware(Middleware):
 ```python
 from bloom.core import request_scope
 
-def test_connection_per_request(reset_container_manager):
+async def test_connection_per_request(reset_container_manager):
     @Component
     class DbConnectionPool:
         # ... 풀 설정

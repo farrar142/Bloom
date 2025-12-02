@@ -75,30 +75,30 @@ def initialized_factory(session_factory):
 class TestSessionFactory:
     """SessionFactory 기본 기능 테스트"""
 
-    def test_create_from_backend(self, backend):
+    async def test_create_from_backend(self, backend):
         """Backend로 SessionFactory 생성"""
         factory = SessionFactory(backend)
         assert factory.backend is backend
         assert factory.dialect is not None
 
-    def test_dialect_from_backend(self, backend):
+    async def test_dialect_from_backend(self, backend):
         """Backend의 dialect가 SessionFactory로 전파"""
         factory = SessionFactory(backend)
         assert factory.dialect == backend.dialect
 
-    def test_create_session(self, session_factory):
+    async def test_create_session(self, session_factory):
         """세션 생성"""
         session = session_factory.create()
         assert session is not None
         session.close()
 
-    def test_session_context_manager(self, session_factory):
+    async def test_session_context_manager(self, session_factory):
         """컨텍스트 매니저로 세션 사용"""
         with session_factory.session() as session:
             assert session is not None
             assert not session._closed
 
-    def test_create_tables(self, session_factory):
+    async def test_create_tables(self, session_factory):
         """테이블 생성"""
         session_factory.create_tables(User)
 
@@ -108,7 +108,7 @@ class TestSessionFactory:
             session.add(user)
             # commit은 context manager가 자동으로 수행
 
-    def test_drop_tables(self, initialized_factory):
+    async def test_drop_tables(self, initialized_factory):
         """테이블 삭제"""
         initialized_factory.drop_tables(Tag)
 
@@ -127,7 +127,7 @@ class TestSessionFactory:
 class TestSessionCRUD:
     """Session CRUD 작업 테스트"""
 
-    def test_add_and_commit(self, initialized_factory):
+    async def test_add_and_commit(self, initialized_factory):
         """엔티티 추가 및 커밋"""
         with initialized_factory.session() as session:
             user = create(User, name="alice", email="alice@example.com", age=25)
@@ -141,14 +141,14 @@ class TestSessionCRUD:
             assert found.email == "alice@example.com"
             assert found.age == 25
 
-    def test_add_returns_entity(self, initialized_factory):
+    async def test_add_returns_entity(self, initialized_factory):
         """add()가 엔티티를 반환"""
         with initialized_factory.session() as session:
             user = create(User, name="bob")
             returned = session.add(user)
             assert returned is user
 
-    def test_add_all(self, initialized_factory):
+    async def test_add_all(self, initialized_factory):
         """여러 엔티티 추가"""
         with initialized_factory.session() as session:
             users = [
@@ -163,7 +163,7 @@ class TestSessionCRUD:
             assert session.get(User, 2) is not None
             assert session.get(User, 3) is not None
 
-    def test_auto_increment_pk(self, initialized_factory):
+    async def test_auto_increment_pk(self, initialized_factory):
         """auto_increment PK 자동 할당"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -173,7 +173,7 @@ class TestSessionCRUD:
             assert user.id is not None
             assert user.id == 1
 
-    def test_sequential_auto_increment(self, initialized_factory):
+    async def test_sequential_auto_increment(self, initialized_factory):
         """순차적 auto_increment"""
         with initialized_factory.session() as session:
             user1 = create(User, name="user1")
@@ -186,7 +186,7 @@ class TestSessionCRUD:
             assert user2.id is not None
             assert user1.id != user2.id
 
-    def test_get_existing_entity(self, initialized_factory):
+    async def test_get_existing_entity(self, initialized_factory):
         """존재하는 엔티티 조회"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -197,13 +197,13 @@ class TestSessionCRUD:
             assert found is not None
             assert found.name == "alice"
 
-    def test_get_nonexistent_entity(self, initialized_factory):
+    async def test_get_nonexistent_entity(self, initialized_factory):
         """존재하지 않는 엔티티 조회"""
         with initialized_factory.session() as session:
             found = session.get(User, 999)
             assert found is None
 
-    def test_delete_entity(self, initialized_factory):
+    async def test_delete_entity(self, initialized_factory):
         """엔티티 삭제"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -217,7 +217,7 @@ class TestSessionCRUD:
             found = session.get(User, 1)
             assert found is None
 
-    def test_delete_new_entity(self, initialized_factory):
+    async def test_delete_new_entity(self, initialized_factory):
         """새로 추가된 엔티티 삭제 (INSERT 취소)"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -239,7 +239,7 @@ class TestSessionCRUD:
 class TestSessionIdentityMap:
     """Session Identity Map 테스트"""
 
-    def test_same_pk_returns_same_instance(self, initialized_factory):
+    async def test_same_pk_returns_same_instance(self, initialized_factory):
         """같은 PK로 조회하면 동일 인스턴스 반환"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -250,7 +250,7 @@ class TestSessionIdentityMap:
             user2 = session.get(User, 1)
             assert user1 is user2
 
-    def test_identity_map_isolation(self, initialized_factory):
+    async def test_identity_map_isolation(self, initialized_factory):
         """세션 간 Identity Map 격리"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -275,7 +275,7 @@ class TestSessionIdentityMap:
 class TestSessionTransaction:
     """Session 트랜잭션 테스트"""
 
-    def test_commit_persists_changes(self, initialized_factory):
+    async def test_commit_persists_changes(self, initialized_factory):
         """commit으로 변경사항 영속화"""
         session = initialized_factory.create()
         try:
@@ -289,7 +289,7 @@ class TestSessionTransaction:
             found = session.get(User, 1)
             assert found is not None
 
-    def test_rollback_discards_changes(self, initialized_factory):
+    async def test_rollback_discards_changes(self, initialized_factory):
         """rollback으로 변경사항 취소"""
         session = initialized_factory.create()
         try:
@@ -304,7 +304,7 @@ class TestSessionTransaction:
             found = session.get(User, 1)
             assert found is None
 
-    def test_exception_triggers_rollback(self, initialized_factory):
+    async def test_exception_triggers_rollback(self, initialized_factory):
         """예외 발생 시 자동 롤백"""
         try:
             with initialized_factory.session() as session:
@@ -319,7 +319,7 @@ class TestSessionTransaction:
             found = session.get(User, 1)
             assert found is None
 
-    def test_autoflush(self, initialized_factory):
+    async def test_autoflush(self, initialized_factory):
         """autoflush 동작 확인"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -337,7 +337,7 @@ class TestSessionTransaction:
 class TestSessionClosedState:
     """닫힌 세션 테스트"""
 
-    def test_operations_on_closed_session_raise_error(self, initialized_factory):
+    async def test_operations_on_closed_session_raise_error(self, initialized_factory):
         """닫힌 세션에서 작업 시 에러"""
         session = initialized_factory.create()
         session.close()
@@ -366,7 +366,7 @@ class TestSessionClosedState:
 class TestSessionMergeRefresh:
     """Session merge와 refresh 테스트"""
 
-    def test_refresh_reloads_from_db(self, initialized_factory):
+    async def test_refresh_reloads_from_db(self, initialized_factory):
         """refresh로 DB에서 다시 로드"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -388,7 +388,7 @@ class TestSessionMergeRefresh:
             session.refresh(user)
             assert user.name == "bob"
 
-    def test_merge_detached_entity(self, initialized_factory):
+    async def test_merge_detached_entity(self, initialized_factory):
         """detached 엔티티 merge - 기존 엔티티를 반환하고 값이 복사됨"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -409,7 +409,7 @@ class TestSessionMergeRefresh:
             found = session.get(User, 1)
             assert found.name == "bob"
 
-    def test_merge_new_entity(self, initialized_factory):
+    async def test_merge_new_entity(self, initialized_factory):
         """새 엔티티 merge (add와 동일)"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -429,7 +429,7 @@ class TestSessionMergeRefresh:
 class TestSessionQuery:
     """Session 쿼리 테스트"""
 
-    def test_execute_select(self, initialized_factory):
+    async def test_execute_select(self, initialized_factory):
         """execute로 SELECT 실행"""
         with initialized_factory.session() as session:
             session.add(create(User, name="alice"))
@@ -441,7 +441,7 @@ class TestSessionQuery:
             assert rows[0]["name"] == "alice"
             assert rows[1]["name"] == "bob"
 
-    def test_execute_with_params(self, initialized_factory):
+    async def test_execute_with_params(self, initialized_factory):
         """파라미터가 있는 쿼리 실행"""
         with initialized_factory.session() as session:
             session.add(create(User, name="alice", age=25))
@@ -456,7 +456,7 @@ class TestSessionQuery:
             assert len(rows) == 1
             assert rows[0]["name"] == "bob"
 
-    def test_execute_update(self, initialized_factory):
+    async def test_execute_update(self, initialized_factory):
         """execute_update로 UPDATE 실행"""
         with initialized_factory.session() as session:
             session.add(create(User, name="alice"))
@@ -480,7 +480,7 @@ class TestSessionQuery:
             assert len(users) == 1
             assert users[0]["age"] == 30
 
-    def test_query_builder(self, initialized_factory):
+    async def test_query_builder(self, initialized_factory):
         """Query 빌더 사용"""
         with initialized_factory.session() as session:
             session.add(create(User, name="alice", age=25))
@@ -501,7 +501,7 @@ class TestSessionQuery:
 class TestMultipleEntities:
     """여러 엔티티 타입 테스트"""
 
-    def test_multiple_tables(self, initialized_factory):
+    async def test_multiple_tables(self, initialized_factory):
         """여러 테이블 사용"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -518,7 +518,7 @@ class TestMultipleEntities:
             assert post.title == "Hello"
             assert post.user_id == 1
 
-    def test_cascade_like_operations(self, initialized_factory):
+    async def test_cascade_like_operations(self, initialized_factory):
         """연관 데이터 수동 삭제"""
         with initialized_factory.session() as session:
             user = create(User, name="alice")
@@ -551,11 +551,11 @@ class TestMultipleEntities:
 class TestBackendIntegration:
     """Backend 통합 테스트"""
 
-    def test_backend_accessible_from_factory(self, session_factory, backend):
+    async def test_backend_accessible_from_factory(self, session_factory, backend):
         """SessionFactory에서 Backend 접근 가능"""
         assert session_factory.backend is backend
 
-    def test_dialect_consistency(self, session_factory):
+    async def test_dialect_consistency(self, session_factory):
         """Dialect가 일관되게 전파"""
         with session_factory.session() as session:
             assert session.dialect is session_factory.dialect
@@ -570,7 +570,7 @@ class TestBackendIntegration:
 class TestConnectionIntegration:
     """Connection 통합 테스트 - backends.Connection이 직접 사용되는지 확인"""
 
-    def test_session_uses_backend_connection(self, initialized_factory):
+    async def test_session_uses_backend_connection(self, initialized_factory):
         """Session이 backends.Connection을 직접 사용"""
         from bloom.db.backends.base import Connection as BackendConnection
 
@@ -581,7 +581,7 @@ class TestConnectionIntegration:
         finally:
             session.close()
 
-    def test_connection_has_dialect(self, initialized_factory):
+    async def test_connection_has_dialect(self, initialized_factory):
         """Connection에 dialect가 있음"""
         session = initialized_factory.create()
         try:
@@ -590,7 +590,7 @@ class TestConnectionIntegration:
         finally:
             session.close()
 
-    def test_connection_execute_returns_connection(self, initialized_factory):
+    async def test_connection_execute_returns_connection(self, initialized_factory):
         """Connection.execute()가 Connection을 반환"""
         from bloom.db.backends.sqlite import SQLiteConnection
 
@@ -601,7 +601,7 @@ class TestConnectionIntegration:
         finally:
             session.close()
 
-    def test_connection_fetchall_returns_dicts(self, initialized_factory):
+    async def test_connection_fetchall_returns_dicts(self, initialized_factory):
         """Connection.fetchall()이 dict 리스트를 반환"""
         with initialized_factory.session() as session:
             session.add(create(User, name="alice"))

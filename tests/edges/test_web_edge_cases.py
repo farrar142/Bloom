@@ -34,7 +34,7 @@ class TestEmptyRequestBody:
             async def handle_empty(self, body: RequestBody[EmptyModel]) -> dict:
                 return {"received": True}
 
-        app = Application("empty_body").scan(EmptyBodyController).ready()
+        app = await Application("empty_body").scan(EmptyBodyController).ready_async()
 
         request = HttpRequest(
             method="POST",
@@ -58,7 +58,7 @@ class TestEmptyRequestBody:
             ) -> dict:
                 return {"body": body}
 
-        app = Application("null_body").scan(NullBodyController).ready()
+        app = await Application("null_body").scan(NullBodyController).ready_async()
 
         request = HttpRequest(
             method="POST",
@@ -84,7 +84,7 @@ class TestSpecialCharactersInPath:
             async def get_user(self, name: str) -> dict:
                 return {"name": name}
 
-        app = Application("korean_path").scan(KoreanPathController).ready()
+        app = await Application("korean_path").scan(KoreanPathController).ready_async()
 
         request = HttpRequest(method="GET", path="/users/홍길동")
         response = await app.router.dispatch(request)
@@ -102,7 +102,9 @@ class TestSpecialCharactersInPath:
             async def get_file(self, filename: str) -> dict:
                 return {"filename": filename}
 
-        app = Application("encoded_path").scan(EncodedPathController).ready()
+        app = (
+            await Application("encoded_path").scan(EncodedPathController).ready_async()
+        )
 
         # URL 인코딩된 경로
         request = HttpRequest(method="GET", path="/files/my%20file.txt")
@@ -124,7 +126,7 @@ class TestQueryParamEdgeCases:
             async def get_items(self, id: str) -> dict:
                 return {"id": id}
 
-        app = Application("query_param").scan(QueryController).ready()
+        app = await Application("query_param").scan(QueryController).ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -146,7 +148,7 @@ class TestQueryParamEdgeCases:
             async def search(self, q: str, limit: int) -> dict:
                 return {"q": q, "limit": limit}
 
-        app = Application("multi_query").scan(MultiQueryController).ready()
+        app = await Application("multi_query").scan(MultiQueryController).ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -173,7 +175,11 @@ class TestMissingRequiredParams:
             async def get_items(self, id: str) -> dict:
                 return {"id": id}
 
-        app = Application("required_query").scan(RequiredQueryController).ready()
+        app = (
+            await Application("required_query")
+            .scan(RequiredQueryController)
+            .ready_async()
+        )
 
         request = HttpRequest(method="GET", path="/items")
         response = await app.router.dispatch(request)
@@ -191,7 +197,11 @@ class TestMissingRequiredParams:
             async def get_items(self, id: Optional[str] = None) -> dict:
                 return {"id": id}
 
-        app = Application("optional_query").scan(OptionalQueryController).ready()
+        app = (
+            await Application("optional_query")
+            .scan(OptionalQueryController)
+            .ready_async()
+        )
 
         request = HttpRequest(method="GET", path="/items")
         response = await app.router.dispatch(request)
@@ -213,7 +223,7 @@ class TestHeaderEdgeCases:
             async def check(self, accept: HttpHeader["Accept"]) -> dict:
                 return {"accept": accept.value}
 
-        app = Application("header_basic").scan(HeaderController).ready()
+        app = await Application("header_basic").scan(HeaderController).ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -235,7 +245,11 @@ class TestHeaderEdgeCases:
             async def check(self, token: HttpHeader["X-Custom-Token"]) -> dict:
                 return {"token": token.value}
 
-        app = Application("custom_header").scan(CustomHeaderController).ready()
+        app = (
+            await Application("custom_header")
+            .scan(CustomHeaderController)
+            .ready_async()
+        )
 
         request = HttpRequest(
             method="GET",
@@ -265,7 +279,7 @@ class TestRouteConflicts:
             async def get_user(self, id: str) -> dict:
                 return {"user": id}
 
-        app = Application("route_conflict").scan(RouteController).ready()
+        app = await Application("route_conflict").scan(RouteController).ready_async()
 
         # 정적 경로 우선
         request1 = HttpRequest(method="GET", path="/users/me")
@@ -291,7 +305,7 @@ class TestResponseEdgeCases:
             async def return_none(self) -> None:
                 return None
 
-        app = Application("none_return").scan(NoneController).ready()
+        app = await Application("none_return").scan(NoneController).ready_async()
 
         request = HttpRequest(method="GET", path="/none")
         response = await app.router.dispatch(request)
@@ -309,7 +323,7 @@ class TestResponseEdgeCases:
             async def return_empty(self) -> dict:
                 return {}
 
-        app = Application("empty_dict").scan(EmptyDictController).ready()
+        app = await Application("empty_dict").scan(EmptyDictController).ready_async()
 
         request = HttpRequest(method="GET", path="/empty")
         response = await app.router.dispatch(request)
@@ -327,7 +341,7 @@ class TestResponseEdgeCases:
             async def return_text(self) -> str:
                 return "Hello, World!"
 
-        app = Application("string_return").scan(StringController).ready()
+        app = await Application("string_return").scan(StringController).ready_async()
 
         request = HttpRequest(method="GET", path="/text")
         response = await app.router.dispatch(request)
@@ -348,7 +362,7 @@ class TestLongUrl:
             async def deep_nested(self) -> dict:
                 return {"depth": 16}
 
-        app = Application("long_path").scan(LongPathController).ready()
+        app = await Application("long_path").scan(LongPathController).ready_async()
 
         request = HttpRequest(method="GET", path="/a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p")
         response = await app.router.dispatch(request)
@@ -365,7 +379,7 @@ class TestLongUrl:
             async def search(self, q: str) -> dict:
                 return {"length": len(q)}
 
-        app = Application("long_query").scan(LongQueryController).ready()
+        app = await Application("long_query").scan(LongQueryController).ready_async()
 
         long_query = "a" * 1000
         request = HttpRequest(
@@ -392,7 +406,7 @@ class TestMethodNotAllowed:
             async def get_resource(self) -> dict:
                 return {"method": "GET"}
 
-        app = Application("wrong_method").scan(GetOnlyController).ready()
+        app = await Application("wrong_method").scan(GetOnlyController).ready_async()
 
         request = HttpRequest(method="POST", path="/resource")
         response = await app.router.dispatch(request)
@@ -414,7 +428,7 @@ class TestNotFound:
             async def exists(self) -> dict:
                 return {"exists": True}
 
-        app = Application("not_found").scan(SomeController).ready()
+        app = await Application("not_found").scan(SomeController).ready_async()
 
         request = HttpRequest(method="GET", path="/does-not-exist")
         response = await app.router.dispatch(request)

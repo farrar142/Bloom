@@ -50,7 +50,7 @@ class ComplexEvent(EventMixin):
 class TestEventMessage:
     """EventMessage 직렬화/역직렬화 테스트"""
 
-    def test_simple_event_serialization(self):
+    async def test_simple_event_serialization(self):
         """단순 이벤트 직렬화"""
         event = UserCreatedEvent(user_id="123", username="alice")
         message = EventMessage.from_event(event)
@@ -59,7 +59,7 @@ class TestEventMessage:
         assert message.event_data["user_id"] == "123"
         assert message.event_data["username"] == "alice"
 
-    def test_json_round_trip(self):
+    async def test_json_round_trip(self):
         """JSON 직렬화/역직렬화 왕복"""
         event = UserCreatedEvent(user_id="456", username="bob")
         message = EventMessage.from_event(event)
@@ -73,7 +73,7 @@ class TestEventMessage:
         assert restored.event_type == message.event_type
         assert restored.event_data == message.event_data
 
-    def test_list_field_serialization(self):
+    async def test_list_field_serialization(self):
         """리스트 필드 직렬화"""
         event = OrderPlacedEvent(
             order_id="ORD-001",
@@ -87,7 +87,7 @@ class TestEventMessage:
 
         assert restored.event_data["items"] == ["item1", "item2", "item3"]
 
-    def test_datetime_field_serialization(self):
+    async def test_datetime_field_serialization(self):
         """datetime 필드는 ISO 문자열로 직렬화됨"""
         now = datetime(2024, 1, 15, 10, 30, 0)
         # ComplexEvent.created_at은 str 타입이므로 ISO 문자열 전달
@@ -113,18 +113,18 @@ class TestEventTypeRegistry:
         """각 테스트 전 레지스트리 초기화"""
         EventTypeRegistry._registry.clear()
 
-    def test_register_and_get(self):
+    async def test_register_and_get(self):
         """이벤트 타입 등록 및 조회"""
         EventTypeRegistry.register(UserCreatedEvent)
 
         type_name = f"{UserCreatedEvent.__module__}.{UserCreatedEvent.__name__}"
         assert EventTypeRegistry.get(type_name) == UserCreatedEvent
 
-    def test_get_unregistered_returns_none(self):
+    async def test_get_unregistered_returns_none(self):
         """미등록 타입 조회 시 None 반환"""
         assert EventTypeRegistry.get("nonexistent.Event") is None
 
-    def test_reconstruct_event(self):
+    async def test_reconstruct_event(self):
         """EventMessage에서 Event 복원"""
         EventTypeRegistry.register(UserCreatedEvent)
 

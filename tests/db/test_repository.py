@@ -69,8 +69,7 @@ class UserRepository(CrudRepository[User, int]):
 @pytest.fixture
 def backend(tmp_path):
     """임시 파일 SQLite 백엔드"""
-    db_path = tmp_path / "repo_test.db"
-    return SQLiteBackend(str(db_path))
+    return SQLiteBackend(":memory:")
 
 
 @pytest.fixture
@@ -89,7 +88,7 @@ def session_factory(backend):
 class TestCrudRepositoryBasic:
     """CrudRepository 기본 테스트"""
 
-    def test_create_repository(self, session_factory):
+    async def test_create_repository(self, session_factory):
         """리포지토리 생성"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -97,19 +96,19 @@ class TestCrudRepositoryBasic:
             assert repo.entity_class == User
             assert repo.session is session
 
-    def test_entity_class_property(self, session_factory):
+    async def test_entity_class_property(self, session_factory):
         """entity_class 프로퍼티"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
             assert repo.entity_class == User
 
-    def test_session_property(self, session_factory):
+    async def test_session_property(self, session_factory):
         """session 프로퍼티"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
             assert repo.session is session
 
-    def test_non_entity_raises_error(self, session_factory):
+    async def test_non_entity_raises_error(self, session_factory):
         """Entity가 아닌 클래스는 사용 시점에 에러"""
 
         class NotAnEntity:
@@ -130,7 +129,7 @@ class TestCrudRepositoryBasic:
 class TestCrudOperations:
     """CRUD 연산 테스트"""
 
-    def test_save_new_entity(self, session_factory):
+    async def test_save_new_entity(self, session_factory):
         """새 엔티티 저장"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -141,7 +140,7 @@ class TestCrudOperations:
             assert saved.id is not None
             assert saved.name == "alice"
 
-    def test_save_existing_entity(self, session_factory):
+    async def test_save_existing_entity(self, session_factory):
         """기존 엔티티 저장 (UPDATE)"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -169,7 +168,7 @@ class TestCrudOperations:
             assert found is not None
             assert found.name == "alice_updated"
 
-    def test_save_all(self, session_factory):
+    async def test_save_all(self, session_factory):
         """여러 엔티티 저장"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -180,7 +179,7 @@ class TestCrudOperations:
             assert len(saved) == 3
             assert all(u.id is not None for u in saved)
 
-    def test_find_by_id(self, session_factory):
+    async def test_find_by_id(self, session_factory):
         """ID로 조회"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -194,7 +193,7 @@ class TestCrudOperations:
             assert found is not None
             assert found.name == "alice"
 
-    def test_find_by_id_not_found(self, session_factory):
+    async def test_find_by_id_not_found(self, session_factory):
         """ID로 조회 - 없음"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -203,7 +202,7 @@ class TestCrudOperations:
 
             assert found is None
 
-    def test_find_all(self, session_factory):
+    async def test_find_all(self, session_factory):
         """전체 조회"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -216,7 +215,7 @@ class TestCrudOperations:
 
             assert len(users) == 5
 
-    def test_find_all_by_id(self, session_factory):
+    async def test_find_all_by_id(self, session_factory):
         """여러 ID로 조회"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -230,7 +229,7 @@ class TestCrudOperations:
 
             assert len(found) == 3
 
-    def test_find_all_by_id_empty(self, session_factory):
+    async def test_find_all_by_id_empty(self, session_factory):
         """빈 ID 목록"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -239,7 +238,7 @@ class TestCrudOperations:
 
             assert found == []
 
-    def test_delete(self, session_factory):
+    async def test_delete(self, session_factory):
         """엔티티 삭제"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -258,7 +257,7 @@ class TestCrudOperations:
 
             assert found is None
 
-    def test_delete_by_id(self, session_factory):
+    async def test_delete_by_id(self, session_factory):
         """ID로 삭제"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -279,7 +278,7 @@ class TestCrudOperations:
 
             assert found is None
 
-    def test_delete_by_id_not_found(self, session_factory):
+    async def test_delete_by_id_not_found(self, session_factory):
         """없는 ID 삭제"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -288,7 +287,7 @@ class TestCrudOperations:
 
             assert result is False
 
-    def test_delete_all_entities(self, session_factory):
+    async def test_delete_all_entities(self, session_factory):
         """여러 엔티티 삭제"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -303,7 +302,7 @@ class TestCrudOperations:
             remaining = repo.find_all()
             assert len(remaining) == 1
 
-    def test_delete_all_by_id(self, session_factory):
+    async def test_delete_all_by_id(self, session_factory):
         """여러 ID로 삭제"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -328,7 +327,7 @@ class TestCrudOperations:
 class TestQueryMethods:
     """쿼리 메서드 테스트"""
 
-    def test_exists_by_id(self, session_factory):
+    async def test_exists_by_id(self, session_factory):
         """ID 존재 여부"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -340,7 +339,7 @@ class TestQueryMethods:
             assert repo.exists_by_id(user.id) is True
             assert repo.exists_by_id(999) is False
 
-    def test_count(self, session_factory):
+    async def test_count(self, session_factory):
         """개수 조회"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -353,7 +352,7 @@ class TestQueryMethods:
 
             assert repo.count() == 3
 
-    def test_find_by(self, session_factory):
+    async def test_find_by(self, session_factory):
         """필드 조건 조회"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -371,7 +370,7 @@ class TestQueryMethods:
 
             assert len(active_users) == 2
 
-    def test_find_one_by(self, session_factory):
+    async def test_find_one_by(self, session_factory):
         """단일 조건 조회"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -384,7 +383,7 @@ class TestQueryMethods:
             assert found is not None
             assert found.name == "alice"
 
-    def test_find_one_by_not_found(self, session_factory):
+    async def test_find_one_by_not_found(self, session_factory):
         """단일 조건 조회 - 없음"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -393,7 +392,7 @@ class TestQueryMethods:
 
             assert found is None
 
-    def test_find_all_ordered(self, session_factory):
+    async def test_find_all_ordered(self, session_factory):
         """정렬 조회"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -412,7 +411,7 @@ class TestQueryMethods:
 
             assert names == ["alice", "bob", "charlie"]
 
-    def test_find_page(self, session_factory):
+    async def test_find_page(self, session_factory):
         """페이지네이션"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -429,7 +428,7 @@ class TestQueryMethods:
             assert len(page1) == 3
             assert len(page2) == 3
 
-    def test_find_slice(self, session_factory):
+    async def test_find_slice(self, session_factory):
         """슬라이스 조회"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -451,7 +450,7 @@ class TestQueryMethods:
 class TestQueryBuilderIntegration:
     """Query Builder 통합 테스트"""
 
-    def test_query_with_filter(self, session_factory):
+    async def test_query_with_filter(self, session_factory):
         """필터 쿼리"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -469,7 +468,7 @@ class TestQueryBuilderIntegration:
 
             assert len(adults) == 2
 
-    def test_query_with_multiple_filters(self, session_factory):
+    async def test_query_with_multiple_filters(self, session_factory):
         """다중 필터"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -492,7 +491,7 @@ class TestQueryBuilderIntegration:
 
             assert len(result) == 2
 
-    def test_query_with_order_and_limit(self, session_factory):
+    async def test_query_with_order_and_limit(self, session_factory):
         """정렬과 제한"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -515,7 +514,7 @@ class TestQueryBuilderIntegration:
 class TestRepositoryIterator:
     """이터레이터 테스트"""
 
-    def test_iterate_repository(self, session_factory):
+    async def test_iterate_repository(self, session_factory):
         """리포지토리 순회"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -527,7 +526,7 @@ class TestRepositoryIterator:
 
             assert len(names) == 3
 
-    def test_len_repository(self, session_factory):
+    async def test_len_repository(self, session_factory):
         """리포지토리 길이"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -546,7 +545,7 @@ class TestRepositoryIterator:
 class TestCustomRepository:
     """커스텀 리포지토리 테스트"""
 
-    def test_custom_find_by_email(self, session_factory):
+    async def test_custom_find_by_email(self, session_factory):
         """커스텀 메서드 - 이메일로 찾기"""
         with session_factory.session() as session:
             repo = UserRepository.for_entity(User, session)
@@ -559,7 +558,7 @@ class TestCustomRepository:
             assert found is not None
             assert found.name == "alice"
 
-    def test_custom_find_active_users(self, session_factory):
+    async def test_custom_find_active_users(self, session_factory):
         """커스텀 메서드 - 활성 사용자 찾기"""
         with session_factory.session() as session:
             repo = UserRepository.for_entity(User, session)
@@ -577,7 +576,7 @@ class TestCustomRepository:
 
             assert len(active) == 2
 
-    def test_custom_find_adults(self, session_factory):
+    async def test_custom_find_adults(self, session_factory):
         """커스텀 메서드 - 성인 찾기"""
         with session_factory.session() as session:
             repo = UserRepository.for_entity(User, session)
@@ -604,7 +603,7 @@ class TestCustomRepository:
 class TestRepositoryTransaction:
     """리포지토리 트랜잭션 테스트"""
 
-    def test_repository_uses_session_transaction(self, session_factory):
+    async def test_repository_uses_session_transaction(self, session_factory):
         """리포지토리는 세션 트랜잭션 사용"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -619,7 +618,7 @@ class TestRepositoryTransaction:
             found = repo.find_by_id(user.id)
             assert found is not None
 
-    def test_rollback_affects_repository(self, session_factory):
+    async def test_rollback_affects_repository(self, session_factory):
         """롤백 시 리포지토리 변경도 취소"""
         with session_factory.session() as session:
             repo = CrudRepository.for_entity(User, session)
@@ -650,13 +649,12 @@ class TestRepositoryWithDI:
     """
 
     @pytest.fixture
-    def di_setup(self, tmp_path):
+    async def di_setup(self, tmp_path):
         """DI가 설정된 Application과 Repository 클래스 반환"""
         app = Application("test_repo_di")
 
         # SQLite 백엔드
-        db_path = tmp_path / "di_test.db"
-        backend = SQLiteBackend(str(db_path))
+        backend = SQLiteBackend(":memory:")
         session_factory = SessionFactory(backend)
         session_factory.create_tables(User, Post)
 
@@ -685,11 +683,11 @@ class TestRepositoryWithDI:
                 return self.find_one_by(email=email)
 
         app.scan(DatabaseConfig, DIUserRepository)
-        app.ready()
+        await app.ready_async()
 
         return app, DIUserRepository
 
-    def test_repository_receives_session_via_di(self, di_setup):
+    async def test_repository_receives_session_via_di(self, di_setup):
         """Repository가 DI로 Session을 주입받음"""
         app, DIUserRepository = di_setup
         repo = app.manager.get_instance(DIUserRepository)
@@ -698,7 +696,7 @@ class TestRepositoryWithDI:
         assert repo.session is not None
         assert isinstance(repo.session, Session)
 
-    def test_repository_crud_with_di(self, di_setup):
+    async def test_repository_crud_with_di(self, di_setup):
         """DI로 주입받은 Repository로 CRUD 수행"""
         app, DIUserRepository = di_setup
         repo = app.manager.get_instance(DIUserRepository)
@@ -716,7 +714,7 @@ class TestRepositoryWithDI:
         # Session commit
         repo.session.commit()
 
-    def test_same_call_shares_session(self, di_setup):
+    async def test_same_call_shares_session(self, di_setup):
         """SINGLETON Repository는 같은 인스턴스"""
         app, DIUserRepository = di_setup
 
@@ -727,7 +725,7 @@ class TestRepositoryWithDI:
         assert repo1 is repo2
         assert repo1.session is repo2.session
 
-    def test_generic_entity_class_inference(self, di_setup):
+    async def test_generic_entity_class_inference(self, di_setup):
         """Generic 타입에서 Entity 클래스 추론"""
         app, DIUserRepository = di_setup
         repo = app.manager.get_instance(DIUserRepository)
@@ -735,7 +733,7 @@ class TestRepositoryWithDI:
         # CrudRepository[User, int]에서 User를 자동 추론
         assert repo.entity_class == User
 
-    def test_custom_method_works_with_di(self, di_setup):
+    async def test_custom_method_works_with_di(self, di_setup):
         """커스텀 메서드도 DI 환경에서 동작"""
         app, DIUserRepository = di_setup
         repo = app.manager.get_instance(DIUserRepository)

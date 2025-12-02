@@ -30,7 +30,7 @@ class TestControllerWithMessaging:
             def echo(self, msg: dict) -> dict:
                 return {"echo": msg}
 
-        app = Application("test").scan(__name__).ready()
+        app = await Application("test").scan(__name__).ready_async()
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
         handler = StompProtocolHandler(broker, session_manager)
@@ -64,7 +64,7 @@ class TestControllerWithMessaging:
             def send_message(self, msg: dict) -> dict:
                 return msg
 
-        app = Application("test").scan(__name__).ready()
+        app = await Application("test").scan(__name__).ready_async()
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
         handler = StompProtocolHandler(broker, session_manager)
@@ -103,7 +103,7 @@ class TestControllerWithMessaging:
             def handle_error(self, error: ValueError) -> dict:
                 return {"error": str(error)}
 
-        app = Application("test").scan(__name__).ready()
+        app = await Application("test").scan(__name__).ready_async()
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
         handler = StompProtocolHandler(broker, session_manager)
@@ -150,7 +150,7 @@ class TestControllerWithMessaging:
             def send_message(self, msg: dict) -> dict:
                 return msg
 
-        app = Application("test").scan(__name__).ready()
+        app = await Application("test").scan(__name__).ready_async()
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
         handler = StompProtocolHandler(broker, session_manager)
@@ -189,7 +189,7 @@ class TestControllerWithMessaging:
             def send_message(self, msg: dict) -> dict:
                 return msg
 
-        app = Application("test").scan(__name__).ready()
+        app = await Application("test").scan(__name__).ready_async()
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
         handler = StompProtocolHandler(broker, session_manager)

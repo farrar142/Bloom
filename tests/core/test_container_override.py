@@ -35,7 +35,7 @@ def reset_manager():
 class TestContainerOverrideRules:
     """컨테이너 오버라이드 규칙 테스트"""
 
-    def test_higher_decorator_on_lower_container_preserves_lower(self):
+    async def test_higher_decorator_on_lower_container_preserves_lower(self):
         """하위 컨테이너가 먼저 생성된 경우, 상위 데코레이터가 Element만 추가"""
         # @Order(상위) → @Get(하위) 순서 (아래에서 위로 적용)
         # @Get이 먼저 적용되고, @Order가 나중에 Element 추가
@@ -58,7 +58,7 @@ class TestContainerOverrideRules:
         assert container.get_metadata("http_method") == "GET"
         assert container.get_metadata("http_path") == "/users"
 
-    def test_lower_decorator_on_higher_container_replaces(self):
+    async def test_lower_decorator_on_higher_container_replaces(self):
         """상위 컨테이너가 먼저 생성된 경우, 하위 데코레이터가 컨테이너 교체"""
         # @Get(하위) → @Order(상위) 순서 (아래에서 위로 적용)
         # @Order가 먼저 적용되고, @Get이 나중에 컨테이너 교체
@@ -85,7 +85,7 @@ class TestContainerOverrideRules:
 class TestFactoryContainerOverride:
     """FactoryContainer 오버라이드 테스트"""
 
-    def test_factory_then_order_preserves_order_element(self):
+    async def test_factory_then_order_preserves_order_element(self):
         """@Factory → @Order 순서에서 OrderElement가 유지됨"""
 
         class Counter:
@@ -106,7 +106,7 @@ class TestFactoryContainerOverride:
         assert container.has_element(OrderElement)
         assert container.get_metadata("order") == 1
 
-    def test_order_then_factory_transfers_elements(self):
+    async def test_order_then_factory_transfers_elements(self):
         """@Order → @Factory 순서에서 Element가 FactoryContainer로 이전됨"""
 
         class Counter:
@@ -131,7 +131,7 @@ class TestFactoryContainerOverride:
 class TestHandlerContainerHierarchy:
     """HandlerContainer 계층 구조 테스트"""
 
-    def test_handler_container_mro_hierarchy(self):
+    async def test_handler_container_mro_hierarchy(self):
         """HandlerContainer → HttpMethodHandlerContainer 계층 확인"""
         # MRO 인덱스: 높을수록 더 구체적
         handler_idx = HandlerContainer.__mro__.index(Container)
@@ -139,7 +139,7 @@ class TestHandlerContainerHierarchy:
 
         assert http_idx > handler_idx  # HttpMethodHandlerContainer가 더 구체적
 
-    def test_direct_handler_container_access(self):
+    async def test_direct_handler_container_access(self):
         """HandlerContainer.get_or_create로 접근 시 하위 컨테이너 유지"""
 
         def my_handler():
@@ -160,7 +160,7 @@ class TestHandlerContainerHierarchy:
 class TestElementTransfer:
     """Element 이전 테스트"""
 
-    def test_transfer_elements_preserves_all(self):
+    async def test_transfer_elements_preserves_all(self):
         """_transfer_elements_to가 모든 Element를 이전"""
 
         def handler():
@@ -177,7 +177,7 @@ class TestElementTransfer:
         assert http_container.has_element(OrderElement)
         assert http_container.get_metadata("order") == 100
 
-    def test_no_duplicate_elements_on_transfer(self):
+    async def test_no_duplicate_elements_on_transfer(self):
         """동일 타입의 Element는 중복 추가되지 않음"""
 
         def handler():
@@ -201,19 +201,19 @@ class TestElementTransfer:
 class TestIntegrationWithApplication:
     """Application과 통합 테스트"""
 
-    def test_full_application_with_order_and_get(self, reset_manager):
+    async def test_full_application_with_order_and_get(self, reset_manager):
         """실제 Application 환경에서 @Order + @Get 테스트"""
 
         @Controller
         class TestController:
             @Order(1)
             @Get("/api/test")
-            def test_endpoint(self):
+            async def test_endpoint(self):
                 return {"status": "ok"}
 
         app = Application("test", manager=reset_manager)
         app.scan(__import__(__name__))
-        app.ready()
+        await app.ready_async()
 
         # 라우터에 등록되었는지 확인
         container = getattr(TestController.test_endpoint, "__container__")

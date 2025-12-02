@@ -58,24 +58,24 @@ class UserInfoDC:
 class TestOptionalHelpers:
     """is_optional, unwrap_optional 테스트"""
 
-    def test_is_optional_with_union(self):
+    async def test_is_optional_with_union(self):
         """T | None 형태"""
         assert is_optional(str | None) is True
         assert is_optional(ChatMessage | None) is True
         assert is_optional(list[ChatMessage] | None) is True
 
-    def test_is_optional_plain_type(self):
+    async def test_is_optional_plain_type(self):
         """일반 타입"""
         assert is_optional(str) is False
         assert is_optional(ChatMessage) is False
         assert is_optional(list[ChatMessage]) is False
 
-    def test_unwrap_optional(self):
+    async def test_unwrap_optional(self):
         """Optional에서 내부 타입 추출"""
         assert unwrap_optional(str | None) is str
         assert unwrap_optional(ChatMessage | None) is ChatMessage
 
-    def test_unwrap_optional_non_optional(self):
+    async def test_unwrap_optional_non_optional(self):
         """Optional이 아닌 경우 그대로 반환"""
         assert unwrap_optional(str) is str
         assert unwrap_optional(ChatMessage) is ChatMessage

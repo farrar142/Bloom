@@ -13,7 +13,7 @@ from bloom.config import ConfigurationProperties
 class TestMissingConfigValues:
     """누락된 설정값 테스트"""
 
-    def test_missing_required_config_uses_default(self, reset_container_manager):
+    async def test_missing_required_config_uses_default(self, reset_container_manager):
         """필수 설정값 누락 시 기본값 사용"""
 
         @ConfigurationProperties("app.database")
@@ -28,13 +28,13 @@ class TestMissingConfigValues:
 
         app = Application("missing_config")
         app.load_config({}, source_type="dict")  # 빈 설정
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.host == "localhost"
         assert service.config.port == 5432
 
-    def test_optional_config_with_none(self, reset_container_manager):
+    async def test_optional_config_with_none(self, reset_container_manager):
         """Optional 설정값이 None인 경우"""
 
         @ConfigurationProperties("app.optional")
@@ -48,7 +48,7 @@ class TestMissingConfigValues:
 
         app = Application("optional_config")
         app.load_config({}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.value is None
@@ -57,7 +57,7 @@ class TestMissingConfigValues:
 class TestConfigDefaultValues:
     """설정 기본값 테스트"""
 
-    def test_default_values_used(self, reset_container_manager):
+    async def test_default_values_used(self, reset_container_manager):
         """기본값이 사용됨"""
 
         @ConfigurationProperties("app.defaults")
@@ -73,14 +73,14 @@ class TestConfigDefaultValues:
 
         app = Application("default_config")
         app.load_config({}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.host == "localhost"
         assert service.config.port == 8080
         assert service.config.debug is False
 
-    def test_partial_override(self, reset_container_manager):
+    async def test_partial_override(self, reset_container_manager):
         """일부 값만 오버라이드"""
 
         @ConfigurationProperties("app.partial")
@@ -95,7 +95,7 @@ class TestConfigDefaultValues:
 
         app = Application("partial_config")
         app.load_config({"app": {"partial": {"port": 9090}}}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.host == "localhost"  # 기본값
@@ -105,7 +105,7 @@ class TestConfigDefaultValues:
 class TestNestedConfig:
     """중첩된 설정 테스트"""
 
-    def test_deeply_nested_config(self, reset_container_manager):
+    async def test_deeply_nested_config(self, reset_container_manager):
         """깊이 중첩된 설정"""
 
         @dataclass
@@ -133,7 +133,7 @@ class TestNestedConfig:
             },
             source_type="dict",
         )
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.name == "custom"
@@ -143,7 +143,7 @@ class TestNestedConfig:
 class TestEnvVarSubstitution:
     """환경 변수 치환 테스트"""
 
-    def test_env_var_with_default(self, reset_container_manager, monkeypatch):
+    async def test_env_var_with_default(self, reset_container_manager, monkeypatch):
         """환경 변수가 없으면 기본값 사용"""
 
         # 환경 변수 설정 안 함
@@ -162,12 +162,12 @@ class TestEnvVarSubstitution:
         app.load_config(
             {"app": {"env": {"host": "${MY_HOST:default_host}"}}}, source_type="dict"
         )
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.host == "default_host"
 
-    def test_env_var_substitution(self, reset_container_manager, monkeypatch):
+    async def test_env_var_substitution(self, reset_container_manager, monkeypatch):
         """환경 변수 치환"""
 
         monkeypatch.setenv("MY_HOST", "env_host")
@@ -183,7 +183,7 @@ class TestEnvVarSubstitution:
 
         app = Application("env_sub")
         app.load_config({"app": {"env": {"host": "${MY_HOST}"}}}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.host == "env_host"
@@ -192,7 +192,7 @@ class TestEnvVarSubstitution:
 class TestTypeConversion:
     """타입 변환 테스트"""
 
-    def test_string_to_int(self, reset_container_manager):
+    async def test_string_to_int(self, reset_container_manager):
         """문자열 → int 변환"""
 
         @ConfigurationProperties("app.types")
@@ -206,13 +206,13 @@ class TestTypeConversion:
 
         app = Application("type_int")
         app.load_config({"app": {"types": {"port": "9090"}}}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.port == 9090
         assert isinstance(service.config.port, int)
 
-    def test_string_to_bool(self, reset_container_manager):
+    async def test_string_to_bool(self, reset_container_manager):
         """문자열 → bool 변환"""
 
         @ConfigurationProperties("app.types")
@@ -226,12 +226,12 @@ class TestTypeConversion:
 
         app = Application("type_bool")
         app.load_config({"app": {"types": {"enabled": "true"}}}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.enabled is True
 
-    def test_string_to_float(self, reset_container_manager):
+    async def test_string_to_float(self, reset_container_manager):
         """문자열 → float 변환"""
 
         @ConfigurationProperties("app.types")
@@ -245,12 +245,12 @@ class TestTypeConversion:
 
         app = Application("type_float")
         app.load_config({"app": {"types": {"rate": "0.5"}}}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.rate == 0.5
 
-    def test_list_config(self, reset_container_manager):
+    async def test_list_config(self, reset_container_manager):
         """리스트 설정"""
 
         @ConfigurationProperties("app.list")
@@ -266,7 +266,7 @@ class TestTypeConversion:
         app.load_config(
             {"app": {"list": {"items": ["a", "b", "c"]}}}, source_type="dict"
         )
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.items == ["a", "b", "c"]
@@ -275,7 +275,7 @@ class TestTypeConversion:
 class TestEnumConfig:
     """Enum 설정 테스트"""
 
-    def test_enum_from_string(self, reset_container_manager):
+    async def test_enum_from_string(self, reset_container_manager):
         """문자열 → Enum 변환"""
 
         class LogLevel(Enum):
@@ -294,12 +294,12 @@ class TestEnumConfig:
 
         app = Application("enum_config")
         app.load_config({"app": {"logging": {"level": "DEBUG"}}}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.level == LogLevel.DEBUG
 
-    def test_enum_case_insensitive(self, reset_container_manager):
+    async def test_enum_case_insensitive(self, reset_container_manager):
         """Enum 대소문자 무시"""
 
         class Status(Enum):
@@ -317,7 +317,7 @@ class TestEnumConfig:
 
         app = Application("enum_case")
         app.load_config({"app": {"status": {"status": "active"}}}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.status == Status.ACTIVE
@@ -326,7 +326,7 @@ class TestEnumConfig:
 class TestEmptyConfig:
     """빈 설정 테스트"""
 
-    def test_empty_prefix(self, reset_container_manager):
+    async def test_empty_prefix(self, reset_container_manager):
         """빈 prefix"""
 
         @ConfigurationProperties("")
@@ -340,12 +340,12 @@ class TestEmptyConfig:
 
         app = Application("empty_prefix")
         app.load_config({"name": "custom_root"}, source_type="dict")
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.name == "custom_root"
 
-    def test_no_config_loaded(self, reset_container_manager):
+    async def test_no_config_loaded(self, reset_container_manager):
         """설정 파일 로드 안 함"""
 
         @ConfigurationProperties("app")
@@ -359,7 +359,7 @@ class TestEmptyConfig:
 
         app = Application("no_config")
         # load_config 호출 안 함
-        app.scan(Service).ready()
+        await app.scan(Service).ready_async()
 
         service = app.manager.get_instance(Service)
         assert service.config.name == "default_app"

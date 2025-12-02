@@ -13,11 +13,13 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_runtime_error_handler(self):
         """RuntimeError를 핸들링하는 글로벌 에러 핸들러 테스트"""
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(RuntimeError)
             def handle_runtime_error(self, error: RuntimeError) -> HttpResponse:
                 return HttpResponse.bad_request(f"RuntimeError: {error}")
+
         @Controller
         class TestController:
             @Get("/error")
@@ -35,11 +37,13 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_exception_handler(self):
         """일반 Exception을 핸들링하는 글로벌 에러 핸들러 테스트"""
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(Exception)
             def handle_exception(self, error: Exception) -> HttpResponse:
                 return HttpResponse.internal_error(f"Caught: {error}")
+
         @Controller
         class TestController:
             @Get("/error")
@@ -57,6 +61,7 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_specific_exception_takes_priority_over_base(self):
         """더 구체적인 예외 타입이 기본 Exception보다 우선 처리됨"""
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(RuntimeError)
@@ -66,6 +71,7 @@ class TestErrorHandlerBasic:
             @ErrorHandler(Exception)
             def handle_exception(self, error: Exception) -> HttpResponse:
                 return HttpResponse.internal_error("Exception handled")
+
         @Controller
         class TestController:
             @Get("/runtime")
@@ -93,6 +99,7 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_no_handler_returns_default_error(self):
         """핸들러가 없으면 기본 500 에러 응답 반환"""
+
         @Controller
         class TestController:
             @Get("/error")
@@ -116,11 +123,13 @@ class TestErrorHandlerBasic:
 
         class CustomChildError(CustomBaseError):
             pass
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(CustomBaseError)
             def handle_custom_base(self, error: CustomBaseError) -> HttpResponse:
                 return HttpResponse.bad_request("CustomBaseError handled")
+
         @Controller
         class TestController:
             @Get("/child")
@@ -138,12 +147,14 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_async_error_handler(self):
         """비동기 에러 핸들러 테스트"""
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(RuntimeError)
             async def handle_runtime(self, error: RuntimeError) -> HttpResponse:
                 # 비동기 처리 시뮬레이션
                 return HttpResponse.bad_request(f"Async handled: {error}")
+
         @Controller
         class TestController:
             @Get("/error")
@@ -161,11 +172,13 @@ class TestErrorHandlerBasic:
     @pytest.mark.asyncio
     async def test_error_handler_returns_dict(self):
         """에러 핸들러가 dict를 반환하면 HttpResponse.ok로 변환"""
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(RuntimeError)
             def handle_runtime(self, error: RuntimeError) -> dict:
                 return {"error": str(error), "type": "RuntimeError"}
+
         @Controller
         class TestController:
             @Get("/error")
@@ -197,6 +210,7 @@ class TestCustomExceptionCases:
 
         class Level3Error(Level2Error):
             pass
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(Level1Error)
@@ -210,6 +224,7 @@ class TestCustomExceptionCases:
             @ErrorHandler(Level3Error)
             def handle_level3(self, error: Level3Error) -> HttpResponse:
                 return HttpResponse(status_code=402, body="Level3")
+
         @Controller
         class TestController:
             @Get("/level1")
@@ -251,6 +266,7 @@ class TestCustomExceptionCases:
 
         class ForbiddenError(Exception):
             pass
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(NotFoundError)
@@ -264,6 +280,7 @@ class TestCustomExceptionCases:
             @ErrorHandler(ForbiddenError)
             def handle_forbidden(self, error: ForbiddenError) -> HttpResponse:
                 return HttpResponse(status_code=403, body=str(error))
+
         @Controller
         class TestController:
             @Get("/not-found")
@@ -301,6 +318,7 @@ class TestCustomExceptionCases:
                 self.field = field
                 self.message = message
                 super().__init__(f"{field}: {message}")
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(ValidationError)
@@ -309,6 +327,7 @@ class TestCustomExceptionCases:
                     status_code=400,
                     body={"field": error.field, "message": error.message},
                 )
+
         @Controller
         class TestController:
             @Get("/validate")
@@ -330,6 +349,7 @@ class TestCustomExceptionCases:
 
         class ApiError(Exception):
             pass
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(ApiError)
@@ -344,6 +364,7 @@ class TestCustomExceptionCases:
                         "method": request.method,
                     },
                 )
+
         @Controller
         class TestController:
             @Get("/api/test")
@@ -363,6 +384,7 @@ class TestCustomExceptionCases:
     @pytest.mark.asyncio
     async def test_builtin_exceptions(self):
         """내장 예외 타입들 핸들링"""
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(ValueError)
@@ -376,6 +398,7 @@ class TestCustomExceptionCases:
             @ErrorHandler(KeyError)
             def handle_key_error(self, error: KeyError) -> HttpResponse:
                 return HttpResponse.not_found(f"KeyError: {error}")
+
         @Controller
         class TestController:
             @Get("/value-error")
@@ -410,12 +433,14 @@ class TestCustomExceptionCases:
 
         class CustomError(Exception):
             pass
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(CustomError)
             def handle_custom(self, error: CustomError) -> HttpResponse:
                 # 핸들러에서 또 다른 예외 발생
                 raise RuntimeError("Handler failed!")
+
         @Controller
         class TestController:
             @Get("/error")
@@ -440,6 +465,7 @@ class TestCustomExceptionCases:
 
         class NetworkTimeoutError(NetworkError, TimeoutError):
             pass
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(NetworkError)
@@ -449,6 +475,7 @@ class TestCustomExceptionCases:
             @ErrorHandler(TimeoutError)
             def handle_timeout(self, error: TimeoutError) -> HttpResponse:
                 return HttpResponse(status_code=504, body="TimeoutError")
+
         @Controller
         class TestController:
             @Get("/network-timeout")
@@ -469,11 +496,13 @@ class TestCustomExceptionCases:
 
         class SimpleError(Exception):
             pass
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(SimpleError)
             def handle_simple(self, error: SimpleError) -> str:
                 return f"Error occurred: {error}"
+
         @Controller
         class TestController:
             @Get("/error")
@@ -494,11 +523,13 @@ class TestCustomExceptionCases:
             def __init__(self, errors: list[str]):
                 self.errors = errors
                 super().__init__(str(errors))
+
         @Component
         class GlobalErrorHandlers:
             @ErrorHandler(MultiError)
             def handle_multi(self, error: MultiError) -> list:
                 return [{"error": e} for e in error.errors]
+
         @Controller
         class TestController:
             @Get("/error")

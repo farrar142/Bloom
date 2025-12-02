@@ -23,7 +23,7 @@ class Application:
 
     사용 예시:
         import asyncio
-        
+
         app = Application("my_app")
         app.scan(MyModule)
         asyncio.run(app.ready_async())
@@ -258,37 +258,6 @@ class Application:
         )
 
         self._ready_finalize()
-        return self
-
-    def ready(self, parallel: bool = False) -> "Application":
-        """
-        애플리케이션 초기화 완료 (동기 편의 메서드)
-
-        내부적으로 ready_async()를 호출합니다.
-        이벤트 루프가 이미 실행 중이면 스레드에서 실행합니다.
-
-        Args:
-            parallel: True면 의존성 레벨별로 병렬 초기화 수행
-
-        Returns:
-            self (메서드 체이닝 지원)
-        """
-        import asyncio
-        
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        
-        if loop and loop.is_running():
-            # 이벤트 루프가 실행 중이면 스레드에서 실행
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, self.ready_async(parallel))
-                future.result()
-        else:
-            asyncio.run(self.ready_async(parallel))
-        
         return self
 
     def _ready_common(self) -> None:

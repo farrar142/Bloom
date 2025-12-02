@@ -1,4 +1,36 @@
-"""bloom.web 패키지 - Lazy import"""
+"""bloom.web 패키지"""
+
+# Auth
+from .auth import Authenticator, Authentication, ANONYMOUS, Authorize, AuthorizeElement
+
+# Error
+from .error import ErrorHandler, ErrorHandlerContainer, ErrorHandlerMiddleware
+
+# HTTP
+from .http import HttpRequest, HttpResponse, StreamingResponse, FileResponse
+
+# Handler
+from .handler import HttpMethodHandlerContainer, Get, Post, Put, Patch, Delete
+
+# Router
+from .router import Router
+
+# Controller
+from .controller import (
+    ControllerContainer,
+    RequestMappingElement,
+    Controller,
+    RequestMapping,
+)
+
+# ASGI
+from .asgi import ASGIApplication, create_asgi_app
+
+# Static
+from .static import StaticFiles, StaticFilesContainer, StaticFilesManager
+
+# Routing
+from .routing import RouteEntry, RouteRegistry, RouteManager
 
 __all__ = [
     "Authenticator",
@@ -33,53 +65,3 @@ __all__ = [
     "RouteRegistry",
     "RouteManager",
 ]
-
-
-def __getattr__(name: str):
-    """Lazy import"""
-    # Auth
-    if name in ("Authenticator", "Authentication", "ANONYMOUS", "Authorize", "AuthorizeElement"):
-        from .auth import Authenticator, Authentication, ANONYMOUS, Authorize, AuthorizeElement
-        return locals()[name]
-    
-    # Error
-    if name in ("ErrorHandler", "ErrorHandlerContainer", "ErrorHandlerMiddleware"):
-        from .error import ErrorHandler, ErrorHandlerContainer, ErrorHandlerMiddleware
-        return locals()[name]
-    
-    # HTTP
-    if name in ("HttpRequest", "HttpResponse", "StreamingResponse", "FileResponse"):
-        from .http import HttpRequest, HttpResponse, StreamingResponse, FileResponse
-        return locals()[name]
-    
-    # Handler
-    if name in ("HttpMethodHandlerContainer", "Get", "Post", "Put", "Patch", "Delete"):
-        from .handler import HttpMethodHandlerContainer, Get, Post, Put, Patch, Delete
-        return locals()[name]
-    
-    # Router
-    if name == "Router":
-        from .router import Router
-        return Router
-    
-    # Controller
-    if name in ("ControllerContainer", "RequestMappingElement", "Controller", "RequestMapping"):
-        from .controller import ControllerContainer, RequestMappingElement, Controller, RequestMapping
-        return locals()[name]
-    
-    # ASGI
-    if name in ("ASGIApplication", "create_asgi_app"):
-        from .asgi import ASGIApplication, create_asgi_app
-        return locals()[name]
-    
-    # Static
-    if name in ("StaticFiles", "StaticFilesContainer", "StaticFilesManager"):
-        from .static import StaticFiles, StaticFilesContainer, StaticFilesManager
-        return locals()[name]
-    
-    # Routing
-    if name in ("RouteEntry", "RouteRegistry", "RouteManager"):
-        from .routing import RouteEntry, RouteRegistry, RouteManager
-        return locals()[name]
-    
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

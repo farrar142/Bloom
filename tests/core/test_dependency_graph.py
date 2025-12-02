@@ -13,7 +13,7 @@ from bloom.log import generate_dependency_graph
 class TestDependencyGraph:
     """의존성 그래프 생성 테스트"""
 
-    def test_simple_dependency_graph(self):
+    async def test_simple_dependency_graph(self):
         """간단한 의존성 그래프 생성"""
 
         @Component
@@ -28,7 +28,7 @@ class TestDependencyGraph:
         class Controller:
             service: Service
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         graph = generate_dependency_graph(app.manager)
 
@@ -37,7 +37,7 @@ class TestDependencyGraph:
         assert "Controller" in graph
         assert "Dependency Graph" in graph
 
-    def test_factory_chain_visualization(self):
+    async def test_factory_chain_visualization(self):
         """Factory Chain 시각화"""
 
         class Counter:
@@ -55,7 +55,7 @@ class TestDependencyGraph:
                 counter.value += 1
                 return counter
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         graph = generate_dependency_graph(app.manager)
 
@@ -64,14 +64,14 @@ class TestDependencyGraph:
         assert "create_counter" in graph
         assert "add_one" in graph
 
-    def test_save_to_file(self):
+    async def test_save_to_file(self):
         """파일로 저장"""
 
         @Component
         class SimpleService:
             pass
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "graph.txt"
@@ -82,7 +82,7 @@ class TestDependencyGraph:
             assert content == graph
             assert "SimpleService" in content
 
-    def test_dependency_matrix(self):
+    async def test_dependency_matrix(self):
         """의존성 매트릭스 생성"""
 
         @Component
@@ -98,7 +98,7 @@ class TestDependencyGraph:
             a: A
             b: B
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         graph = generate_dependency_graph(app.manager)
 
@@ -106,7 +106,7 @@ class TestDependencyGraph:
         assert "●" in graph  # 의존성 있음
         assert "·" in graph  # 의존성 없음
 
-    def test_diamond_dependency(self):
+    async def test_diamond_dependency(self):
         """다이아몬드 의존성 시각화"""
 
         class Result:
@@ -146,7 +146,7 @@ class TestDependencyGraph:
                 result.values.append("right")
                 return result
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         graph = generate_dependency_graph(app.manager)
 
@@ -157,7 +157,7 @@ class TestDependencyGraph:
         assert "Result" in graph
         assert "Factory Chain" in graph
 
-    # def test_empty_manager(self):
+    # async def test_empty_manager(self):
     #     """빈 매니저"""
     #     app = Application("test")  # ready() 호출하지 않음
 

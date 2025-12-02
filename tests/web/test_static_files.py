@@ -15,24 +15,24 @@ from bloom.web.http import HttpRequest
 class TestStaticFiles:
     """StaticFiles 클래스 테스트"""
 
-    def test_init_with_valid_directory(self, tmp_path):
+    async def test_init_with_valid_directory(self, tmp_path):
         """유효한 디렉토리로 초기화"""
         static = StaticFiles(tmp_path, path_prefix="/static")
         assert static.directory == tmp_path
         assert static.path_prefix == "/static"
 
-    def test_init_with_invalid_directory(self):
+    async def test_init_with_invalid_directory(self):
         """존재하지 않는 디렉토리로 초기화 시 에러"""
         with pytest.raises(ValueError, match="Directory does not exist"):
             StaticFiles("/nonexistent/path", check_exists=True)
 
-    def test_init_skip_directory_check(self):
+    async def test_init_skip_directory_check(self):
         """디렉토리 존재 확인 비활성화"""
         # check_exists=False면 에러 없이 생성
         static = StaticFiles("/nonexistent/path", check_exists=False)
         assert static.path_prefix == "/static"
 
-    def test_path_prefix_trailing_slash(self, tmp_path):
+    async def test_path_prefix_trailing_slash(self, tmp_path):
         """경로 프리픽스 끝의 슬래시 제거"""
         static = StaticFiles(tmp_path, path_prefix="/static/")
         assert static.path_prefix == "/static"
@@ -203,7 +203,7 @@ class TestStaticFiles:
         response = await static.handle_request(request)
         assert response is None  # POST는 처리하지 않음
 
-    def test_matches_path(self, tmp_path):
+    async def test_matches_path(self, tmp_path):
         """경로 매칭 테스트"""
         static = StaticFiles(tmp_path, path_prefix="/static")
 
@@ -252,7 +252,7 @@ class TestStaticFilesManager:
         response = await manager.handle_request(request)
         assert response is None
 
-    def test_method_chaining(self, tmp_path):
+    async def test_method_chaining(self, tmp_path):
         """메서드 체이닝 테스트"""
         static_dir = tmp_path / "static"
         assets_dir = tmp_path / "assets"
@@ -272,7 +272,7 @@ class TestStaticFilesManager:
 class TestStaticFilesContainer:
     """StaticFilesContainer 테스트"""
 
-    def test_container_add(self, tmp_path):
+    async def test_container_add(self, tmp_path):
         """Container에 StaticFiles 추가"""
         static_dir = tmp_path / "static"
         static_dir.mkdir()
@@ -284,7 +284,7 @@ class TestStaticFilesContainer:
         assert len(container.static_files) == 1
         assert container.static_files[0].path_prefix == "/static"
 
-    def test_container_multiple_add(self, tmp_path):
+    async def test_container_multiple_add(self, tmp_path):
         """Container에 여러 StaticFiles 추가"""
         static_dir = tmp_path / "static"
         assets_dir = tmp_path / "assets"
@@ -302,7 +302,7 @@ class TestStaticFilesContainer:
         assert container.static_files[1].path_prefix == "/assets"
         assert container.static_files[1].html is True
 
-    def test_collect_from_container(self, reset_container_manager, tmp_path):
+    async def test_collect_from_container(self, reset_container_manager, tmp_path):
         """DI Container에서 StaticFilesContainer 수집"""
         static_dir = tmp_path / "public"
         assets_dir = tmp_path / "assets"
@@ -330,7 +330,9 @@ class TestStaticFilesContainer:
         assert manager.matches("/static/file.txt")
         assert manager.matches("/assets/index.html")
 
-    def test_multiple_containers_raises_error(self, reset_container_manager, tmp_path):
+    async def test_multiple_containers_raises_error(
+        self, reset_container_manager, tmp_path
+    ):
         """여러 StaticFilesContainer가 있으면 에러 발생"""
         static_dir = tmp_path / "public"
         assets_dir = tmp_path / "assets"
@@ -353,7 +355,7 @@ class TestStaticFilesContainer:
         with pytest.raises(RuntimeError, match="Multiple StaticFilesContainer"):
             manager.collect_from_container(app.manager)
 
-    def test_collect_empty_container(self, reset_container_manager):
+    async def test_collect_empty_container(self, reset_container_manager):
         """StaticFilesContainer가 없을 때"""
 
         @Component
@@ -419,7 +421,7 @@ class TestASGIStaticFiles:
         # 정적 파일에서 응답 확인
         assert response is not None
 
-    def test_mount_static_chaining(self, reset_container_manager, tmp_path):
+    async def test_mount_static_chaining(self, reset_container_manager, tmp_path):
         """mount_static 메서드 체이닝"""
         dir1 = tmp_path / "static"
         dir2 = tmp_path / "assets"

@@ -14,7 +14,7 @@ from bloom.core.container.element import Scope as ScopeEnum, PrototypeMode
 class TestFactoryPrototypeScope:
     """PROTOTYPE 스코프 Factory 테스트"""
 
-    def test_prototype_creates_new_instance_each_time(self):
+    async def test_prototype_creates_new_instance_each_time(self):
         """PROTOTYPE Factory는 매번 새 인스턴스를 생성해야 함"""
         call_count = 0
 
@@ -48,7 +48,7 @@ class TestFactoryPrototypeScope:
 
         app = Application("test")
         app.scan(SessionFactory, DatabaseConfig, Repository1, Repository2)
-        app.ready()
+        await app.ready_async()
 
         repo1 = app.manager.get_instance(Repository1)
         repo2 = app.manager.get_instance(Repository2)
@@ -61,10 +61,10 @@ class TestFactoryPrototypeScope:
 class TestFactoryCallScopedMode:
     """CALL_SCOPED 모드 Factory 테스트"""
 
-    def test_call_scoped_shares_instance_in_same_call_stack(self):
+    async def test_call_scoped_shares_instance_in_same_call_stack(self):
         """CALL_SCOPED는 같은 호출 스택 내에서 같은 인스턴스를 공유해야 함"""
         call_count = 0
-        
+
         class FakeSession:
             def __init__(self, id: int):
                 self.id = id
@@ -106,17 +106,22 @@ class TestFactoryCallScopedMode:
 
             def get_both_session_ids(self) -> tuple[int, int]:
                 """같은 호출 내에서 두 Repository의 session id 반환"""
-                return (self.user_repo.get_session_id(), self.post_repo.get_session_id())
+                return (
+                    self.user_repo.get_session_id(),
+                    self.post_repo.get_session_id(),
+                )
 
         app = Application("test")
-        app.scan(SessionFactory, DatabaseConfig, UserRepository, PostRepository, UserService)
-        app.ready()
+        app.scan(
+            SessionFactory, DatabaseConfig, UserRepository, PostRepository, UserService
+        )
+        await app.ready_async()
 
         service = app.manager.get_instance(UserService)
 
         # 핸들러 컨텍스트 시뮬레이션 with call_scope
         from bloom.core.advice.tracing import call_scope
-        
+
         # 첫 번째 호출 - 핸들러 컨텍스트 내에서 같은 session 공유
         with call_scope(service, "get_both_session_ids", trace_id="test-1"):
             id1, id2 = service.get_both_session_ids()
@@ -128,7 +133,7 @@ class TestFactoryCallScopedMode:
             assert id3 == id4, "같은 호출 스택 내에서는 같은 Session을 공유해야 함"
             assert id1 != id3, "새로운 호출에서는 새로운 Session을 생성해야 함"
 
-    def test_call_scoped_releases_after_call_ends(self):
+    async def test_call_scoped_releases_after_call_ends(self):
         """CALL_SCOPED 인스턴스는 호출 종료 후 해제되어야 함"""
         created_sessions: list = []
 
@@ -164,7 +169,7 @@ class TestFactoryCallScopedMode:
 
         app = Application("test")
         app.scan(SessionFactory, DatabaseConfig, Repository)
-        app.ready()
+        await app.ready_async()
 
         repo = app.manager.get_instance(Repository)
 
@@ -179,7 +184,7 @@ class TestFactoryCallScopedMode:
 class TestFactorySingletonScope:
     """SINGLETON 스코프 Factory 테스트 (기본값)"""
 
-    def test_singleton_factory_creates_once(self):
+    async def test_singleton_factory_creates_once(self):
         """SINGLETON Factory는 한 번만 인스턴스를 생성해야 함"""
         call_count = 0
 
@@ -212,7 +217,7 @@ class TestFactorySingletonScope:
 
         app = Application("test")
         app.scan(ConnectionFactory, DatabaseConfig, Service1, Service2)
-        app.ready()
+        await app.ready_async()
 
         svc1 = app.manager.get_instance(Service1)
         svc2 = app.manager.get_instance(Service2)

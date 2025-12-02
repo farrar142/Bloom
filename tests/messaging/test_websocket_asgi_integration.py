@@ -52,10 +52,10 @@ class ChatController:
 class TestASGIApplicationCreation:
     """ASGI 애플리케이션 생성 및 구성 테스트"""
 
-    def test_create_asgi_app_with_messaging(self):
+    async def test_create_asgi_app_with_messaging(self):
         """메시징 지원 ASGI 앱 생성"""
         app = Application("test_asgi_creation")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         manager = app.manager
         router = Router(manager)
@@ -70,10 +70,10 @@ class TestASGIApplicationCreation:
         assert asgi_app.stomp_handler is stomp_handler
         assert asgi_app.websocket_path == "/ws"
 
-    def test_create_asgi_app_without_messaging(self):
+    async def test_create_asgi_app_without_messaging(self):
         """메시징 없는 ASGI 앱 생성"""
         app = Application("test_asgi_no_messaging")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         manager = app.manager
         router = Router(manager)
@@ -83,12 +83,12 @@ class TestASGIApplicationCreation:
         assert asgi_app.router is router
         assert asgi_app.stomp_handler is None
 
-    def test_stomp_handler_collects_message_controllers(self):
+    async def test_stomp_handler_collects_message_controllers(self):
         """StompProtocolHandler가 MessageController 수집"""
         import tests.messaging.test_websocket_asgi_integration as test_module
 
         app = Application("test_handler_collection")
-        app.scan(test_module).ready()
+        await app.scan(test_module).ready_async()
 
         manager = app.manager
         broker = SimpleBroker()
@@ -118,12 +118,12 @@ class TestASGIApplicationCreation:
 class TestStompProtocolHandlerRouting:
     """STOMP 프로토콜 핸들러 라우팅 테스트"""
 
-    def test_message_handler_routing(self):
+    async def test_message_handler_routing(self):
         """메시지 핸들러 라우팅 확인"""
         import tests.messaging.test_websocket_asgi_integration as test_module
 
         app = Application("test_routing")
-        app.scan(test_module).ready()
+        await app.scan(test_module).ready_async()
 
         manager = app.manager
         broker = SimpleBroker()
@@ -303,7 +303,7 @@ class TestWebSocketSessionManagement:
 class TestASGIScopeHandling:
     """ASGI Scope 처리 테스트"""
 
-    def test_parse_query_params_from_scope(self):
+    async def test_parse_query_params_from_scope(self):
         """ASGI scope에서 쿼리 파라미터 파싱"""
         from urllib.parse import parse_qs
 
@@ -315,7 +315,7 @@ class TestASGIScopeHandling:
         assert query_params["token"] == "abc123"
         assert query_params["room"] == "general"
 
-    def test_parse_headers_from_scope(self):
+    async def test_parse_headers_from_scope(self):
         """ASGI scope에서 헤더 파싱"""
         headers_raw = [
             (b"user-agent", b"TestClient/1.0"),
@@ -346,7 +346,7 @@ class TestIntegrationScenarios:
 
         # 애플리케이션 설정
         app = Application("test_e2e")
-        app.scan(test_module).ready()
+        await app.scan(test_module).ready_async()
 
         manager = app.manager
         broker = SimpleBroker()
@@ -405,7 +405,7 @@ class TestIntegrationScenarios:
         import tests.messaging.test_websocket_asgi_integration as test_module
 
         app = Application("test_multi_controllers")
-        app.scan(test_module).ready()
+        await app.scan(test_module).ready_async()
 
         manager = app.manager
         broker = SimpleBroker()

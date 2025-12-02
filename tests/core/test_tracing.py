@@ -40,7 +40,7 @@ def reset_tracing():
 class TestCallFrame:
     """CallFrame 단위 테스트"""
 
-    def test_create_frame(self):
+    async def test_create_frame(self):
         """CallFrame 생성"""
         import time
 
@@ -58,7 +58,7 @@ class TestCallFrame:
         assert frame.depth == 0
         assert frame.full_name == "MyService.my_method"
 
-    def test_frame_is_immutable(self):
+    async def test_frame_is_immutable(self):
         """CallFrame은 불변"""
         import time
 
@@ -73,7 +73,7 @@ class TestCallFrame:
         with pytest.raises(AttributeError):
             frame.depth = 1  # type: ignore
 
-    def test_frame_elapsed_time(self):
+    async def test_frame_elapsed_time(self):
         """경과 시간 계산"""
         import time
 
@@ -99,13 +99,13 @@ class TestCallFrame:
 class TestContextAPI:
     """콜스택 컨텍스트 API 테스트"""
 
-    def test_empty_stack(self):
+    async def test_empty_stack(self):
         """빈 스택"""
         assert get_call_stack() == ()
         assert get_current_frame() is None
         assert get_call_depth() == 0
 
-    def test_push_and_pop(self):
+    async def test_push_and_pop(self):
         """프레임 push/pop"""
         from bloom.core.advice.tracing.context import push_frame, pop_frame
 
@@ -135,7 +135,7 @@ class TestContextAPI:
         assert popped == frame1
         assert get_call_depth() == 0
 
-    def test_trace_id(self):
+    async def test_trace_id(self):
         """추적 ID 관리"""
         assert get_trace_id() == ""
 
@@ -223,7 +223,7 @@ class TestAsyncIsolation:
 class TestCallStackTraceAdviceIntegration:
     """CallStackTraceAdvice 통합 테스트"""
 
-    def test_tracing_with_di(self):
+    async def test_tracing_with_di(self):
         """DI 컨테이너와 통합 테스트"""
 
         # 호출 기록
@@ -268,7 +268,7 @@ class TestCallStackTraceAdviceIntegration:
         app.scan(InnerService)
         app.scan(OuterService)
         app.scan(AdviceConfig)
-        app.ready()
+        await app.ready_async()
 
         # 실행
         outer = app.manager.get_instance(OuterService)
@@ -300,7 +300,7 @@ class TestCallStackTraceAdviceIntegration:
 class TestArgsSummary:
     """인자 요약 기능 테스트"""
 
-    def test_summarize_args(self):
+    async def test_summarize_args(self):
         """인자 요약 문자열 생성"""
         from bloom.core.advice.tracing.context import _summarize_args
 
@@ -416,7 +416,7 @@ class TestAsyncPrototypeIsolation:
         app.scan(TracingAdvice)
         app.scan(AdviceConfig)
         app.scan(Consumer)
-        app.ready()
+        await app.ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 
@@ -525,7 +525,7 @@ class TestAsyncPrototypeIsolation:
         app.scan(AdviceConfig)
         app.scan(InnerService)
         app.scan(OuterService)
-        app.ready()
+        await app.ready_async()
 
         outer = app.manager.get_instance(OuterService)
         outer_id, inner_id = await outer.outer_process()
@@ -597,7 +597,7 @@ class TestAsyncPrototypeIsolation:
         app.scan(TracingAdvice)
         app.scan(AdviceConfig)
         app.scan(FailingService)
-        app.ready()
+        await app.ready_async()
 
         service = app.manager.get_instance(FailingService)
 

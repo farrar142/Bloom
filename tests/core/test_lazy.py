@@ -12,7 +12,7 @@ from bloom.core.lazy import LazyFieldProxy
 class TestLazyFieldBasic:
     """기본 Lazy 필드 주입 테스트"""
 
-    def test_field_injection_is_lazy(self):
+    async def test_field_injection_is_lazy(self):
         """모든 필드 주입은 기본적으로 Lazy (LazyFieldProxy)"""
 
         @Component
@@ -23,7 +23,7 @@ class TestLazyFieldBasic:
         class Consumer:
             service: ServiceA
 
-        app = Application("test_lazy_field").ready()
+        app = await Application("test_lazy_field").ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 
@@ -31,7 +31,7 @@ class TestLazyFieldBasic:
         # 하지만 접근하면 실제 값처럼 동작
         assert consumer.service.value == "service_a"
 
-    def test_lazy_field_resolves_on_access(self):
+    async def test_lazy_field_resolves_on_access(self):
         """필드 접근 시 실제 인스턴스가 resolve됨"""
 
         @Component
@@ -45,7 +45,7 @@ class TestLazyFieldBasic:
         class Consumer:
             service: HeavyService
 
-        app = Application("test_resolve").ready()
+        app = await Application("test_resolve").ready_async()
 
         consumer = app.manager.get_instance(Consumer)
         # 속성 접근 시 resolve
@@ -53,7 +53,7 @@ class TestLazyFieldBasic:
         # 메서드 호출
         assert consumer.service.process() == "processed"
 
-    def test_lazy_field_caches_instance_for_singleton(self):
+    async def test_lazy_field_caches_instance_for_singleton(self):
         """SINGLETON 스코프에서 LazyFieldProxy는 인스턴스를 캐시함"""
         init_count = 0
 
@@ -67,7 +67,7 @@ class TestLazyFieldBasic:
         class Service:
             db: Database
 
-        app = Application("test_cache").ready()
+        app = await Application("test_cache").ready_async()
 
         service = app.manager.get_instance(Service)
         # 첫 번째 접근
@@ -84,7 +84,7 @@ class TestLazyFieldBasic:
 class TestLazyCircularDependency:
     """Lazy 필드 주입을 통한 순환 의존성 해결 테스트"""
 
-    def test_circular_dependency_resolved_automatically(self):
+    async def test_circular_dependency_resolved_automatically(self):
         """순환 의존성이 자동으로 해결됨
 
         모든 필드 주입이 기본적으로 Lazy이므로,
@@ -106,7 +106,7 @@ class TestLazyCircularDependency:
             def get_a_value(self) -> str:
                 return self.service_a.value
 
-        app = Application("test_circular").ready()
+        app = await Application("test_circular").ready_async()
 
         service_b = app.manager.get_instance(ServiceB)
 
@@ -116,7 +116,7 @@ class TestLazyCircularDependency:
         # 프록시를 통해 메서드 호출 가능
         assert service_b.get_a_value() == "from_a"
 
-    def test_bidirectional_reference(self):
+    async def test_bidirectional_reference(self):
         """양방향 참조가 가능함"""
 
         @Component
@@ -132,7 +132,7 @@ class TestLazyCircularDependency:
             alpha: Alpha
             beta: Beta
 
-        app = Application("test_bidirectional").ready()
+        app = await Application("test_bidirectional").ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 
@@ -144,7 +144,7 @@ class TestLazyCircularDependency:
 class TestExplicitLazy:
     """명시적 Lazy[T] 타입 힌트 테스트"""
 
-    def test_explicit_lazy_type_hint(self):
+    async def test_explicit_lazy_type_hint(self):
         """Lazy[T] 타입 힌트가 LazyFieldProxy로 동작"""
 
         @Component
@@ -155,7 +155,7 @@ class TestExplicitLazy:
         class Consumer:
             service: Lazy[HeavyService]  # 명시적 Lazy
 
-        app = Application("test_explicit_lazy").ready()
+        app = await Application("test_explicit_lazy").ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 
@@ -166,7 +166,7 @@ class TestExplicitLazy:
 class TestLazyEdgeCases:
     """Lazy 필드 엣지 케이스 테스트"""
 
-    def test_lazy_field_repr(self):
+    async def test_lazy_field_repr(self):
         """LazyFieldProxy의 repr (해결 후)"""
 
         @Component
@@ -177,14 +177,14 @@ class TestLazyEdgeCases:
         class Holder:
             target: Target
 
-        app = Application("test_repr").ready()
+        app = await Application("test_repr").ready_async()
 
         holder = app.manager.get_instance(Holder)
         # 접근하면 실제 인스턴스의 repr이 반환됨
         repr_str = repr(holder.target)
         assert "Target" in repr_str
 
-    def test_lazy_field_equality(self):
+    async def test_lazy_field_equality(self):
         """LazyFieldProxy 동등성 비교"""
 
         @Component
@@ -199,7 +199,7 @@ class TestLazyEdgeCases:
         class HolderB:
             target: Target
 
-        app = Application("test_equality").ready()
+        app = await Application("test_equality").ready_async()
 
         holder_a = app.manager.get_instance(HolderA)
         holder_b = app.manager.get_instance(HolderB)
@@ -207,7 +207,7 @@ class TestLazyEdgeCases:
         # 같은 인스턴스를 가리키므로 동등해야 함
         assert holder_a.target == holder_b.target
 
-    def test_lazy_field_setattr(self):
+    async def test_lazy_field_setattr(self):
         """LazyFieldProxy를 통한 속성 설정"""
 
         @Component
@@ -218,7 +218,7 @@ class TestLazyEdgeCases:
         class Holder:
             target: Target
 
-        app = Application("test_setattr").ready()
+        app = await Application("test_setattr").ready_async()
 
         holder = app.manager.get_instance(Holder)
         holder.target.value = "modified"
@@ -231,7 +231,7 @@ class TestLazyEdgeCases:
 class TestLazyWithFactory:
     """Lazy 필드와 Factory 조합 테스트"""
 
-    def test_lazy_field_with_factory(self):
+    async def test_lazy_field_with_factory(self):
         """Factory로 생성된 인스턴스도 Lazy 필드를 통해 접근"""
         from bloom.core.decorators import Factory
 
@@ -258,7 +258,7 @@ class TestLazyWithFactory:
         class Consumer:
             client: ApiClient
 
-        app = Application("test_lazy_factory").ready()
+        app = await Application("test_lazy_factory").ready_async()
 
         consumer = app.manager.get_instance(Consumer)
         assert consumer.client.get_url() == "https://api.example.com"
@@ -267,7 +267,7 @@ class TestLazyWithFactory:
 class TestLazyWithMultipleConsumers:
     """여러 Consumer에서 같은 서비스 주입 테스트"""
 
-    def test_multiple_consumers_same_instance(self):
+    async def test_multiple_consumers_same_instance(self):
         """여러 Consumer가 같은 인스턴스를 공유 (SINGLETON)"""
         init_count = 0
 
@@ -289,7 +289,7 @@ class TestLazyWithMultipleConsumers:
         class ConsumerC:
             service: SharedService
 
-        app = Application("test_multiple_consumers").ready()
+        app = await Application("test_multiple_consumers").ready_async()
 
         a = app.manager.get_instance(ConsumerA)
         b = app.manager.get_instance(ConsumerB)
@@ -310,7 +310,7 @@ class TestLazyWithMultipleConsumers:
 class TestLazyFieldProxyMethods:
     """LazyFieldProxy 메서드 테스트"""
 
-    def test_lazy_field_get_method(self):
+    async def test_lazy_field_get_method(self):
         """get() 메서드로 명시적 접근"""
 
         @Component
@@ -321,7 +321,7 @@ class TestLazyFieldProxyMethods:
         class Consumer:
             service: Service
 
-        app = Application("test_get").ready()
+        app = await Application("test_get").ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 
@@ -333,7 +333,7 @@ class TestLazyFieldProxyMethods:
             instance = service_field.get()
             assert instance.value == "test"
 
-    def test_lazy_field_resolved_property(self):
+    async def test_lazy_field_resolved_property(self):
         """resolved 프로퍼티로 해결 여부 확인"""
 
         @Component
@@ -344,7 +344,7 @@ class TestLazyFieldProxyMethods:
         class Consumer:
             service: Service
 
-        app = Application("test_resolved").ready()
+        app = await Application("test_resolved").ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 

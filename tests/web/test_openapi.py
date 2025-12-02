@@ -103,7 +103,7 @@ class ItemController:
 class TestSchemaGenerator:
     """SchemaGenerator 단위 테스트"""
 
-    def test_basic_types(self):
+    async def test_basic_types(self):
         """기본 타입 스키마 생성"""
         gen = SchemaGenerator()
 
@@ -112,14 +112,14 @@ class TestSchemaGenerator:
         assert gen.get_schema(float) == {"type": "number"}
         assert gen.get_schema(bool) == {"type": "boolean"}
 
-    def test_list_type(self):
+    async def test_list_type(self):
         """리스트 타입 스키마"""
         gen = SchemaGenerator()
 
         schema = gen.get_schema(list[str])
         assert schema == {"type": "array", "items": {"type": "string"}}
 
-    def test_optional_type(self):
+    async def test_optional_type(self):
         """Optional 타입 스키마"""
         gen = SchemaGenerator()
 
@@ -127,7 +127,7 @@ class TestSchemaGenerator:
         assert schema.get("type") == "string"
         assert schema.get("nullable") is True
 
-    def test_pydantic_model_schema(self):
+    async def test_pydantic_model_schema(self):
         """Pydantic 모델 스키마 생성"""
         gen = SchemaGenerator()
 
@@ -136,7 +136,7 @@ class TestSchemaGenerator:
         assert schema["$ref"] == "#/components/schemas/UserOutput"
         assert "UserOutput" in gen.components
 
-    def test_dataclass_schema(self):
+    async def test_dataclass_schema(self):
         """dataclass 스키마 생성"""
         gen = SchemaGenerator()
 
@@ -154,10 +154,10 @@ class TestSchemaGenerator:
 class TestOpenAPIGenerator:
     """OpenAPIGenerator 통합 테스트"""
 
-    def test_generate_basic_spec(self):
+    async def test_generate_basic_spec(self):
         """기본 OpenAPI 스펙 생성"""
         app = Application("test_openapi")
-        app.scan(UserController).ready()
+        await app.scan(UserController).ready_async()
 
         config = OpenAPIConfig(
             title="Test API",
@@ -173,10 +173,10 @@ class TestOpenAPIGenerator:
         assert spec["info"]["version"] == "1.0.0"
         assert "paths" in spec
 
-    def test_generate_paths(self):
+    async def test_generate_paths(self):
         """경로 생성 테스트"""
         app = Application("test_paths")
-        app.scan(UserController).ready()
+        await app.scan(UserController).ready_async()
 
         generator = OpenAPIGenerator()
         spec = generator.generate(app._router.route_manager)
@@ -190,10 +190,10 @@ class TestOpenAPIGenerator:
         assert "put" in spec["paths"]["/api/users/{id}"]
         assert "delete" in spec["paths"]["/api/users/{id}"]
 
-    def test_generate_path_parameters(self):
+    async def test_generate_path_parameters(self):
         """경로 파라미터 추출 테스트"""
         app = Application("test_path_params")
-        app.scan(UserController).ready()
+        await app.scan(UserController).ready_async()
 
         generator = OpenAPIGenerator()
         spec = generator.generate(app._router.route_manager)
@@ -208,10 +208,10 @@ class TestOpenAPIGenerator:
         assert id_param["required"] is True
         assert id_param["schema"]["type"] == "integer"
 
-    def test_generate_query_parameters(self):
+    async def test_generate_query_parameters(self):
         """쿼리 파라미터 추출 테스트"""
         app = Application("test_query_params")
-        app.scan(UserController).ready()
+        await app.scan(UserController).ready_async()
 
         generator = OpenAPIGenerator()
         spec = generator.generate(app._router.route_manager)
@@ -224,10 +224,10 @@ class TestOpenAPIGenerator:
         assert "page" in param_names
         assert "size" in param_names
 
-    def test_generate_request_body(self):
+    async def test_generate_request_body(self):
         """RequestBody 스키마 생성 테스트"""
         app = Application("test_request_body")
-        app.scan(UserController).ready()
+        await app.scan(UserController).ready_async()
 
         generator = OpenAPIGenerator()
         spec = generator.generate(app._router.route_manager)
@@ -237,10 +237,10 @@ class TestOpenAPIGenerator:
         assert create_op["requestBody"]["required"] is True
         assert "application/json" in create_op["requestBody"]["content"]
 
-    def test_generate_responses(self):
+    async def test_generate_responses(self):
         """응답 스키마 생성 테스트"""
         app = Application("test_responses")
-        app.scan(UserController).ready()
+        await app.scan(UserController).ready_async()
 
         generator = OpenAPIGenerator()
         spec = generator.generate(app._router.route_manager)
@@ -249,10 +249,10 @@ class TestOpenAPIGenerator:
         assert "responses" in get_op
         assert "200" in get_op["responses"]
 
-    def test_generate_tags(self):
+    async def test_generate_tags(self):
         """태그 생성 테스트"""
         app = Application("test_tags")
-        app.scan(UserController, ItemController).ready()
+        await app.scan(UserController, ItemController).ready_async()
 
         generator = OpenAPIGenerator()
         spec = generator.generate(app._router.route_manager)
@@ -263,10 +263,10 @@ class TestOpenAPIGenerator:
         assert "User" in tag_names
         assert "Item" in tag_names
 
-    def test_generate_operation_id(self):
+    async def test_generate_operation_id(self):
         """operationId 생성 테스트"""
         app = Application("test_operation_id")
-        app.scan(UserController).ready()
+        await app.scan(UserController).ready_async()
 
         generator = OpenAPIGenerator()
         spec = generator.generate(app._router.route_manager)
@@ -274,10 +274,10 @@ class TestOpenAPIGenerator:
         get_op = spec["paths"]["/api/users/{id}"]["get"]
         assert get_op["operationId"] == "User_get_user"
 
-    def test_generate_summary_from_docstring(self):
+    async def test_generate_summary_from_docstring(self):
         """docstring에서 summary 추출"""
         app = Application("test_summary")
-        app.scan(UserController).ready()
+        await app.scan(UserController).ready_async()
 
         generator = OpenAPIGenerator()
         spec = generator.generate(app._router.route_manager)
@@ -294,7 +294,7 @@ class TestOpenAPIGenerator:
 class TestOpenAPIEndpoints:
     """OpenAPI 엔드포인트 통합 테스트"""
 
-    def test_openapi_endpoints_registered(self):
+    async def test_openapi_endpoints_registered(self):
         """OpenAPI 엔드포인트가 등록되는지 확인"""
 
         @Component
@@ -307,7 +307,7 @@ class TestOpenAPIEndpoints:
                 )
 
         app = Application("test_endpoints")
-        app.scan(OpenAPIConfiguration, UserController).ready()
+        await app.scan(OpenAPIConfiguration, UserController).ready_async()
 
         # 라우트 목록 확인
         routes = app._router.get_routes()
@@ -328,7 +328,7 @@ class TestOpenAPIEndpoints:
                 return OpenAPIConfig(title="My API", version="2.0.0")
 
         app = Application("test_json")
-        app.scan(Config, UserController).ready()
+        await app.scan(Config, UserController).ready_async()
 
         # /openapi.json 요청
         request = HttpRequest(
@@ -356,7 +356,7 @@ class TestOpenAPIEndpoints:
                 return OpenAPIConfig(title="My API")
 
         app = Application("test_swagger")
-        app.scan(Config, UserController).ready()
+        await app.scan(Config, UserController).ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -382,7 +382,7 @@ class TestOpenAPIEndpoints:
                 return OpenAPIConfig(title="My API")
 
         app = Application("test_redoc")
-        app.scan(Config, UserController).ready()
+        await app.scan(Config, UserController).ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -397,7 +397,7 @@ class TestOpenAPIEndpoints:
         assert response.content_type == "text/html; charset=utf-8"
         assert "redoc" in response.body.lower()
 
-    def test_custom_urls(self):
+    async def test_custom_urls(self):
         """커스텀 URL 설정 테스트"""
 
         @Component
@@ -412,7 +412,7 @@ class TestOpenAPIEndpoints:
                 )
 
         app = Application("test_custom_urls")
-        app.scan(Config, UserController).ready()
+        await app.scan(Config, UserController).ready_async()
 
         routes = app._router.get_routes()
         route_paths = [r[1] for r in routes]
@@ -421,10 +421,10 @@ class TestOpenAPIEndpoints:
         assert "/api/docs" in route_paths
         assert "/api/redoc" in route_paths
 
-    def test_no_openapi_without_config(self):
+    async def test_no_openapi_without_config(self):
         """OpenAPIConfig 없으면 엔드포인트 미등록"""
         app = Application("test_no_config")
-        app.scan(UserController).ready()
+        await app.scan(UserController).ready_async()
 
         routes = app._router.get_routes()
         route_paths = [r[1] for r in routes]
@@ -441,7 +441,7 @@ class TestOpenAPIEndpoints:
 class TestOpenAPIConfig:
     """OpenAPIConfig 설정 테스트"""
 
-    def test_default_config(self):
+    async def test_default_config(self):
         """기본 설정 확인"""
         config = OpenAPIConfig()
 
@@ -451,7 +451,7 @@ class TestOpenAPIConfig:
         assert config.docs_url == "/docs"
         assert config.redoc_url == "/redoc"
 
-    def test_get_info(self):
+    async def test_get_info(self):
         """info 객체 생성"""
         from bloom.web.openapi.config import OpenAPIContact, OpenAPILicense
 
@@ -470,7 +470,7 @@ class TestOpenAPIConfig:
         assert info["contact"]["name"] == "Dev"
         assert info["license"]["name"] == "MIT"
 
-    def test_servers(self):
+    async def test_servers(self):
         """서버 정보"""
         from bloom.web.openapi.config import OpenAPIServer
 
@@ -489,7 +489,7 @@ class TestOpenAPIConfig:
 class TestHttpResponseToBytes:
     """HttpResponse.to_bytes() 메서드 테스트"""
 
-    def test_html_content_preserves_newlines(self):
+    async def test_html_content_preserves_newlines(self):
         """HTML 콘텐츠에서 개행문자가 보존되는지 테스트"""
         html = """<!DOCTYPE html>
 <html>
@@ -513,7 +513,7 @@ class TestHttpResponseToBytes:
         assert b"\n" in body_bytes  # 실제 개행문자가 있어야 함
         assert body_bytes == html.encode("utf-8")
 
-    def test_json_content_serializes_properly(self):
+    async def test_json_content_serializes_properly(self):
         """JSON 콘텐츠가 올바르게 직렬화되는지 테스트"""
         data = {"message": "Hello\nWorld", "count": 42}
         response = HttpResponse(
@@ -530,7 +530,7 @@ class TestHttpResponseToBytes:
 
         assert json.loads(body_bytes) == data
 
-    def test_plain_text_content(self):
+    async def test_plain_text_content(self):
         """text/plain 콘텐츠 테스트"""
         text = "Line 1\nLine 2\nLine 3"
         response = HttpResponse(
@@ -544,7 +544,7 @@ class TestHttpResponseToBytes:
         assert b"\n" in body_bytes
         assert b"\\n" not in body_bytes
 
-    def test_bytes_passthrough(self):
+    async def test_bytes_passthrough(self):
         """바이트 콘텐츠가 그대로 전달되는지 테스트"""
         binary_data = b"\x00\x01\x02\x03"
         response = HttpResponse(
@@ -556,7 +556,7 @@ class TestHttpResponseToBytes:
         body_bytes = response.to_bytes()
         assert body_bytes == binary_data
 
-    def test_css_content(self):
+    async def test_css_content(self):
         """CSS 콘텐츠 테스트"""
         css = """body {
     margin: 0;

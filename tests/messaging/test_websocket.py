@@ -28,14 +28,14 @@ from bloom.web.messaging import (
 class TestWebSocketSessionManager:
     """WebSocketSessionManager 테스트"""
 
-    def test_default_app_destination_prefixes(self):
+    async def test_default_app_destination_prefixes(self):
         """기본 app_destination_prefixes 확인"""
         manager = WebSocketSessionManager()
 
         assert manager.app_destination_prefixes == ["/app"]
         assert manager.user_destination_prefix == "/user"
 
-    def test_set_app_destination_prefixes(self):
+    async def test_set_app_destination_prefixes(self):
         """app_destination_prefixes 설정"""
         manager = WebSocketSessionManager()
 
@@ -43,7 +43,7 @@ class TestWebSocketSessionManager:
 
         assert manager.app_destination_prefixes == ["/app", "/api"]
 
-    def test_set_user_destination_prefix(self):
+    async def test_set_user_destination_prefix(self):
         """user_destination_prefix 설정"""
         manager = WebSocketSessionManager()
 
@@ -51,7 +51,7 @@ class TestWebSocketSessionManager:
 
         assert manager.user_destination_prefix == "/private"
 
-    def test_set_multiple_prefixes(self):
+    async def test_set_multiple_prefixes(self):
         """여러 프리픽스 설정"""
         manager = WebSocketSessionManager()
 
@@ -72,7 +72,7 @@ class TestWebSocketSessionManager:
 class TestStompProtocolHandlerConfig:
     """StompProtocolHandler가 WebSocketSessionManager 설정을 참조하는지 테스트"""
 
-    def test_handler_uses_session_manager_prefixes(self):
+    async def test_handler_uses_session_manager_prefixes(self):
         """Handler가 SessionManager의 prefix를 사용하는지 확인"""
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -82,7 +82,7 @@ class TestStompProtocolHandlerConfig:
         assert handler._app_destination_prefixes == ["/app"]
         assert handler._user_destination_prefix == "/user"
 
-    def test_handler_reflects_session_manager_changes(self):
+    async def test_handler_reflects_session_manager_changes(self):
         """SessionManager 변경이 Handler에 반영되는지 확인"""
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -96,7 +96,7 @@ class TestStompProtocolHandlerConfig:
         assert handler._app_destination_prefixes == ["/app", "/api"]
         assert handler._user_destination_prefix == "/private"
 
-    def test_is_app_destination(self):
+    async def test_is_app_destination(self):
         """is_app_destination 메서드 테스트"""
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -107,7 +107,7 @@ class TestStompProtocolHandlerConfig:
         assert handler.is_app_destination("/app/user/send") is True
         assert handler.is_app_destination("/topic/messages") is False
 
-    def test_is_app_destination_with_custom_prefixes(self):
+    async def test_is_app_destination_with_custom_prefixes(self):
         """커스텀 프리픽스로 is_app_destination 테스트"""
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -118,7 +118,7 @@ class TestStompProtocolHandlerConfig:
         assert handler.is_app_destination("/api/users") is True
         assert handler.is_app_destination("/topic/messages") is False
 
-    def test_strip_app_prefix(self):
+    async def test_strip_app_prefix(self):
         """strip_app_prefix 메서드 테스트"""
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -168,12 +168,12 @@ class TestAuthController:
 class TestMessageControllerIntegration:
     """MessageController 통합 테스트"""
 
-    def test_collect_handlers(self, reset_container_manager):
+    async def test_collect_handlers(self, reset_container_manager):
         """핸들러 수집 테스트"""
         import tests.messaging.test_websocket as test_module
 
         app = Application("test_collect")
-        app.scan(test_module).ready()
+        await app.scan(test_module).ready_async()
 
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -185,12 +185,12 @@ class TestMessageControllerIntegration:
         assert "/chat" in destinations
         assert "/game/move" in destinations  # 프리픽스 적용
 
-    def test_handler_send_to(self, reset_container_manager):
+    async def test_handler_send_to(self, reset_container_manager):
         """@SendTo 데코레이터 확인"""
         import tests.messaging.test_websocket as test_module
 
         app = Application("test_send_to")
-        app.scan(test_module).ready()
+        await app.scan(test_module).ready_async()
 
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -315,7 +315,7 @@ class TestSimpleBrokerWithSessionManager:
 class TestDestinationPatternMatching:
     """목적지 패턴 매칭 테스트"""
 
-    def test_simple_match(self):
+    async def test_simple_match(self):
         """단순 매칭"""
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -324,7 +324,7 @@ class TestDestinationPatternMatching:
         result = handler._match_destination("/chat", "/chat")
         assert result == {}
 
-    def test_path_param_match(self):
+    async def test_path_param_match(self):
         """경로 파라미터 매칭"""
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -333,7 +333,7 @@ class TestDestinationPatternMatching:
         result = handler._match_destination("/chat.{room_id}", "/chat.room123")
         assert result == {"room_id": "room123"}
 
-    def test_multiple_path_params(self):
+    async def test_multiple_path_params(self):
         """다중 경로 파라미터 매칭"""
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -344,7 +344,7 @@ class TestDestinationPatternMatching:
         )
         assert result == {"game_id": "abc", "action": "move"}
 
-    def test_no_match(self):
+    async def test_no_match(self):
         """매칭 실패"""
         broker = SimpleBroker()
         session_manager = WebSocketSessionManager()
@@ -424,7 +424,7 @@ class LoginStompAuthenticator(StompAuthenticator):
 class TestStompAuthenticator:
     """StompAuthenticator 기본 테스트"""
 
-    def test_stomp_authentication_default(self):
+    async def test_stomp_authentication_default(self):
         """StompAuthentication 기본값"""
         auth = StompAuthentication()
 
@@ -433,7 +433,7 @@ class TestStompAuthenticator:
         assert auth.authorities == []
         assert auth.is_authenticated() is False
 
-    def test_stomp_authentication_authenticated(self):
+    async def test_stomp_authentication_authenticated(self):
         """인증된 StompAuthentication"""
         auth = StompAuthentication(
             user_id="user123",
@@ -447,7 +447,7 @@ class TestStompAuthenticator:
         assert auth.has_authority("ROLE_ADMIN") is True
         assert auth.has_authority("ROLE_SUPER") is False
 
-    def test_stomp_anonymous(self):
+    async def test_stomp_anonymous(self):
         """STOMP_ANONYMOUS 상수"""
         assert STOMP_ANONYMOUS.authenticated is False
         assert STOMP_ANONYMOUS.user_id is None
@@ -456,7 +456,7 @@ class TestStompAuthenticator:
 class TestWebSocketSessionManagerAuthentication:
     """WebSocketSessionManager 인증 테스트"""
 
-    def test_add_authenticator(self):
+    async def test_add_authenticator(self):
         """인증기 추가"""
         manager = WebSocketSessionManager()
         authenticator = TokenStompAuthenticator()
@@ -466,7 +466,7 @@ class TestWebSocketSessionManagerAuthentication:
         assert len(manager.authenticators) == 1
         assert manager.authenticators[0] is authenticator
 
-    def test_set_authenticators(self):
+    async def test_set_authenticators(self):
         """인증기 목록 설정"""
         manager = WebSocketSessionManager()
         auth1 = TokenStompAuthenticator()
@@ -476,7 +476,7 @@ class TestWebSocketSessionManagerAuthentication:
 
         assert len(manager.authenticators) == 2
 
-    def test_authenticate_with_token(self):
+    async def test_authenticate_with_token(self):
         """토큰 인증 성공"""
         manager = WebSocketSessionManager()
         manager.add_authenticator(TokenStompAuthenticator())
@@ -493,7 +493,7 @@ class TestWebSocketSessionManagerAuthentication:
         assert result.is_authenticated() is True
         assert result.user_id == "user123"
 
-    def test_authenticate_with_invalid_token(self):
+    async def test_authenticate_with_invalid_token(self):
         """토큰 인증 실패"""
         manager = WebSocketSessionManager()
         manager.add_authenticator(TokenStompAuthenticator())
@@ -509,7 +509,7 @@ class TestWebSocketSessionManagerAuthentication:
         assert result is not None
         assert result.is_authenticated() is False
 
-    def test_authenticate_with_login(self):
+    async def test_authenticate_with_login(self):
         """login/passcode 인증 성공"""
         manager = WebSocketSessionManager()
         manager.add_authenticator(LoginStompAuthenticator())
@@ -527,7 +527,7 @@ class TestWebSocketSessionManagerAuthentication:
         assert result.user_id == "admin"
         assert "ROLE_ADMIN" in result.authorities
 
-    def test_authenticate_with_wrong_password(self):
+    async def test_authenticate_with_wrong_password(self):
         """login/passcode 인증 실패 (잘못된 비밀번호)"""
         manager = WebSocketSessionManager()
         manager.add_authenticator(LoginStompAuthenticator())
@@ -543,7 +543,7 @@ class TestWebSocketSessionManagerAuthentication:
         assert result is not None
         assert result.is_authenticated() is False
 
-    def test_authenticate_no_authenticator(self):
+    async def test_authenticate_no_authenticator(self):
         """인증기 없음 - None 반환"""
         manager = WebSocketSessionManager()
 
@@ -557,7 +557,7 @@ class TestWebSocketSessionManagerAuthentication:
 
         assert result is None
 
-    def test_authenticate_chain_first_match(self):
+    async def test_authenticate_chain_first_match(self):
         """인증기 체인 - 첫 번째 매칭 인증기 사용"""
         manager = WebSocketSessionManager()
         # 토큰 인증기를 먼저 등록
@@ -576,7 +576,7 @@ class TestWebSocketSessionManagerAuthentication:
         assert result is not None
         assert result.user_id == "user123"  # TokenStompAuthenticator의 결과
 
-    def test_authenticate_chain_fallback(self):
+    async def test_authenticate_chain_fallback(self):
         """인증기 체인 - 첫 번째가 지원하지 않으면 다음으로"""
         manager = WebSocketSessionManager()
         manager.add_authenticator(TokenStompAuthenticator())
@@ -594,7 +594,7 @@ class TestWebSocketSessionManagerAuthentication:
         assert result is not None
         assert result.user_id == "user"  # LoginStompAuthenticator의 결과
 
-    def test_authenticate_no_matching_authenticator(self):
+    async def test_authenticate_no_matching_authenticator(self):
         """인증기 체인 - 지원하는 인증기 없음"""
         manager = WebSocketSessionManager()
         manager.add_authenticator(TokenStompAuthenticator())

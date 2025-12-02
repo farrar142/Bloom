@@ -58,7 +58,7 @@ class GoogleOAuthConfig(OAuth2Config):
 class TestOAuth2Config:
     """OAuth2Config 테스트"""
 
-    def test_config_creation(self):
+    async def test_config_creation(self):
         """기본 설정 생성"""
         config = MockOAuthConfig()
 
@@ -69,7 +69,7 @@ class TestOAuth2Config:
         assert config.redirect_uri == "http://localhost:8000/callback"
         assert config.scopes == ["openid", "email"]
 
-    def test_google_config(self):
+    async def test_google_config(self):
         """Google OAuth 설정 예시"""
         config = GoogleOAuthConfig(
             client_id="google-client-id",
@@ -91,7 +91,7 @@ class TestOAuth2Config:
 class TestOAuth2Token:
     """OAuth2Token 테스트"""
 
-    def test_token_from_response(self):
+    async def test_token_from_response(self):
         """응답에서 토큰 생성"""
         response_data = {
             "access_token": "access-token-123",
@@ -112,7 +112,7 @@ class TestOAuth2Token:
         assert token.id_token == "id-token-789"
         assert token.raw_response == response_data
 
-    def test_token_minimal_response(self):
+    async def test_token_minimal_response(self):
         """최소 응답 (access_token만 있는 경우)"""
         response_data = {"access_token": "access-token-only"}
 
@@ -132,7 +132,7 @@ class TestOAuth2Token:
 class TestOAuth2Error:
     """OAuth2Error 테스트"""
 
-    def test_oauth2_error(self):
+    async def test_oauth2_error(self):
         """기본 OAuth2 에러"""
         error = OAuth2Error("invalid_request", "Missing required parameter")
 
@@ -140,27 +140,27 @@ class TestOAuth2Error:
         assert error.error_description == "Missing required parameter"
         assert str(error) == "invalid_request: Missing required parameter"
 
-    def test_invalid_grant_error(self):
+    async def test_invalid_grant_error(self):
         """InvalidGrantError"""
         error = InvalidGrantError()
 
         assert error.error == "invalid_grant"
         assert "invalid or expired" in error.error_description
 
-    def test_invalid_client_error(self):
+    async def test_invalid_client_error(self):
         """InvalidClientError"""
         error = InvalidClientError("Wrong client secret")
 
         assert error.error == "invalid_client"
         assert error.error_description == "Wrong client secret"
 
-    def test_invalid_token_error(self):
+    async def test_invalid_token_error(self):
         """InvalidTokenError"""
         error = InvalidTokenError()
 
         assert error.error == "invalid_token"
 
-    def test_oauth2_request_error(self):
+    async def test_oauth2_request_error(self):
         """OAuth2RequestError"""
         error = OAuth2RequestError(500, '{"error": "server_error"}')
 
@@ -176,7 +176,7 @@ class TestOAuth2Error:
 class TestOAuth2Flow:
     """OAuth2Flow 테스트"""
 
-    def test_get_authorization_url_basic(self):
+    async def test_get_authorization_url_basic(self):
         """기본 authorization URL 생성"""
         flow = OAuth2Flow()
         config = MockOAuthConfig()
@@ -190,7 +190,7 @@ class TestOAuth2Flow:
         assert "state=random-state-123" in url
         assert "scope=openid+email" in url
 
-    def test_get_authorization_url_with_pkce(self):
+    async def test_get_authorization_url_with_pkce(self):
         """PKCE 파라미터 포함"""
         flow = OAuth2Flow()
         config = MockOAuthConfig()
@@ -205,7 +205,7 @@ class TestOAuth2Flow:
         assert "code_challenge=challenge-abc" in url
         assert "code_challenge_method=S256" in url
 
-    def test_get_authorization_url_with_nonce(self):
+    async def test_get_authorization_url_with_nonce(self):
         """OpenID Connect nonce 포함"""
         flow = OAuth2Flow()
         config = MockOAuthConfig()
@@ -214,7 +214,7 @@ class TestOAuth2Flow:
 
         assert "nonce=nonce-123" in url
 
-    def test_get_authorization_url_with_extra_params(self):
+    async def test_get_authorization_url_with_extra_params(self):
         """추가 파라미터 포함"""
         flow = OAuth2Flow()
         config = GoogleOAuthConfig(
@@ -372,7 +372,7 @@ class TestOAuth2Flow:
 class TestPKCE:
     """PKCE 헬퍼 테스트"""
 
-    def test_generate_pkce_pair(self):
+    async def test_generate_pkce_pair(self):
         """PKCE 쌍 생성"""
         verifier, challenge = generate_pkce_pair()
 
@@ -387,7 +387,7 @@ class TestPKCE:
         assert verifier != verifier2
         assert challenge != challenge2
 
-    def test_pkce_challenge_verification(self):
+    async def test_pkce_challenge_verification(self):
         """PKCE challenge 검증 (SHA256)"""
         import hashlib
         import base64
@@ -409,11 +409,11 @@ class TestPKCE:
 class TestOAuth2FlowComponent:
     """OAuth2FlowComponent DI 테스트"""
 
-    def test_component_inherits_flow(self):
+    async def test_component_inherits_flow(self):
         """OAuth2Flow를 상속하는지 확인"""
         assert issubclass(OAuth2FlowComponent, OAuth2Flow)
 
-    def test_component_is_decorated(self):
+    async def test_component_is_decorated(self):
         """@Component 데코레이터가 적용되었는지 확인"""
         from bloom.core.container import ComponentContainer
 
@@ -429,7 +429,7 @@ class TestOAuth2FlowComponent:
 class TestOAuth2Integration:
     """OAuth2 통합 테스트"""
 
-    def test_oauth2_flow_di_injection(self, reset_container_manager):
+    async def test_oauth2_flow_di_injection(self, reset_container_manager):
         """DI를 통한 OAuth2Flow 주입"""
         from bloom import Application, Component
         import bloom.web.auth.oauth2 as oauth2_module

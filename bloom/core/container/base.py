@@ -13,6 +13,7 @@ from typing import (
 
 if TYPE_CHECKING:
     from ..manager import ContainerManager
+    from .factory import FactoryContainer
 
 from ..manager import get_current_manager, try_get_current_manager
 from .element import Element
@@ -286,22 +287,29 @@ class Container[T]:
                 factory_container = manager.get_factory_container(dep_type)
                 if factory_container:
                     from .element import Scope as ScopeEnum
-                    
-                    scope, prototype_mode = manager.get_container_scope(factory_container)
-                    
+
+                    scope, prototype_mode = manager.get_container_scope(
+                        factory_container
+                    )
+
                     # SINGLETON Factory인 경우 기존 인스턴스 사용
                     if scope == ScopeEnum.SINGLETON:
-                        existing_instance = manager.get_instance(dep_type, raise_exception=False)
+                        existing_instance = manager.get_instance(
+                            dep_type, raise_exception=False
+                        )
                         if existing_instance is not None:
                             kwargs[name] = existing_instance
                             continue
-                    
+
                     # CALL Factory - LazyFieldProxy로 주입
-                    def make_factory_resolver(fc: "FactoryContainer", m: "ContainerManager"):
+                    def make_factory_resolver(
+                        fc: "FactoryContainer", m: "ContainerManager"
+                    ):
                         def resolver():
                             return fc.initialize_instance()
+
                         return resolver
-                    
+
                     kwargs[name] = LazyFieldProxy(
                         make_factory_resolver(factory_container, manager),
                         dep_type,
@@ -338,7 +346,7 @@ class Container[T]:
     def initialize_instance(self) -> T:
         """
         인스턴스 초기화 (캐시 확인 후 생성)
-        
+
         Note: @PostConstruct는 여기서 호출하지 않습니다.
         orchestrator가 async로 처리합니다.
         """

@@ -28,20 +28,20 @@ from bloom.web.http import StreamingResponse, FileResponse
 class TestHttpModels:
     """HTTP 요청/응답 모델 테스트"""
 
-    def test_http_request_basic(self):
+    async def test_http_request_basic(self):
         """기본 HTTP 요청 생성"""
         request = HttpRequest(method="GET", path="/users")
         assert request.method == "GET"
         assert request.path == "/users"
 
-    def test_http_request_with_body(self):
+    async def test_http_request_with_body(self):
         """바디가 있는 HTTP 요청"""
         body = b'{"name": "test"}'
         request = HttpRequest(method="POST", path="/users", body=body)
         assert request.json == {"name": "test"}
         assert request.text == '{"name": "test"}'
 
-    def test_http_response_factory_methods(self):
+    async def test_http_response_factory_methods(self):
         """HTTP 응답 팩토리 메서드들"""
         assert HttpResponse.ok({"data": 1}).status_code == 200
         assert HttpResponse.created().status_code == 201
@@ -50,7 +50,7 @@ class TestHttpModels:
         assert HttpResponse.not_found().status_code == 404
         assert HttpResponse.internal_error().status_code == 500
 
-    def test_http_response_to_json(self):
+    async def test_http_response_to_json(self):
         """응답 JSON 직렬화"""
         response = HttpResponse.ok({"message": "안녕"})
         json_bytes = response.to_json()
@@ -61,7 +61,7 @@ class TestHttpModels:
 class TestHttpMethodHandlerContainer:
     """HTTP 메서드 핸들러 테스트"""
 
-    def test_get_decorator(self):
+    async def test_get_decorator(self):
         """@Get 데코레이터"""
 
         @Component
@@ -75,7 +75,7 @@ class TestHttpMethodHandlerContainer:
         assert container.get_metadata("http_method") == "GET"
         assert container.get_metadata("http_path") == "/items"
 
-    def test_post_decorator(self):
+    async def test_post_decorator(self):
         """@Post 데코레이터"""
 
         @Component
@@ -124,7 +124,7 @@ class TestHttpMethodHandlerContainer:
 class TestRouter:
     """Router 테스트"""
 
-    def test_router_collect_routes(self):
+    async def test_router_collect_routes(self):
         """라우터가 핸들러들을 수집"""
 
         @Component
@@ -243,7 +243,7 @@ class TestRouter:
 class TestController:
     """Controller 및 RequestMapping 테스트"""
 
-    def test_controller_creates_container(self):
+    async def test_controller_creates_container(self):
         """@Controller가 ControllerContainer를 생성"""
 
         @Controller
@@ -255,7 +255,7 @@ class TestController:
             TestController.__container__, ControllerContainer  # type:ignore
         )
 
-    def test_request_mapping_sets_path(self):
+    async def test_request_mapping_sets_path(self):
         """@RequestMapping이 경로를 설정"""
 
         @Controller
@@ -625,7 +625,7 @@ class TestResponseTypeConversion:
         assert response.status_code == 200
         assert response.body == {"data": "raw"}
 
-    def test_handler_repr_with_response_type(self):
+    async def test_handler_repr_with_response_type(self):
         """response_type이 있으면 __repr__에 포함"""
         from pydantic import BaseModel
 
@@ -635,19 +635,19 @@ class TestResponseTypeConversion:
         @Component
         class TestController:
             @Get("/test", response=Output)
-            def test_method(self) -> dict:
+            async def test_method(self) -> dict:
                 return {"value": "test"}
 
         handler = TestController.test_method.__container__
         assert "Output" in repr(handler.get_metadata("response_type"))
 
-    def test_handler_repr_without_response_type(self):
+    async def test_handler_repr_without_response_type(self):
         """response_type 없으면 __repr__에 미포함"""
 
         @Component
         class TestController:
             @Get("/test")
-            def test_method(self) -> str:
+            async def test_method(self) -> str:
                 return "test"
 
         handler = TestController.test_method.__container__

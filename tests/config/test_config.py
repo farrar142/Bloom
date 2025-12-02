@@ -11,7 +11,7 @@ from bloom.config import ConfigurationProperties
 class TestConfigurationPropertiesBasic:
     """기본 ConfigurationProperties 테스트"""
 
-    def test_dataclass_without_prefix(self):
+    async def test_dataclass_without_prefix(self):
         """prefix 없이 dataclass 사용"""
 
         @ConfigurationProperties
@@ -22,13 +22,13 @@ class TestConfigurationPropertiesBasic:
 
         app = Application("test")
         app.load_config({"name": "TestApp", "debug": True}, source_type="dict")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(AppConfig)
         assert config.name == "TestApp"
         assert config.debug is True
 
-    def test_dataclass_with_prefix(self):
+    async def test_dataclass_with_prefix(self):
         """prefix와 함께 dataclass 사용"""
 
         @ConfigurationProperties("app.database")
@@ -53,7 +53,7 @@ class TestConfigurationPropertiesBasic:
             },
             source_type="dict",
         )
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(DatabaseConfig)
         assert config.host == "db.example.com"
@@ -61,7 +61,7 @@ class TestConfigurationPropertiesBasic:
         assert config.username == "admin"
         assert config.password == "secret"
 
-    def test_dataclass_with_default_values(self):
+    async def test_dataclass_with_default_values(self):
         """기본값이 있는 dataclass"""
 
         @ConfigurationProperties("app")
@@ -73,14 +73,14 @@ class TestConfigurationPropertiesBasic:
 
         app = Application("test")
         app.load_config({"app": {"name": "TestApp"}}, source_type="dict")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(AppConfig)
         assert config.name == "TestApp"
         assert config.debug is False  # 기본값
         assert config.version == "1.0.0"  # 기본값
 
-    def test_configuration_injection_into_component(self):
+    async def test_configuration_injection_into_component(self):
         """Component에 설정 주입"""
 
         @ConfigurationProperties("database")
@@ -100,7 +100,7 @@ class TestConfigurationPropertiesBasic:
         app.load_config(
             {"database": {"host": "prod-db.com", "port": 3306}}, source_type="dict"
         )
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         service = app.manager.get_instance(DatabaseService)
         assert service.get_connection_string() == "prod-db.com:3306"
@@ -109,7 +109,7 @@ class TestConfigurationPropertiesBasic:
 class TestConfigurationPropertiesPydantic:
     """Pydantic 모델 ConfigurationProperties 테스트"""
 
-    def test_pydantic_model_basic(self):
+    async def test_pydantic_model_basic(self):
         """Pydantic 모델 기본 사용"""
         try:
             from pydantic import BaseModel, Field
@@ -137,14 +137,14 @@ class TestConfigurationPropertiesPydantic:
             },
             source_type="dict",
         )
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(DatabaseConfig)
         assert config.host == "db.example.com"
         assert config.port == 3306
         assert config.username == "admin"
 
-    def test_pydantic_model_validation(self):
+    async def test_pydantic_model_validation(self):
         """Pydantic 검증 테스트"""
         try:
             from pydantic import BaseModel, Field, ValidationError
@@ -163,13 +163,13 @@ class TestConfigurationPropertiesPydantic:
         )
 
         with pytest.raises(ValidationError):
-            app.scan(__name__).ready()
+            await app.scan(__name__).ready_async()
 
 
 class TestConfigurationPropertiesNested:
     """중첩된 설정 테스트"""
 
-    def test_nested_dataclass(self):
+    async def test_nested_dataclass(self):
         """중첩된 dataclass"""
 
         @ConfigurationProperties("app.database")
@@ -198,7 +198,7 @@ class TestConfigurationPropertiesNested:
             },
             source_type="dict",
         )
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(DatabaseConfig)
         assert config.host == "db.example.com"
@@ -209,7 +209,7 @@ class TestConfigurationPropertiesNested:
 class TestConfigurationLoader:
     """설정 로더 테스트"""
 
-    def test_load_from_dict(self):
+    async def test_load_from_dict(self):
         """딕셔너리에서 설정 로드"""
 
         @ConfigurationProperties("app")
@@ -219,12 +219,12 @@ class TestConfigurationLoader:
 
         app = Application("test")
         app.load_config({"app": {"name": "TestApp"}}, source_type="dict")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(AppConfig)
         assert config.name == "TestApp"
 
-    def test_multiple_config_sources(self):
+    async def test_multiple_config_sources(self):
         """여러 설정 소스 병합"""
 
         @ConfigurationProperties("app")
@@ -237,7 +237,7 @@ class TestConfigurationLoader:
         app = Application("test")
         app.load_config({"app": {"name": "TestApp", "debug": True}}, source_type="dict")
         app.load_config({"app": {"version": "2.0.0"}}, source_type="dict")  # 병합
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(AppConfig)
         assert config.name == "TestApp"
@@ -248,7 +248,7 @@ class TestConfigurationLoader:
 class TestConfigurationPropertiesHelper:
     """Helper 함수 테스트"""
 
-    def test_is_configuration_properties(self):
+    async def test_is_configuration_properties(self):
         """is_configuration_properties 함수"""
         from bloom.config.properties import is_configuration_properties
 
@@ -264,7 +264,7 @@ class TestConfigurationPropertiesHelper:
         assert is_configuration_properties(AppConfig) is True
         assert is_configuration_properties(RegularClass) is False
 
-    def test_get_prefix(self):
+    async def test_get_prefix(self):
         """get_prefix 함수"""
         from bloom.config.properties import get_prefix
 
@@ -285,7 +285,7 @@ class TestConfigurationPropertiesHelper:
 class TestConfigurationEnvVars:
     """환경변수 참조 테스트"""
 
-    def test_env_var_in_yaml(self, tmp_path):
+    async def test_env_var_in_yaml(self, tmp_path):
         """YAML 파일에서 환경변수 참조"""
         import os
 
@@ -323,7 +323,7 @@ database:
 
         app = Application("test")
         app.load_config(str(config_file), source_type="yaml")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         db_config = app.manager.get_instance(DatabaseConfig)
         app_config = app.manager.get_instance(AppConfig)
@@ -338,7 +338,7 @@ database:
         del os.environ["TEST_DB_PORT"]
         del os.environ["TEST_DEBUG"]
 
-    def test_env_var_with_default_value(self, tmp_path):
+    async def test_env_var_with_default_value(self, tmp_path):
         """환경변수가 없을 때 기본값 사용"""
         import os
 
@@ -365,14 +365,14 @@ database:
 
         app = Application("test")
         app.load_config(str(config_file), source_type="yaml")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(DatabaseConfig)
         assert config.host == "localhost"
         assert config.port == 5432
         assert config.username == "defaultuser"
 
-    def test_env_var_partial_substitution(self, tmp_path):
+    async def test_env_var_partial_substitution(self, tmp_path):
         """문자열 일부만 환경변수로 치환"""
         import os
 
@@ -396,7 +396,7 @@ server:
 
         app = Application("test")
         app.load_config(str(config_file), source_type="yaml")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(ServerConfig)
         assert config.url == "https://example.com:8080/api"
@@ -405,7 +405,7 @@ server:
         del os.environ["TEST_DOMAIN"]
         del os.environ["TEST_PORT"]
 
-    def test_env_var_in_dict(self):
+    async def test_env_var_in_dict(self):
         """딕셔너리에서도 환경변수 참조 가능"""
         import os
 
@@ -418,14 +418,14 @@ server:
 
         app = Application("test")
         app.load_config({"app": {"name": "${TEST_APP_NAME}"}}, source_type="dict")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(AppConfig)
         assert config.name == "DictApp"
 
         del os.environ["TEST_APP_NAME"]
 
-    def test_env_var_nested_dict(self, tmp_path):
+    async def test_env_var_nested_dict(self, tmp_path):
         """중첩된 딕셔너리에서 환경변수 참조"""
         import os
 
@@ -452,7 +452,7 @@ cache:
 
         app = Application("test")
         app.load_config(str(config_file), source_type="yaml")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(RedisConfig)
         assert config.host == "redis.local"
@@ -491,7 +491,7 @@ class LogLevel(str, Enum):
 class TestConfigurationPropertiesEnum:
     """ConfigurationProperties Enum 지원 테스트"""
 
-    def test_enum_field_by_value(self, reset_container_manager):
+    async def test_enum_field_by_value(self, reset_container_manager):
         """Enum 필드 - value로 변환"""
 
         @ConfigurationProperties("app")
@@ -512,14 +512,14 @@ class TestConfigurationPropertiesEnum:
             },
             source_type="dict",
         )
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(AppConfig)
         assert config.name == "TestApp"
         assert config.environment == Environment.PROD
         assert config.log_level == LogLevel.DEBUG
 
-    def test_enum_field_by_name(self, reset_container_manager):
+    async def test_enum_field_by_name(self, reset_container_manager):
         """Enum 필드 - name으로 변환"""
 
         @ConfigurationProperties("app")
@@ -536,12 +536,12 @@ class TestConfigurationPropertiesEnum:
             },
             source_type="dict",
         )
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(AppConfig)
         assert config.environment == Environment.STAGING
 
-    def test_enum_field_default(self, reset_container_manager):
+    async def test_enum_field_default(self, reset_container_manager):
         """Enum 필드 기본값 사용"""
 
         @ConfigurationProperties("app")
@@ -551,12 +551,12 @@ class TestConfigurationPropertiesEnum:
 
         app = Application("test")
         app.load_config({"app": {}}, source_type="dict")
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(AppConfig)
         assert config.environment == Environment.DEV
 
-    def test_optional_enum_field(self, reset_container_manager):
+    async def test_optional_enum_field(self, reset_container_manager):
         """Optional Enum 필드"""
 
         @ConfigurationProperties("app")
@@ -573,7 +573,7 @@ class TestConfigurationPropertiesEnum:
             },
             source_type="dict",
         )
-        app.scan(__name__).ready()
+        await app.scan(__name__).ready_async()
 
         config = app.manager.get_instance(AppConfig)
         assert config.environment == Environment.STAGING

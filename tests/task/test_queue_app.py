@@ -44,14 +44,14 @@ def app_with_queue(reset_container_manager):
 class TestQueueApplication:
     """QueueApplication 기본 테스트"""
 
-    def test_queue_property(self, app_with_queue):
+    async def test_queue_property(self, app_with_queue):
         """app.queue 프로퍼티가 QueueApplication을 반환"""
         queue = app_with_queue.queue
 
         assert isinstance(queue, QueueApplication)
         assert queue.application is app_with_queue
 
-    def test_queue_backend_lazy_resolve(self, app_with_queue):
+    async def test_queue_backend_lazy_resolve(self, app_with_queue):
         """QueueApplication.backend가 lazy하게 DistributedTaskBackend 조회"""
         queue = app_with_queue.queue
 
@@ -60,7 +60,7 @@ class TestQueueApplication:
 
         assert isinstance(backend, DistributedTaskBackend)
 
-    def test_queue_registry_before_startup(self, app_with_queue):
+    async def test_queue_registry_before_startup(self, app_with_queue):
         """startup() 전에는 registry가 None"""
         queue = app_with_queue.queue
 
@@ -141,7 +141,7 @@ class TestQueueApplicationCallbacks:
 class TestQueueApplicationWithoutBackend:
     """DistributedTaskBackend 없이 QueueApplication 사용 시"""
 
-    def test_queue_without_backend_raises_error(self, reset_container_manager):
+    async def test_queue_without_backend_raises_error(self, reset_container_manager):
         """DistributedTaskBackend가 없으면 startup 시 에러"""
 
         @Component

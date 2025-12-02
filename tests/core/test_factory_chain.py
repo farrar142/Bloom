@@ -33,7 +33,7 @@ class BuilderTarget:
 class TestFactoryChain:
     """Factory Chain 패턴 테스트 (Factory → Factory → Factory)"""
 
-    def test_factory_chain_with_order(self):
+    async def test_factory_chain_with_order(self):
         """@Order로 순서 지정된 Factory Chain"""
 
         @Component
@@ -58,13 +58,13 @@ class TestFactoryChain:
                 return counter
 
         app = Application("test_chain_order")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         # 최종값만 저장되어야 함
         counter = app.manager.get_instance(Counter)
         assert counter.value == 3  # 0 + 1 + 2
 
-    def test_factory_chain_auto_order_by_dependency(self):
+    async def test_factory_chain_auto_order_by_dependency(self):
         """의존성 그래프로 자동 순서 결정"""
 
         @Component
@@ -81,12 +81,12 @@ class TestFactoryChain:
                 return counter
 
         app = Application("test_chain_auto")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         counter = app.manager.get_instance(Counter)
         assert counter.value == 15  # 10 + 5
 
-    def test_factory_chain_mixed_order(self):
+    async def test_factory_chain_mixed_order(self):
         """@Order와 의존성 기반 혼합"""
 
         @Component
@@ -111,7 +111,7 @@ class TestFactoryChain:
                 return c
 
         app = Application("test_chain_mixed")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         counter = app.manager.get_instance(Counter)
         # 순서: create(0) → step_five(+5) → step_ten(+10)
@@ -126,7 +126,7 @@ class TestFactoryChain:
 class TestBuilderChain:
     """Builder Chain 패턴 테스트 (Component → Factory → Factory)"""
 
-    def test_builder_chain_with_component(self):
+    async def test_builder_chain_with_component(self):
         """Component를 Factory가 수정"""
 
         @Component
@@ -148,7 +148,7 @@ class TestBuilderChain:
                 return target
 
         app = Application("test_builder")
-        app.scan(Target, Config).ready()
+        await app.scan(Target, Config).ready_async()
 
         target = app.manager.get_instance(Target)
         assert target.val == 3  # 0 + 1 + 2
@@ -162,7 +162,7 @@ class TestBuilderChain:
 class TestAmbiguousProvider:
     """Ambiguous Provider Anti-pattern 감지 테스트"""
 
-    def test_ambiguous_provider_error(self):
+    async def test_ambiguous_provider_error(self):
         """동일 타입 Creator가 2개 이상이고 Modifier가 있으면 에러"""
 
         class Value:
@@ -192,14 +192,14 @@ class TestAmbiguousProvider:
         app.scan(BadConfig)
 
         with pytest.raises(AmbiguousProviderError) as exc_info:
-            app.ready()
+            await app.ready_async()
 
         # 에러 메시지에 충돌 Factory 목록 포함
         error_msg = str(exc_info.value)
         assert "create1" in error_msg or "create2" in error_msg
         assert "Value" in error_msg
 
-    def test_multiple_creators_without_modifier_is_ok(self):
+    async def test_multiple_creators_without_modifier_is_ok(self):
         """Modifier가 없으면 여러 Creator도 허용 - get_instances로 모두 조회 가능"""
 
         class Service:
@@ -220,7 +220,7 @@ class TestAmbiguousProvider:
                 return s
 
         app = Application("test_multi_creator")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         # 둘 다 등록됨 - get_instances로 모두 조회
         services = app.manager.get_instances(Service)
@@ -237,7 +237,7 @@ class TestAmbiguousProvider:
 class TestEdgeCases:
     """엣지 케이스 테스트"""
 
-    def test_single_factory_no_chain(self):
+    async def test_single_factory_no_chain(self):
         """Factory가 하나뿐이면 체인 아님"""
 
         @Component
@@ -247,12 +247,12 @@ class TestEdgeCases:
                 return Counter(42)
 
         app = Application("test_single")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         counter = app.manager.get_instance(Counter)
         assert counter.value == 42
 
-    def test_chain_with_different_types(self):
+    async def test_chain_with_different_types(self):
         """다른 타입을 반환하는 Factory들은 체인이 아님"""
 
         class TypeA:
@@ -274,14 +274,14 @@ class TestEdgeCases:
                 return b
 
         app = Application("test_diff_types")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         a = app.manager.get_instance(TypeA)
         b = app.manager.get_instance(TypeB)
         assert a.val == 1
         assert b.val == 11
 
-    def test_order_zero(self):
+    async def test_order_zero(self):
         """Order(0)도 유효"""
 
         @Component
@@ -298,12 +298,12 @@ class TestEdgeCases:
                 return c
 
         app = Application("test_order_zero")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         counter = app.manager.get_instance(Counter)
         assert counter.value == 1
 
-    def test_negative_order(self):
+    async def test_negative_order(self):
         """음수 Order도 유효"""
 
         @Component
@@ -320,7 +320,7 @@ class TestEdgeCases:
                 return c
 
         app = Application("test_negative_order")
-        app.scan(Config).ready()
+        await app.scan(Config).ready_async()
 
         counter = app.manager.get_instance(Counter)
         assert counter.value == 101
@@ -349,7 +349,7 @@ class TestDiamondFactoryChain:
             B2
     """
 
-    def test_diamond_same_type_converging(self):
+    async def test_diamond_same_type_converging(self):
         """
         같은 타입으로 수렴하는 다이아몬드 패턴
 
@@ -388,13 +388,13 @@ class TestDiamondFactoryChain:
                 return c
 
         app = Application("test_diamond_converge")
-        app.scan(DiamondConfig).ready()
+        await app.scan(DiamondConfig).ready_async()
 
         counter = app.manager.get_instance(Counter)
         # 순서: create(0) → add_one(+1=1) → multiply_two(*2=2) → add_ten(+10=12)
         assert counter.value == 12
 
-    def test_diamond_different_types_branch(self):
+    async def test_diamond_different_types_branch(self):
         """
         다른 타입으로 분기하는 다이아몬드 패턴
 
@@ -434,7 +434,7 @@ class TestDiamondFactoryChain:
                 return m
 
         app = Application("test_diamond_branch")
-        app.scan(DiamondConfig).ready()
+        await app.scan(DiamondConfig).ready_async()
 
         counter = app.manager.get_instance(Counter)
         multiplier = app.manager.get_instance(Multiplier)
@@ -444,7 +444,7 @@ class TestDiamondFactoryChain:
         # Multiplier: 15 * 2 = 30 → *3 = 90
         assert multiplier.factor == 90
 
-    def test_diamond_with_intermediate_type(self):
+    async def test_diamond_with_intermediate_type(self):
         """
         중간 타입을 거치는 다이아몬드 패턴
 
@@ -490,7 +490,7 @@ class TestDiamondFactoryChain:
                 return t.apply(c)
 
         app = Application("test_intermediate")
-        app.scan(ComplexConfig).ready()
+        await app.scan(ComplexConfig).ready_async()
 
         counter = app.manager.get_instance(Counter)
         transformer = app.manager.get_instance(Transformer)
@@ -500,7 +500,7 @@ class TestDiamondFactoryChain:
         # Counter: 5 * 2 = 10 (transform에서 변환)
         assert counter.value == 10
 
-    def test_long_chain_with_multiple_branches(self):
+    async def test_long_chain_with_multiple_branches(self):
         """
         긴 체인에서 여러 분기 테스트
 
@@ -538,12 +538,12 @@ class TestDiamondFactoryChain:
                 return c
 
         app = Application("test_long_chain")
-        app.scan(LongChainConfig).ready()
+        await app.scan(LongChainConfig).ready_async()
 
         counter = app.manager.get_instance(Counter)
         assert counter.value == 25
 
-    def test_parallel_independent_chains(self):
+    async def test_parallel_independent_chains(self):
         """
         독립적인 병렬 체인 테스트
 
@@ -580,7 +580,7 @@ class TestDiamondFactoryChain:
                 return m
 
         app = Application("test_parallel")
-        app.scan(ParallelConfig).ready()
+        await app.scan(ParallelConfig).ready_async()
 
         counter = app.manager.get_instance(Counter)
         multiplier = app.manager.get_instance(Multiplier)

@@ -271,7 +271,7 @@ class TestUserController(TestCase):
     components = [UserRepository, UserService, UserController]
     config = {"debug": True}  # 선택적 설정
 
-    def test_get_users(self):
+    async def test_get_users(self):
         # DI 인스턴스 조회
         service = self.get_instance(UserService)
         self.assert_instance_of(service, UserService)
@@ -279,13 +279,13 @@ class TestUserController(TestCase):
         # 필드 주입 검증
         repo = self.assert_injected(service, "repository", UserRepository)
 
-    def test_http_request(self):
+    async def test_http_request(self):
         # HTTP 요청 (동기)
         response = self.get("/users")
         self.assert_success(response)
         self.assert_json_equal(response, ["alice", "bob"])
 
-    def test_with_mock(self):
+    async def test_with_mock(self):
         # Mock 오버라이드
         class FakeRepository:
             def get_users(self): return ["fake"]

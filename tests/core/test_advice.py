@@ -256,7 +256,7 @@ class TestMethodAdvice:
         # Then
         assert shared_data["request_id"] == "123"
 
-    def test_sync_handler_support(self):
+    async def test_sync_handler_support(self):
         """동기 핸들러 지원"""
         # Given
         call_log = []
@@ -323,7 +323,7 @@ class TestMethodAdvice:
 class TestMethodAdviceRegistry:
     """MethodAdviceRegistry 단위 테스트"""
 
-    def test_find_applicable_filters_by_supports(self):
+    async def test_find_applicable_filters_by_supports(self):
         """supports()로 적용 가능한 어드바이스 필터링"""
         # Given
         tx_advice = TransactionAdvice()
@@ -343,7 +343,7 @@ class TestMethodAdviceRegistry:
         assert len(applicable) == 2
         assert tx_advice in applicable
 
-    def test_find_applicable_returns_empty_when_no_match(self):
+    async def test_find_applicable_returns_empty_when_no_match(self):
         """매칭되는 어드바이스가 없어도 기본 CallStackTraceAdvice는 포함"""
         # Given
         tx_advice = TransactionAdvice()
@@ -370,7 +370,7 @@ class TestMethodAdviceRegistry:
 class TestInvocationContext:
     """InvocationContext 단위 테스트"""
 
-    def test_attribute_set_and_get(self):
+    async def test_attribute_set_and_get(self):
         """속성 설정 및 조회"""
         # Given
         container = MockHandlerContainer()
@@ -435,7 +435,7 @@ class TestMethodProxy:
         assert result == 10
         assert call_log == ["before", "method", "after"]
 
-    def test_sync_method_proxy(self):
+    async def test_sync_method_proxy(self):
         """동기 메서드 프록시"""
         # Given
         call_log = []
@@ -484,7 +484,7 @@ class TestMethodProxy:
 class TestAdviceWithDI:
     """DI 컨테이너와 Advice 통합 테스트"""
 
-    def test_advice_applied_to_handler_method(self):
+    async def test_advice_applied_to_handler_method(self):
         """@Handler 메서드에 Advice 적용"""
         # Given
         call_log: list[str] = []
@@ -515,7 +515,7 @@ class TestAdviceWithDI:
                 return "result"
 
         # When
-        app = Application("test").scan(AdviceConfig, MyService).ready()
+        app = await Application("test").scan(AdviceConfig, MyService).ready_async()
         service = app.manager.get_instance(MyService)
 
         # 핸들러 호출 직전에 로그 초기화 (초기화 시 호출되는 로그 제외)
@@ -559,7 +559,7 @@ class TestAdviceWithDI:
                 return "async_result"
 
         # When
-        app = Application("test").scan(AdviceConfig, MyService).ready()
+        app = await Application("test").scan(AdviceConfig, MyService).ready_async()
         service = app.manager.get_instance(MyService)
         result = await service.do_something_async()
 
@@ -567,7 +567,7 @@ class TestAdviceWithDI:
         assert result == "async_result"
         assert call_log == ["advice:before", "handler:execute", "advice:after"]
 
-    def test_no_advice_when_registry_not_registered(self):
+    async def test_no_advice_when_registry_not_registered(self):
         """Registry가 없으면 Advice 미적용"""
         # Given
         call_log: list[str] = []
@@ -580,7 +580,7 @@ class TestAdviceWithDI:
                 return "result"
 
         # When - Registry 없이 Application 시작
-        app = Application("test").scan(MyService).ready()
+        app = await Application("test").scan(MyService).ready_async()
         service = app.manager.get_instance(MyService)
         result = service.do_something()
 
@@ -588,7 +588,7 @@ class TestAdviceWithDI:
         assert result == "result"
         assert call_log == ["handler:execute"]
 
-    def test_advice_auto_injection(self):
+    async def test_advice_auto_injection(self):
         """@Component Advice를 Factory에서 자동 주입"""
         # Given
         call_log: list[str] = []
@@ -621,7 +621,11 @@ class TestAdviceWithDI:
                 return "result"
 
         # When
-        app = Application("test").scan(LoggingAdvice, AdviceConfig, MyService).ready()
+        app = (
+            await Application("test")
+            .scan(LoggingAdvice, AdviceConfig, MyService)
+            .ready_async()
+        )
         service = app.manager.get_instance(MyService)
 
         # 핸들러 호출 직전에 로그 초기화 (초기화 시 호출되는 로그 제외)
@@ -639,7 +643,7 @@ class TestAdviceWithDI:
 class TestNestedAdvice:
     """중첩 핸들러 호출 시 Advice 동작"""
 
-    def test_nested_handler_call(self):
+    async def test_nested_handler_call(self):
         """중첩 핸들러 호출에도 Advice 적용"""
         # Given
         call_log: list[str] = []
@@ -681,7 +685,11 @@ class TestNestedAdvice:
                 return f"outer-{result}"
 
         # When
-        app = Application("test").scan(AdviceConfig, InnerService, OuterService).ready()
+        app = (
+            await Application("test")
+            .scan(AdviceConfig, InnerService, OuterService)
+            .ready_async()
+        )
         outer = app.manager.get_instance(OuterService)
         result = outer.outer_method()
 

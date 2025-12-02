@@ -564,7 +564,7 @@ class MyService:
 ### 단위 테스트 (Registry 직접 주입)
 
 ```python
-def test_advice():
+async def test_advice():
     # Given
     registry = MethodAdviceRegistry()
     registry.register(MyAdvice())
@@ -586,7 +586,7 @@ def test_advice():
 ### 통합 테스트 (Application 사용)
 
 ```python
-def test_advice_with_di():
+async def test_advice_with_di():
     # Given
     @Component
     class AdviceConfig:

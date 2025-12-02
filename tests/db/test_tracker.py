@@ -13,19 +13,19 @@ from bloom.db.tracker import DirtyTracker, EntityState, FieldChange
 class TestEntityState:
     """EntityState 열거형 테스트"""
 
-    def test_transient_state(self):
+    async def test_transient_state(self):
         """TRANSIENT 상태"""
         assert EntityState.TRANSIENT.value == "transient"
 
-    def test_managed_state(self):
+    async def test_managed_state(self):
         """MANAGED 상태"""
         assert EntityState.MANAGED.value == "managed"
 
-    def test_detached_state(self):
+    async def test_detached_state(self):
         """DETACHED 상태"""
         assert EntityState.DETACHED.value == "detached"
 
-    def test_deleted_state(self):
+    async def test_deleted_state(self):
         """DELETED 상태"""
         assert EntityState.DELETED.value == "deleted"
 
@@ -38,7 +38,7 @@ class TestEntityState:
 class TestFieldChange:
     """FieldChange 테스트"""
 
-    def test_create_field_change(self):
+    async def test_create_field_change(self):
         """FieldChange 생성"""
         change = FieldChange(
             field_name="name",
@@ -50,7 +50,7 @@ class TestFieldChange:
         assert change.old_value == "alice"
         assert change.new_value == "bob"
 
-    def test_field_change_with_none(self):
+    async def test_field_change_with_none(self):
         """None 값 변경"""
         change = FieldChange(
             field_name="email",
@@ -70,7 +70,7 @@ class TestFieldChange:
 class TestDirtyTrackerBasic:
     """DirtyTracker 기본 테스트"""
 
-    def test_default_state(self):
+    async def test_default_state(self):
         """기본 상태"""
         tracker = DirtyTracker()
 
@@ -78,12 +78,12 @@ class TestDirtyTrackerBasic:
         assert tracker.is_new is True
         assert tracker.is_dirty is False
 
-    def test_is_new_initially_true(self):
+    async def test_is_new_initially_true(self):
         """새로 생성된 트래커는 is_new=True"""
         tracker = DirtyTracker()
         assert tracker.is_new is True
 
-    def test_empty_dirty_fields(self):
+    async def test_empty_dirty_fields(self):
         """초기 dirty 필드 없음"""
         tracker = DirtyTracker()
 
@@ -99,7 +99,7 @@ class TestDirtyTrackerBasic:
 class TestMarkDirty:
     """dirty 마킹 테스트"""
 
-    def test_mark_dirty(self):
+    async def test_mark_dirty(self):
         """필드 dirty 마킹"""
         tracker = DirtyTracker()
 
@@ -109,7 +109,7 @@ class TestMarkDirty:
         assert tracker.is_field_dirty("name") is True
         assert "name" in tracker.get_dirty_fields()
 
-    def test_mark_dirty_multiple_fields(self):
+    async def test_mark_dirty_multiple_fields(self):
         """여러 필드 dirty 마킹"""
         tracker = DirtyTracker()
 
@@ -120,7 +120,7 @@ class TestMarkDirty:
         assert "name" in tracker.get_dirty_fields()
         assert "age" in tracker.get_dirty_fields()
 
-    def test_mark_dirty_same_field_multiple_times(self):
+    async def test_mark_dirty_same_field_multiple_times(self):
         """같은 필드 여러 번 변경"""
         tracker = DirtyTracker()
 
@@ -133,7 +133,7 @@ class TestMarkDirty:
         assert change.old_value == "alice"
         assert change.new_value == "charlie"
 
-    def test_original_value_preserved(self):
+    async def test_original_value_preserved(self):
         """원래 값 보존"""
         tracker = DirtyTracker()
 
@@ -153,7 +153,7 @@ class TestMarkDirty:
 class TestGetChanges:
     """변경 정보 조회 테스트"""
 
-    def test_get_changes(self):
+    async def test_get_changes(self):
         """모든 변경 정보 조회"""
         tracker = DirtyTracker()
 
@@ -165,7 +165,7 @@ class TestGetChanges:
         assert len(changes) == 2
         assert all(isinstance(c, FieldChange) for c in changes)
 
-    def test_get_change(self):
+    async def test_get_change(self):
         """특정 필드 변경 정보"""
         tracker = DirtyTracker()
 
@@ -178,7 +178,7 @@ class TestGetChanges:
         assert change.old_value == "alice"
         assert change.new_value == "bob"
 
-    def test_get_change_not_found(self):
+    async def test_get_change_not_found(self):
         """없는 필드 변경 정보"""
         tracker = DirtyTracker()
 
@@ -186,7 +186,7 @@ class TestGetChanges:
 
         assert change is None
 
-    def test_get_original_value(self):
+    async def test_get_original_value(self):
         """원래 값 조회"""
         tracker = DirtyTracker()
 
@@ -194,7 +194,7 @@ class TestGetChanges:
 
         assert tracker.get_original_value("name") == "alice"
 
-    def test_get_original_value_not_found(self):
+    async def test_get_original_value_not_found(self):
         """없는 필드 원래 값"""
         tracker = DirtyTracker()
 
@@ -209,7 +209,7 @@ class TestGetChanges:
 class TestClear:
     """clear 테스트"""
 
-    def test_clear_dirty_fields(self):
+    async def test_clear_dirty_fields(self):
         """dirty 필드 초기화"""
         tracker = DirtyTracker()
 
@@ -222,7 +222,7 @@ class TestClear:
         assert tracker.get_dirty_fields() == []
         assert tracker.get_changes() == []
 
-    def test_clear_preserves_state(self):
+    async def test_clear_preserves_state(self):
         """clear는 state 보존"""
         tracker = DirtyTracker()
         tracker.state = EntityState.MANAGED
@@ -232,7 +232,7 @@ class TestClear:
 
         assert tracker.state == EntityState.MANAGED
 
-    def test_clear_resets_original_values(self):
+    async def test_clear_resets_original_values(self):
         """clear는 original values도 초기화"""
         tracker = DirtyTracker()
 
@@ -250,7 +250,7 @@ class TestClear:
 class TestStateTransitions:
     """상태 전이 테스트"""
 
-    def test_mark_persisted(self):
+    async def test_mark_persisted(self):
         """persist 완료 마킹"""
         tracker = DirtyTracker()
         tracker.mark_dirty("name", "alice", "bob")
@@ -261,7 +261,7 @@ class TestStateTransitions:
         assert tracker.is_new is False
         assert tracker.is_dirty is False
 
-    def test_mark_loaded(self):
+    async def test_mark_loaded(self):
         """DB에서 로드됨 마킹"""
         tracker = DirtyTracker()
         values = {"name": "alice", "age": 25}
@@ -274,7 +274,7 @@ class TestStateTransitions:
         assert tracker.get_original_value("name") == "alice"
         assert tracker.get_original_value("age") == 25
 
-    def test_mark_loaded_copies_values(self):
+    async def test_mark_loaded_copies_values(self):
         """mark_loaded는 값 복사"""
         tracker = DirtyTracker()
         values = {"name": "alice"}
@@ -285,7 +285,7 @@ class TestStateTransitions:
         values["name"] = "bob"
         assert tracker.get_original_value("name") == "alice"
 
-    def test_mark_deleted(self):
+    async def test_mark_deleted(self):
         """삭제 마킹"""
         tracker = DirtyTracker()
         tracker.state = EntityState.MANAGED
@@ -294,7 +294,7 @@ class TestStateTransitions:
 
         assert tracker.state == EntityState.DELETED
 
-    def test_detach(self):
+    async def test_detach(self):
         """세션 분리"""
         tracker = DirtyTracker()
         tracker.state = EntityState.MANAGED
@@ -312,7 +312,7 @@ class TestStateTransitions:
 class TestEdgeCases:
     """엣지 케이스 테스트"""
 
-    def test_mark_dirty_with_none_values(self):
+    async def test_mark_dirty_with_none_values(self):
         """None 값으로 dirty 마킹"""
         tracker = DirtyTracker()
 
@@ -323,7 +323,7 @@ class TestEdgeCases:
         assert change.old_value is None
         assert change.new_value == "alice@example.com"
 
-    def test_mark_dirty_to_none(self):
+    async def test_mark_dirty_to_none(self):
         """None으로 변경"""
         tracker = DirtyTracker()
 
@@ -334,7 +334,7 @@ class TestEdgeCases:
         assert change.old_value == "alice@example.com"
         assert change.new_value is None
 
-    def test_is_field_dirty_false(self):
+    async def test_is_field_dirty_false(self):
         """dirty가 아닌 필드"""
         tracker = DirtyTracker()
 
@@ -343,7 +343,7 @@ class TestEdgeCases:
         assert tracker.is_field_dirty("name") is True
         assert tracker.is_field_dirty("age") is False
 
-    def test_repr(self):
+    async def test_repr(self):
         """repr"""
         tracker = DirtyTracker()
         tracker.state = EntityState.MANAGED
@@ -363,7 +363,7 @@ class TestEdgeCases:
 class TestTrackerIntegration:
     """트래커 통합 테스트"""
 
-    def test_full_lifecycle(self):
+    async def test_full_lifecycle(self):
         """전체 생명주기"""
         tracker = DirtyTracker()
 
@@ -388,7 +388,7 @@ class TestTrackerIntegration:
         tracker.mark_deleted()
         assert tracker.state == EntityState.DELETED
 
-    def test_load_modify_save_cycle(self):
+    async def test_load_modify_save_cycle(self):
         """로드 → 수정 → 저장 사이클"""
         tracker = DirtyTracker()
 
@@ -409,7 +409,7 @@ class TestTrackerIntegration:
         tracker.clear()
         assert tracker.is_dirty is False
 
-    def test_detach_and_merge_cycle(self):
+    async def test_detach_and_merge_cycle(self):
         """분리 → 병합 사이클"""
         tracker = DirtyTracker()
 
@@ -425,7 +425,7 @@ class TestTrackerIntegration:
         tracker.mark_loaded({"name": "updated"})
         assert tracker.state == EntityState.MANAGED
 
-    def test_multiple_changes_tracking(self):
+    async def test_multiple_changes_tracking(self):
         """다중 변경 추적"""
         tracker = DirtyTracker()
 
@@ -458,7 +458,7 @@ class TestTrackerIntegration:
 class TestTrackerNotes:
     """트래커 참고사항 테스트"""
 
-    def test_tracker_is_instance_specific(self):
+    async def test_tracker_is_instance_specific(self):
         """트래커는 인스턴스별"""
         tracker1 = DirtyTracker()
         tracker2 = DirtyTracker()
@@ -468,7 +468,7 @@ class TestTrackerNotes:
         assert tracker1.is_dirty is True
         assert tracker2.is_dirty is False
 
-    def test_tracker_state_isolation(self):
+    async def test_tracker_state_isolation(self):
         """트래커 상태 격리"""
         tracker1 = DirtyTracker()
         tracker2 = DirtyTracker()

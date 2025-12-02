@@ -11,7 +11,7 @@ from bloom.core import (
 class TestComplexDependencyInjection:
     """복잡한 의존성 체인 테스트"""
 
-    def test_deep_dependency_chain(self):
+    async def test_deep_dependency_chain(self):
         """깊은 의존성 체인 (A → B → C → D)"""
         init_order: list[str] = []
 
@@ -43,7 +43,7 @@ class TestComplexDependencyInjection:
             def __init__(self):
                 init_order.append("A")
 
-        app.ready()
+        await app.ready_async()
 
         # D → C → B → A 순서로 초기화되어야 함
         assert init_order == ["D", "C", "B", "A"]
@@ -54,7 +54,7 @@ class TestComplexDependencyInjection:
         assert a_instance.b.c is not None
         assert a_instance.b.c.d is not None
 
-    def test_diamond_dependency(self):
+    async def test_diamond_dependency(self):
         """다이아몬드 의존성 (A → B, C → D)"""
 
         app = Application("test_diamond")
@@ -76,13 +76,13 @@ class TestComplexDependencyInjection:
             b: B
             c: C
 
-        app.ready()
+        await app.ready_async()
 
         a_instance = app.manager.get_instance(A)
         # B와 C가 같은 D 인스턴스를 공유해야 함
         assert a_instance.b.d is a_instance.c.d
 
-    def test_factory_with_multiple_dependencies(self):
+    async def test_factory_with_multiple_dependencies(self):
         """여러 의존성을 가진 Factory"""
 
         app = Application("test_factory_multi_deps")
@@ -108,14 +108,14 @@ class TestComplexDependencyInjection:
             ) -> ComplexService:
                 return ComplexService(logger, db)
 
-        app.ready()
+        await app.ready_async()
 
         service = app.manager.get_instance(ComplexService)
         assert service is not None
         assert isinstance(service.logger, Logger)
         assert isinstance(service.db, Database)
 
-    def test_factory_depending_on_another_factory(self):
+    async def test_factory_depending_on_another_factory(self):
         """Factory가 다른 Factory의 결과물에 의존"""
 
         app = Application("test_factory_chain")
@@ -144,7 +144,7 @@ class TestComplexDependencyInjection:
             def create_client(self, conn: Connection) -> Client:
                 return Client(conn)
 
-        app.ready()
+        await app.ready_async()
 
         client = app.manager.get_instance(Client)
         assert client is not None
@@ -174,7 +174,7 @@ class TestHandlerIntegration:
             def list_users(self) -> list[str]:
                 return self.repo.get_all()
 
-        app.ready()
+        await app.ready_async()
 
         handler = UserController.list_users.__container__
         result = await handler()
@@ -200,7 +200,7 @@ class TestHandlerIntegration:
             def handle_c(self) -> str:
                 return "C"
 
-        app.ready()
+        await app.ready_async()
 
         assert await MultiController.handle_a.__container__() == "A"
         assert await MultiController.handle_b.__container__() == "B"
@@ -210,7 +210,7 @@ class TestHandlerIntegration:
 class TestCircularDependencyDetection:
     """순환 의존성 감지 테스트"""
 
-    def test_circular_dependency_raises(self):
+    async def test_circular_dependency_raises(self):
         """순환 의존성이 있으면 예외 발생"""
 
         app = Application("test_circular")
@@ -228,4 +228,4 @@ class TestCircularDependencyDetection:
         getattr(Circular1, "__container__")._target = Circular1
 
         with pytest.raises(Exception, match="Circular dependency"):
-            app.ready()
+            await app.ready_async()

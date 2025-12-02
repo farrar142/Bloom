@@ -26,11 +26,11 @@ class TestApplication(TestCase):
     # 애플리케이션 모듈 스캔 (application.py의 application 객체 사용)
     components = [application]
 
-    def test_app_ready(self):
+    async def test_app_ready(self):
         """Application이 정상적으로 초기화되는지 확인"""
         self.assertTrue(self.app._is_ready)
 
-    def test_health_endpoint(self):
+    async def test_health_endpoint(self):
         """GET /health 테스트
 
         TODO: 헬스체크 엔드포인트 구현 후 활성화

@@ -8,7 +8,7 @@ from bloom.core import Scope, ScopeEnum
 class TestScopeSingleton:
     """SINGLETON Scope 테스트 (기본값)"""
 
-    def test_singleton_returns_same_instance(self):
+    async def test_singleton_returns_same_instance(self):
         """SINGLETON은 항상 같은 인스턴스를 반환"""
 
         @Component
@@ -23,7 +23,7 @@ class TestScopeSingleton:
         class Consumer:
             service: SingletonService
 
-        app = Application("test_singleton").ready()
+        app = await Application("test_singleton").ready_async()
 
         consumer1 = app.manager.get_instance(Consumer)
         consumer2 = app.manager.get_instance(Consumer)
@@ -32,7 +32,7 @@ class TestScopeSingleton:
         consumer1.service.increment()
         assert consumer2.service.counter == 1
 
-    def test_singleton_is_default(self):
+    async def test_singleton_is_default(self):
         """Scope를 지정하지 않으면 SINGLETON"""
         instance_count = 0
 
@@ -51,7 +51,7 @@ class TestScopeSingleton:
         class Consumer2:
             service: DefaultService
 
-        app = Application("test_default").ready()
+        app = await Application("test_default").ready_async()
 
         c1 = app.manager.get_instance(Consumer1)
         c2 = app.manager.get_instance(Consumer2)
@@ -64,7 +64,7 @@ class TestScopeSingleton:
 class TestScopePrototype:
     """PROTOTYPE Scope 테스트"""
 
-    def test_prototype_creates_new_instance_each_access(self):
+    async def test_prototype_creates_new_instance_each_access(self):
         """PROTOTYPE은 접근할 때마다 새 인스턴스 생성"""
         instance_count = 0
 
@@ -80,7 +80,7 @@ class TestScopePrototype:
         class Consumer:
             service: PrototypeService
 
-        app = Application("test_prototype").ready()
+        app = await Application("test_prototype").ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 
@@ -96,7 +96,7 @@ class TestScopePrototype:
         assert second_id != third_id
         assert instance_count == 3
 
-    def test_prototype_with_multiple_consumers(self):
+    async def test_prototype_with_multiple_consumers(self):
         """여러 Consumer에서 PROTOTYPE 사용"""
         instance_count = 0
 
@@ -116,7 +116,7 @@ class TestScopePrototype:
         class ServiceB:
             handler: RequestHandler
 
-        app = Application("test_prototype_multi").ready()
+        app = await Application("test_prototype_multi").ready_async()
 
         a = app.manager.get_instance(ServiceA)
         b = app.manager.get_instance(ServiceB)
@@ -133,7 +133,7 @@ class TestScopePrototype:
 class TestScopeMixed:
     """혼합 Scope 테스트"""
 
-    def test_singleton_with_prototype_dependency(self):
+    async def test_singleton_with_prototype_dependency(self):
         """SINGLETON이 PROTOTYPE을 의존"""
         proto_count = 0
 
@@ -152,7 +152,7 @@ class TestScopeMixed:
             def get_logger_id(self) -> int:
                 return self.logger.id
 
-        app = Application("test_mixed").ready()
+        app = await Application("test_mixed").ready_async()
 
         service = app.manager.get_instance(SingletonService)
 
@@ -164,7 +164,7 @@ class TestScopeMixed:
         assert id1 != id2 != id3
         assert proto_count == 3
 
-    def test_prototype_with_singleton_dependency(self):
+    async def test_prototype_with_singleton_dependency(self):
         """PROTOTYPE이 SINGLETON을 의존"""
         singleton_count = 0
 
@@ -191,7 +191,7 @@ class TestScopeMixed:
         class Consumer:
             worker: PrototypeWorker
 
-        app = Application("test_proto_singleton").ready()
+        app = await Application("test_proto_singleton").ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 
@@ -211,7 +211,7 @@ class TestScopeMixed:
 class TestPrototypeLifecycleWithEvents:
     """PROTOTYPE 라이프사이클 자동 정리 테스트"""
 
-    def test_prototype_pre_destroy_auto_called_on_method_exit(self):
+    async def test_prototype_pre_destroy_auto_called_on_method_exit(self):
         """메서드 종료 시 PROTOTYPE의 @PreDestroy 자동 호출"""
         from bloom.core.decorators import PostConstruct, PreDestroy, Factory
         from bloom.core.advice import MethodAdviceRegistry, MethodAdvice
@@ -262,7 +262,7 @@ class TestPrototypeLifecycleWithEvents:
         app.scan(TracingAdvice)
         app.scan(AdviceConfig)
         app.scan(Consumer)
-        app.ready()
+        await app.ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 
@@ -279,7 +279,7 @@ class TestPrototypeLifecycleWithEvents:
         assert result2 in destroyed
         assert result3 in destroyed
 
-    def test_prototype_lifecycle_manager_manual_destroy(self):
+    async def test_prototype_lifecycle_manager_manual_destroy(self):
         """LifecycleManager로 수동으로 @PreDestroy 호출"""
         from bloom.core.decorators import PostConstruct, PreDestroy
 
@@ -300,7 +300,7 @@ class TestPrototypeLifecycleWithEvents:
 
         app = Application("test_prototype_manual_destroy")
         app.scan(ManagedResource)
-        app.ready()
+        await app.ready_async()
 
         # 직접 컨테이너에서 인스턴스 생성 (콜스택 외부)
         container = app.manager.get_container(ManagedResource)
@@ -324,7 +324,7 @@ class TestCallScopedPrototype:
     CALL_SCOPED가 동작하려면 CallStackTraceAdvice가 필요합니다.
     """
 
-    def test_call_scoped_returns_same_instance_in_handler(self):
+    async def test_call_scoped_returns_same_instance_in_handler(self):
         """CALL_SCOPED는 같은 핸들러 호출 내에서 같은 인스턴스 반환"""
         from bloom.core.container.element import PrototypeMode
         from bloom.core.decorators import Handler, Factory
@@ -370,7 +370,7 @@ class TestCallScopedPrototype:
 
         app = Application("test_call_scoped")
         app.scan(ScopedResource, TracingAdvice, AdviceConfig, Service)
-        app.ready()
+        await app.ready_async()
 
         service = app.manager.get_instance(Service)
 
@@ -390,7 +390,7 @@ class TestCallScopedPrototype:
         # 총 2개의 인스턴스 생성
         assert instance_count == 2
 
-    def test_call_scoped_different_consumers_same_instance(self):
+    async def test_call_scoped_different_consumers_same_instance(self):
         """같은 핸들러 내 여러 Consumer에서도 같은 CALL_SCOPED 인스턴스"""
         from bloom.core.container.element import PrototypeMode
         from bloom.core.decorators import Handler, Factory
@@ -443,7 +443,7 @@ class TestCallScopedPrototype:
         app.scan(
             SharedResource, TracingAdvice, AdviceConfig, HelperService, MainService
         )
-        app.ready()
+        await app.ready_async()
 
         main = app.manager.get_instance(MainService)
 
@@ -454,7 +454,7 @@ class TestCallScopedPrototype:
         # 1개만 생성
         assert instance_count == 1
 
-    def test_call_scoped_vs_default_prototype(self):
+    async def test_call_scoped_vs_default_prototype(self):
         """CALL_SCOPED vs DEFAULT PROTOTYPE 비교"""
         from bloom.core.container.element import PrototypeMode
         from bloom.core.decorators import Handler, Factory
@@ -506,7 +506,7 @@ class TestCallScopedPrototype:
 
         app = Application("test_comparison")
         app.scan(ScopedService, DefaultService, TracingAdvice, AdviceConfig, Consumer)
-        app.ready()
+        await app.ready_async()
 
         consumer = app.manager.get_instance(Consumer)
 

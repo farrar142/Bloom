@@ -2,25 +2,26 @@
 
 from typing import Any, Callable, overload, TYPE_CHECKING
 
-from bloom.core.container import (
+from .container import (
     ComponentContainer,
     Element,
     FactoryContainer,
     HandlerContainer,
+    Container,
 )
-from bloom.core.container.element import (
+from .container.element import (
     OrderElement,
     ScopeElement,
     SingletonOnlyElement,
     Scope as ScopeEnum,
     PrototypeMode,
 )
-from bloom.core.lifecycle import (
+from .lifecycle import (
     LifecycleHandlerContainer,
     LifecycleType,
     LifecycleTypeElement,
 )
-from bloom.core.manager import try_get_current_manager
+from .manager import try_get_current_manager
 
 
 class ComponentElement[T](Element[T]):
@@ -191,7 +192,7 @@ def Order(order: int):
     return decorator
 
 
-def Scope(scope: ScopeEnum, mode: PrototypeMode | None = None):
+def Scope[R](scope: ScopeEnum, mode: PrototypeMode | None = None):
     """
     Scope 데코레이터: 컴포넌트의 인스턴스 생명주기 범위 지정
 
@@ -229,8 +230,8 @@ def Scope(scope: ScopeEnum, mode: PrototypeMode | None = None):
     """
     actual_mode = mode if mode is not None else PrototypeMode.DEFAULT
 
-    def decorator[T](cls: type[T]) -> type[T]:
-        container = ComponentContainer.get_or_create(cls)
+    def decorator(cls: type[R]) -> type[R]:
+        container = Container.get_or_create(cls)
         container.add_element(ScopeElement(scope, actual_mode))
         return cls
 

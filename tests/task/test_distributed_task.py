@@ -34,7 +34,7 @@ from bloom.task.message import TaskResult as TaskResultMessage
 class TestTaskMessage:
     """TaskMessage 직렬화/역직렬화 테스트"""
 
-    def test_create_message(self):
+    async def test_create_message(self):
         """메시지 생성 테스트"""
         message = TaskMessage(
             task_name="EmailService.send_email",
@@ -48,7 +48,7 @@ class TestTaskMessage:
         assert message.task_id is not None
         assert message.retries == 0
 
-    def test_serialize_deserialize(self):
+    async def test_serialize_deserialize(self):
         """JSON 직렬화/역직렬화 테스트"""
         original = TaskMessage(
             task_name="TestTask.run",
@@ -68,7 +68,7 @@ class TestTaskMessage:
         assert restored.max_retries == original.max_retries
         assert restored.retry_delay == original.retry_delay
 
-    def test_with_eta(self):
+    async def test_with_eta(self):
         """예약 실행 시간 테스트"""
         eta = datetime(2025, 12, 1, 12, 0, 0)
         message = TaskMessage(
@@ -85,7 +85,7 @@ class TestTaskMessage:
 class TestTaskResultMessage:
     """TaskResult 메시지 테스트"""
 
-    def test_success_result(self):
+    async def test_success_result(self):
         """성공 결과 테스트"""
         result = TaskResultMessage(
             task_id="test-123",
@@ -97,7 +97,7 @@ class TestTaskResultMessage:
         assert result.is_successful
         assert not result.is_failed
 
-    def test_failure_result(self):
+    async def test_failure_result(self):
         """실패 결과 테스트"""
         result = TaskResultMessage(
             task_id="test-456",
@@ -110,7 +110,7 @@ class TestTaskResultMessage:
         assert not result.is_successful
         assert result.is_failed
 
-    def test_serialize_deserialize(self):
+    async def test_serialize_deserialize(self):
         """직렬화/역직렬화 테스트"""
         original = TaskResultMessage(
             task_id="test-789",
@@ -246,7 +246,7 @@ class TestInMemoryBroker:
 class TestTaskRegistry:
     """TaskRegistry 테스트"""
 
-    def test_register_and_get(self):
+    async def test_register_and_get(self):
         """등록 및 조회 테스트"""
         registry = TaskRegistry()
 
@@ -270,7 +270,7 @@ class TestTaskRegistry:
         assert info.name == "TestComponent.handler"
         assert info.handler is handler
 
-    def test_duplicate_name_raises_error(self):
+    async def test_duplicate_name_raises_error(self):
         """같은 이름으로 등록 시 에러 발생"""
         registry = TaskRegistry()
 
@@ -297,7 +297,7 @@ class TestTaskRegistry:
                 component_type=ServiceB,
             )
 
-    def test_scan_from_container_manager(self):
+    async def test_scan_from_container_manager(self):
         """ContainerManager에서 스캔 테스트"""
 
         @Component
@@ -321,7 +321,7 @@ class TestTaskRegistry:
         )  # 커스텀 이름 없음 → ClassName.method_name
         assert registry.has("custom-task")  # 커스텀 이름 지정 → 해당 이름으로 등록
 
-    def test_execute_task(self):
+    async def test_execute_task(self):
         """태스크 실행 테스트"""
 
         class Calculator:

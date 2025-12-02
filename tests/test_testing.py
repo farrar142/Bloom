@@ -128,7 +128,7 @@ class TestTestClient:
 class TestMockContainer:
     """MockContainer 테스트"""
 
-    def test_override_before_ready(self):
+    async def test_override_before_ready(self):
         """ready() 전에 오버라이드 적용 테스트"""
 
         class FakeRepository:
@@ -148,7 +148,7 @@ class TestMockContainer:
             items = service.get_all_items()
             assert items == ["fake1", "fake2"]
 
-    def test_override_instance_directly(self):
+    async def test_override_instance_directly(self):
         """인스턴스 레지스트리 직접 오버라이드 테스트"""
 
         class FakeRepository:
@@ -165,7 +165,7 @@ class TestMockContainer:
             items = repo.get_items()
             assert items == ["fake1", "fake2"]
 
-    def test_override_factory(self):
+    async def test_override_factory(self):
         """팩토리 오버라이드 테스트"""
         call_count = 0
 
@@ -187,7 +187,7 @@ class TestMockContainer:
 
         assert call_count == 2
 
-    def test_chained_override(self):
+    async def test_chained_override(self):
         """체이닝 오버라이드 테스트"""
 
         class FakeRepo:
@@ -207,7 +207,7 @@ class TestMockContainer:
         assert mock.get_mock(TestRepository) is not None
         assert mock.get_mock(TestService) is not None
 
-    def test_clear_and_remove(self):
+    async def test_clear_and_remove(self):
         """clear, remove 테스트"""
 
         class FakeRepo:
@@ -232,7 +232,7 @@ class TestMockContainer:
 class TestOverrideDependency:
     """override_dependency 컨텍스트 매니저 테스트"""
 
-    def test_single_override(self):
+    async def test_single_override(self):
         """단일 의존성 오버라이드"""
 
         class FakeRepo:
@@ -256,7 +256,7 @@ class TestOverrideDependency:
 class TestIsolatedContainer:
     """isolated_container 테스트"""
 
-    def test_isolation(self):
+    async def test_isolation(self):
         """컨테이너 격리 테스트"""
         with isolated_container("isolated") as manager:
             assert manager.app_name == "isolated"
@@ -269,7 +269,7 @@ class TestIsolatedContainer:
 class TestCreateTestApp:
     """create_test_app 테스트"""
 
-    def test_basic_creation(self):
+    async def test_basic_creation(self):
         """기본 생성 테스트"""
         app = create_test_app("mytest", TestRepository)
 
@@ -277,7 +277,7 @@ class TestCreateTestApp:
         repo = app.manager.get_instance(TestRepository)
         assert repo is not None
 
-    def test_with_config(self):
+    async def test_with_config(self):
         """설정 포함 생성 테스트"""
         app = create_test_app(
             "config_test",
@@ -288,7 +288,7 @@ class TestCreateTestApp:
         config = app._config_manager.get_config()
         assert config.get("app", {}).get("name") == "TestApp"
 
-    def test_without_ready(self):
+    async def test_without_ready(self):
         """ready=False 테스트"""
         app = create_test_app("no_ready", TestRepository, ready=False)
 
@@ -306,7 +306,7 @@ class TestCreateTestApp:
 class TestAssertionHelpers:
     """Assertion 헬퍼 테스트"""
 
-    def test_assert_instance_of(self):
+    async def test_assert_instance_of(self):
         """타입 검증 테스트"""
         obj = "test"
         assert_instance_of(obj, str)
@@ -314,7 +314,7 @@ class TestAssertionHelpers:
         with pytest.raises(AssertionError):
             assert_instance_of(obj, int)
 
-    def test_assert_injected(self):
+    async def test_assert_injected(self):
         """주입 검증 테스트"""
         app = create_test_app("test", TestRepository, TestService)
         service = app.manager.get_instance(TestService)
@@ -323,7 +323,7 @@ class TestAssertionHelpers:
         assert repo is not None
         assert isinstance(repo, TestRepository)
 
-    def test_assert_has_container(self):
+    async def test_assert_has_container(self):
         """컨테이너 존재 검증 테스트"""
         assert_has_container(TestRepository)
 
@@ -340,7 +340,7 @@ class TestAssertionHelpers:
 class TestDebuggingUtils:
     """디버깅 유틸리티 테스트"""
 
-    def test_get_container_info(self):
+    async def test_get_container_info(self):
         """컨테이너 정보 조회 테스트"""
         info = get_container_info(TestRepository)
 
@@ -353,7 +353,7 @@ class TestDebuggingUtils:
         info = get_container_info(NoContainer)
         assert info["exists"] is False
 
-    def test_print_container_tree(self):
+    async def test_print_container_tree(self):
         """컨테이너 트리 출력 테스트"""
         app = create_test_app("tree_test", TestRepository, TestService)
         tree = print_container_tree(app.manager)
@@ -369,7 +369,7 @@ class TestDebuggingUtils:
 class TestSpyComponent:
     """SpyComponent 테스트"""
 
-    def test_spy_call_tracking(self):
+    async def test_spy_call_tracking(self):
         """호출 추적 테스트"""
 
         class MyService:
@@ -387,7 +387,7 @@ class TestSpyComponent:
         assert calls[0].args == (1, 2)
         assert calls[0].result == 3
 
-    def test_spy_exception_tracking(self):
+    async def test_spy_exception_tracking(self):
         """예외 추적 테스트"""
 
         class MyService:
@@ -403,7 +403,7 @@ class TestSpyComponent:
         calls = spy.get_calls("fail")
         assert isinstance(calls[0].exception, ValueError)
 
-    def test_spy_reset(self):
+    async def test_spy_reset(self):
         """리셋 테스트"""
 
         class MyService:
@@ -424,7 +424,7 @@ class TestSpyComponent:
 class TestCallRecord:
     """CallRecord 테스트"""
 
-    def test_call_record_repr(self):
+    async def test_call_record_repr(self):
         """문자열 표현 테스트"""
         record = CallRecord(args=(1, 2), kwargs={"key": "value"}, result=3)
 
@@ -445,29 +445,29 @@ class TestCaseBasicTest(TestCase):
     app_name = "testcase_test"
     components = [TestRepository, TestService]
 
-    def test_get_instance(self):
+    async def test_get_instance(self):
         """인스턴스 조회 테스트"""
         repo = self.get_instance(TestRepository)
         self.assertIsNotNone(repo)
         self.assert_instance_of(repo, TestRepository)
 
-    def test_get_instances(self):
+    async def test_get_instances(self):
         """인스턴스 목록 조회 테스트"""
         repos = self.get_instances(TestRepository)
         self.assertEqual(len(repos), 1)
 
-    def test_has_instance(self):
+    async def test_has_instance(self):
         """인스턴스 존재 여부 테스트"""
         self.assertTrue(self.has_instance(TestRepository))
         self.assertTrue(self.has_instance(TestService))
 
-    def test_assert_injected(self):
+    async def test_assert_injected(self):
         """필드 주입 검증 테스트"""
         service = self.get_instance(TestService)
         repo = self.assert_injected(service, "repository", TestRepository)
         self.assertIsNotNone(repo)
 
-    def test_override(self):
+    async def test_override(self):
         """Mock 오버라이드 테스트"""
 
         class FakeRepository:
@@ -479,7 +479,7 @@ class TestCaseBasicTest(TestCase):
             items = repo.get_items()
             self.assertEqual(items, ["fake1", "fake2"])
 
-    def test_container_info(self):
+    async def test_container_info(self):
         """컨테이너 정보 조회 테스트"""
         info = self.get_container_info(TestRepository)
         self.assertTrue(info["exists"])
@@ -491,25 +491,25 @@ class TestCaseHttpTest(TestCase):
 
     components = [TestRepository, TestService, TestController]
 
-    def test_get_request(self):
+    async def test_get_request(self):
         """GET 요청 테스트"""
         response = self.get("/items")
         self.assert_success(response)
         self.assert_json_equal(response, ["item1", "item2", "item3"])
 
-    def test_post_request(self):
+    async def test_post_request(self):
         """POST 요청 테스트"""
         response = self.post("/items", json={"name": "new_item"})
         self.assert_success(response)
         data = response.json()
         self.assertEqual(data["status"], "created")
 
-    def test_not_found(self):
+    async def test_not_found(self):
         """404 테스트"""
         response = self.get("/nonexistent")
         self.assert_not_found(response)
 
-    def test_assert_status(self):
+    async def test_assert_status(self):
         """상태 코드 검증 테스트"""
         response = self.get("/items")
         self.assert_status(response, 200)
@@ -521,7 +521,7 @@ class TestCaseWithConfig(TestCase):
     components = [TestRepository]
     config = {"app": {"name": "ConfiguredApp", "debug": True}}
 
-    def test_config_loaded(self):
+    async def test_config_loaded(self):
         """설정 로드 테스트"""
         config = self.app._config_manager.get_config()
         self.assertEqual(config["app"]["name"], "ConfiguredApp")

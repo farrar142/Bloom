@@ -62,7 +62,7 @@ def session_factory(backend):
 class TestSessionLifecycle:
     """세션 생명주기 테스트"""
 
-    def test_session_open_close(self, session_factory):
+    async def test_session_open_close(self, session_factory):
         """세션 열기/닫기"""
         session = session_factory.create()
         assert session._closed is False
@@ -70,14 +70,14 @@ class TestSessionLifecycle:
         session.close()
         assert session._closed is True
 
-    def test_session_context_manager_closes(self, session_factory):
+    async def test_session_context_manager_closes(self, session_factory):
         """컨텍스트 매니저로 자동 종료"""
         with session_factory.session() as session:
             assert session._closed is False
 
         assert session._closed is True
 
-    def test_operations_on_closed_session_raise(self, session_factory):
+    async def test_operations_on_closed_session_raise(self, session_factory):
         """닫힌 세션에서 연산 시 예외"""
         session = session_factory.create()
         session.close()
@@ -91,7 +91,7 @@ class TestSessionLifecycle:
         with pytest.raises(RuntimeError, match="closed"):
             session.flush()
 
-    def test_double_close_is_safe(self, session_factory):
+    async def test_double_close_is_safe(self, session_factory):
         """중복 close는 안전"""
         session = session_factory.create()
         session.close()
@@ -106,7 +106,7 @@ class TestSessionLifecycle:
 class TestDirtyTracking:
     """변경 추적 테스트"""
 
-    def test_new_entity_has_tracker(self, session_factory):
+    async def test_new_entity_has_tracker(self, session_factory):
         """새 엔티티에 트래커 부착"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -116,7 +116,7 @@ class TestDirtyTracking:
             assert tracker is not None
             assert isinstance(tracker, DirtyTracker)
 
-    def test_new_entity_state_is_managed(self, session_factory):
+    async def test_new_entity_state_is_managed(self, session_factory):
         """새 엔티티 상태는 MANAGED"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -125,7 +125,7 @@ class TestDirtyTracking:
             tracker: DirtyTracker = user.__bloom_tracker__  # type: ignore
             assert tracker.state == EntityState.MANAGED
 
-    def test_field_change_marks_dirty(self, session_factory):
+    async def test_field_change_marks_dirty(self, session_factory):
         """필드 변경 시 dirty 마킹"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -139,7 +139,7 @@ class TestDirtyTracking:
             assert tracker.is_dirty
             assert "name" in tracker.get_dirty_fields()
 
-    def test_flush_clears_dirty(self, session_factory):
+    async def test_flush_clears_dirty(self, session_factory):
         """flush 후 dirty 상태 초기화"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -150,7 +150,7 @@ class TestDirtyTracking:
             # flush 후에는 더 이상 새 엔티티가 아님
             assert tracker.is_new is False
 
-    def test_deleted_entity_state(self, session_factory):
+    async def test_deleted_entity_state(self, session_factory):
         """삭제된 엔티티 상태"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -171,7 +171,7 @@ class TestDirtyTracking:
 class TestIdentityMap:
     """Identity Map 테스트"""
 
-    def test_same_pk_returns_same_instance(self, session_factory):
+    async def test_same_pk_returns_same_instance(self, session_factory):
         """같은 PK는 같은 인스턴스 반환"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -186,7 +186,7 @@ class TestIdentityMap:
 
             assert user1 is user2
 
-    def test_identity_map_isolation_between_sessions(self, session_factory):
+    async def test_identity_map_isolation_between_sessions(self, session_factory):
         """세션 간 Identity Map 격리"""
         # 세션 1에서 추가
         with session_factory.session() as session1:
@@ -201,7 +201,7 @@ class TestIdentityMap:
             assert user2 is not None
             assert user2 is not user  # 다른 인스턴스
 
-    def test_identity_map_prevents_duplicate(self, session_factory):
+    async def test_identity_map_prevents_duplicate(self, session_factory):
         """Identity Map이 중복 조회 방지"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -222,7 +222,7 @@ class TestIdentityMap:
 class TestFlushCommit:
     """Flush/Commit 테스트"""
 
-    def test_flush_writes_to_db(self, session_factory):
+    async def test_flush_writes_to_db(self, session_factory):
         """flush는 DB에 쓰기"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -232,7 +232,7 @@ class TestFlushCommit:
             # flush 후 PK 할당됨
             assert user.id is not None
 
-    def test_commit_without_flush(self, session_factory):
+    async def test_commit_without_flush(self, session_factory):
         """commit은 자동으로 flush"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -241,7 +241,7 @@ class TestFlushCommit:
 
             assert user.id is not None
 
-    def test_rollback_discards_changes(self, session_factory):
+    async def test_rollback_discards_changes(self, session_factory):
         """rollback은 변경 취소"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -259,7 +259,7 @@ class TestFlushCommit:
             found = session.get(User, pk)
             assert found is None
 
-    def test_autoflush_on_query(self, session_factory):
+    async def test_autoflush_on_query(self, session_factory):
         """쿼리 전 자동 flush (autoflush=True)"""
         with session_factory.session() as session:
             assert session._autoflush is True
@@ -272,7 +272,7 @@ class TestFlushCommit:
             assert len(results) == 1
             assert user.id is not None
 
-    def test_no_autoflush_when_disabled(self, session_factory):
+    async def test_no_autoflush_when_disabled(self, session_factory):
         """autoflush=False면 수동 flush 필요"""
         session = session_factory.create()
         session._autoflush = False
@@ -296,7 +296,7 @@ class TestFlushCommit:
 class TestMergeRefresh:
     """Merge/Refresh 테스트"""
 
-    def test_refresh_reloads_data(self, session_factory):
+    async def test_refresh_reloads_data(self, session_factory):
         """refresh는 DB에서 다시 로드"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -311,7 +311,7 @@ class TestMergeRefresh:
 
             assert user.name == "alice"
 
-    def test_refresh_updates_tracker(self, session_factory):
+    async def test_refresh_updates_tracker(self, session_factory):
         """refresh 후 tracker 상태 갱신"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -327,7 +327,7 @@ class TestMergeRefresh:
             # refresh 후 dirty 해제
             assert tracker.is_dirty is False
 
-    def test_merge_detached_entity(self, session_factory):
+    async def test_merge_detached_entity(self, session_factory):
         """detached 엔티티 merge"""
         # 세션 1에서 생성
         with session_factory.session() as session1:
@@ -350,7 +350,7 @@ class TestMergeRefresh:
             assert found is not None
             assert found.name == "bob"
 
-    def test_merge_new_entity(self, session_factory):
+    async def test_merge_new_entity(self, session_factory):
         """새 엔티티 merge는 add처럼 동작"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -368,7 +368,7 @@ class TestMergeRefresh:
 class TestDelete:
     """삭제 테스트"""
 
-    def test_delete_persisted_entity(self, session_factory):
+    async def test_delete_persisted_entity(self, session_factory):
         """저장된 엔티티 삭제"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -384,7 +384,7 @@ class TestDelete:
             found = session.get(User, pk)
             assert found is None
 
-    def test_delete_new_entity(self, session_factory):
+    async def test_delete_new_entity(self, session_factory):
         """새 엔티티 삭제 (아직 DB에 없음)"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -398,7 +398,7 @@ class TestDelete:
             assert user not in session._new
             assert user not in session._deleted
 
-    def test_delete_removes_from_dirty(self, session_factory):
+    async def test_delete_removes_from_dirty(self, session_factory):
         """삭제 시 dirty set에서도 제거"""
         with session_factory.session() as session:
             user = create(User, name="alice")
@@ -422,7 +422,7 @@ class TestDelete:
 class TestTransactionEdgeCases:
     """트랜잭션 엣지 케이스"""
 
-    def test_exception_triggers_rollback(self, session_factory):
+    async def test_exception_triggers_rollback(self, session_factory):
         """예외 발생 시 자동 롤백"""
         pk = None
         try:
@@ -441,7 +441,7 @@ class TestTransactionEdgeCases:
             found = session.get(User, pk)
             assert found is None
 
-    def test_multiple_adds_in_one_transaction(self, session_factory):
+    async def test_multiple_adds_in_one_transaction(self, session_factory):
         """하나의 트랜잭션에서 여러 add"""
         with session_factory.session() as session:
             users = [create(User, name=f"user{i}") for i in range(5)]
@@ -452,7 +452,7 @@ class TestTransactionEdgeCases:
             count = session.query(User).count()
             assert count == 5
 
-    def test_mixed_operations_in_transaction(self, session_factory):
+    async def test_mixed_operations_in_transaction(self, session_factory):
         """한 트랜잭션에서 혼합 연산"""
         with session_factory.session() as session:
             # INSERT
@@ -484,7 +484,7 @@ class TestTransactionEdgeCases:
 class TestQueryExecution:
     """쿼리 실행 테스트"""
 
-    def test_execute_raw_sql(self, session_factory):
+    async def test_execute_raw_sql(self, session_factory):
         """raw SQL 실행"""
         with session_factory.session() as session:
             user = create(User, name="alice", age=25)
@@ -499,7 +499,7 @@ class TestQueryExecution:
             assert len(result) == 1
             assert result[0]["name"] == "alice"
 
-    def test_execute_returns_iterator(self, session_factory):
+    async def test_execute_returns_iterator(self, session_factory):
         """execute는 iterator 반환"""
         with session_factory.session() as session:
             session.add(create(User, name="alice"))
@@ -510,7 +510,7 @@ class TestQueryExecution:
             assert hasattr(result, "__iter__")
             assert hasattr(result, "__next__")
 
-    def test_query_builder_integration(self, session_factory):
+    async def test_query_builder_integration(self, session_factory):
         """Query 빌더 통합"""
         with session_factory.session() as session:
             session.add_all(
@@ -525,7 +525,7 @@ class TestQueryExecution:
             users = session.query(User).filter_by(age=25).all()
             assert len(users) == 2
 
-    def test_query_with_order(self, session_factory):
+    async def test_query_with_order(self, session_factory):
         """정렬 쿼리"""
         with session_factory.session() as session:
             session.add_all(

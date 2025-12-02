@@ -85,32 +85,32 @@ def introspector(connection):
 class TestSchemaDiff:
     """SchemaDiff 테스트"""
 
-    def test_empty_diff_has_no_changes(self):
+    async def test_empty_diff_has_no_changes(self):
         """빈 diff는 변경사항 없음"""
         diff = SchemaDiff()
         assert diff.has_changes is False
 
-    def test_tables_to_create_has_changes(self):
+    async def test_tables_to_create_has_changes(self):
         """테이블 생성이 있으면 변경사항 있음"""
         diff = SchemaDiff(tables_to_create=["users"])
         assert diff.has_changes is True
 
-    def test_tables_to_drop_has_changes(self):
+    async def test_tables_to_drop_has_changes(self):
         """테이블 삭제가 있으면 변경사항 있음"""
         diff = SchemaDiff(tables_to_drop=["users"])
         assert diff.has_changes is True
 
-    def test_columns_to_add_has_changes(self):
+    async def test_columns_to_add_has_changes(self):
         """컬럼 추가가 있으면 변경사항 있음"""
         diff = SchemaDiff(columns_to_add=[("users", "email", "VARCHAR(255)")])
         assert diff.has_changes is True
 
-    def test_columns_to_drop_has_changes(self):
+    async def test_columns_to_drop_has_changes(self):
         """컬럼 삭제가 있으면 변경사항 있음"""
         diff = SchemaDiff(columns_to_drop=[("users", "email")])
         assert diff.has_changes is True
 
-    def test_indexes_to_create_has_changes(self):
+    async def test_indexes_to_create_has_changes(self):
         """인덱스 생성이 있으면 변경사항 있음"""
         diff = SchemaDiff(indexes_to_create=[("users", "idx_email", ["email"])])
         assert diff.has_changes is True
@@ -124,7 +124,7 @@ class TestSchemaDiff:
 class TestColumnInfo:
     """ColumnInfo 테스트"""
 
-    def test_create_column_info(self):
+    async def test_create_column_info(self):
         """ColumnInfo 생성"""
         col = ColumnInfo(
             name="id",
@@ -138,7 +138,7 @@ class TestColumnInfo:
         assert col.nullable is False
         assert col.primary_key is True
 
-    def test_nullable_column(self):
+    async def test_nullable_column(self):
         """nullable 컬럼"""
         col = ColumnInfo(
             name="email",
@@ -154,7 +154,7 @@ class TestColumnInfo:
 class TestTableInfo:
     """TableInfo 테스트"""
 
-    def test_create_table_info(self):
+    async def test_create_table_info(self):
         """TableInfo 생성"""
         info = TableInfo(name="users")
         assert info.name == "users"
@@ -162,7 +162,7 @@ class TestTableInfo:
         assert info.indexes == []
         assert info.foreign_keys == []
 
-    def test_table_info_with_columns(self):
+    async def test_table_info_with_columns(self):
         """컬럼이 있는 TableInfo"""
         col = ColumnInfo("id", "INTEGER", False, None, True)
         info = TableInfo(name="users", columns={"id": col})
@@ -178,7 +178,7 @@ class TestTableInfo:
 class TestSchemaEditor:
     """SchemaEditor 테스트"""
 
-    def test_create_table(self, schema_editor, introspector):
+    async def test_create_table(self, schema_editor, introspector):
         """테이블 생성"""
         schema_editor.create_table(
             "test_users",
@@ -191,7 +191,7 @@ class TestSchemaEditor:
         tables = introspector.get_tables()
         assert "test_users" in tables
 
-    def test_create_table_with_constraints(self, schema_editor, introspector):
+    async def test_create_table_with_constraints(self, schema_editor, introspector):
         """제약조건이 있는 테이블 생성"""
         schema_editor.create_table(
             "test_posts",
@@ -206,7 +206,7 @@ class TestSchemaEditor:
         tables = introspector.get_tables()
         assert "test_posts" in tables
 
-    def test_drop_table(self, schema_editor, introspector):
+    async def test_drop_table(self, schema_editor, introspector):
         """테이블 삭제"""
         schema_editor.create_table(
             "temp_table",
@@ -217,7 +217,7 @@ class TestSchemaEditor:
         schema_editor.drop_table("temp_table")
         assert "temp_table" not in introspector.get_tables()
 
-    def test_rename_table(self, schema_editor, introspector):
+    async def test_rename_table(self, schema_editor, introspector):
         """테이블 이름 변경"""
         schema_editor.create_table(
             "old_table",
@@ -230,7 +230,7 @@ class TestSchemaEditor:
         assert "old_table" not in tables
         assert "new_table" in tables
 
-    def test_add_column(self, schema_editor, introspector):
+    async def test_add_column(self, schema_editor, introspector):
         """컬럼 추가"""
         schema_editor.create_table(
             "test_table",
@@ -242,7 +242,7 @@ class TestSchemaEditor:
         info = introspector.get_table_info("test_table")
         assert "email" in info.columns
 
-    def test_drop_column(self, schema_editor, introspector):
+    async def test_drop_column(self, schema_editor, introspector):
         """컬럼 삭제 (SQLite 3.35+)"""
         schema_editor.create_table(
             "test_table",
@@ -259,7 +259,7 @@ class TestSchemaEditor:
         assert "email" not in info.columns
         assert "name" in info.columns
 
-    def test_rename_column(self, schema_editor, introspector):
+    async def test_rename_column(self, schema_editor, introspector):
         """컬럼 이름 변경"""
         schema_editor.create_table(
             "test_table",
@@ -275,7 +275,7 @@ class TestSchemaEditor:
         assert "old_name" not in info.columns
         assert "new_name" in info.columns
 
-    def test_create_index(self, schema_editor, introspector):
+    async def test_create_index(self, schema_editor, introspector):
         """인덱스 생성"""
         schema_editor.create_table(
             "test_table",
@@ -290,7 +290,7 @@ class TestSchemaEditor:
         info = introspector.get_table_info("test_table")
         assert "idx_email" in info.indexes
 
-    def test_create_unique_index(self, schema_editor, introspector):
+    async def test_create_unique_index(self, schema_editor, introspector):
         """유니크 인덱스 생성"""
         schema_editor.create_table(
             "test_table",
@@ -307,7 +307,7 @@ class TestSchemaEditor:
         info = introspector.get_table_info("test_table")
         assert "idx_email_unique" in info.indexes
 
-    def test_drop_index(self, schema_editor, introspector):
+    async def test_drop_index(self, schema_editor, introspector):
         """인덱스 삭제"""
         schema_editor.create_table(
             "test_table",
@@ -323,12 +323,12 @@ class TestSchemaEditor:
         info = introspector.get_table_info("test_table")
         assert "idx_email" not in info.indexes
 
-    def test_alter_column_not_supported(self, schema_editor):
+    async def test_alter_column_not_supported(self, schema_editor):
         """ALTER COLUMN은 SQLite에서 지원 안 함"""
         with pytest.raises(NotImplementedError):
             schema_editor.alter_column("test_table", "name", "TEXT")
 
-    def test_add_constraint_not_supported(self, schema_editor):
+    async def test_add_constraint_not_supported(self, schema_editor):
         """ADD CONSTRAINT는 SQLite에서 지원 안 함"""
         with pytest.raises(NotImplementedError):
             schema_editor.add_constraint("test_table", "fk_user", "FOREIGN KEY ...")
@@ -342,12 +342,12 @@ class TestSchemaEditor:
 class TestSchemaIntrospector:
     """SchemaIntrospector 테스트"""
 
-    def test_get_tables_empty(self, introspector):
+    async def test_get_tables_empty(self, introspector):
         """빈 DB에서 테이블 목록"""
         tables = introspector.get_tables()
         assert tables == []
 
-    def test_get_tables(self, schema_editor, introspector):
+    async def test_get_tables(self, schema_editor, introspector):
         """테이블 목록 조회"""
         schema_editor.create_table("users", [("id", "INTEGER PRIMARY KEY")])
         schema_editor.create_table("posts", [("id", "INTEGER PRIMARY KEY")])
@@ -356,7 +356,7 @@ class TestSchemaIntrospector:
         assert "users" in tables
         assert "posts" in tables
 
-    def test_get_table_info(self, schema_editor, introspector):
+    async def test_get_table_info(self, schema_editor, introspector):
         """테이블 상세 정보"""
         schema_editor.create_table(
             "users",
@@ -377,7 +377,7 @@ class TestSchemaIntrospector:
         assert info.columns["id"].primary_key is True
         assert info.columns["name"].nullable is False
 
-    def test_get_all_schema(self, schema_editor, introspector):
+    async def test_get_all_schema(self, schema_editor, introspector):
         """전체 스키마 정보"""
         schema_editor.create_table("table1", [("id", "INTEGER PRIMARY KEY")])
         schema_editor.create_table("table2", [("id", "INTEGER PRIMARY KEY")])
@@ -388,7 +388,7 @@ class TestSchemaIntrospector:
         assert "table2" in schema
         assert isinstance(schema["table1"], TableInfo)
 
-    def test_compare_with_models_new_table(self, introspector):
+    async def test_compare_with_models_new_table(self, introspector):
         """모델과 비교 - 새 테이블"""
 
         @Entity(table_name="new_users")
@@ -404,7 +404,7 @@ class TestSchemaIntrospector:
 
         assert "new_users" in diff.tables_to_create
 
-    def test_compare_with_models_new_column(self, schema_editor, introspector):
+    async def test_compare_with_models_new_column(self, schema_editor, introspector):
         """모델과 비교 - 새 컬럼"""
         # 기존 테이블 생성
         schema_editor.create_table(
@@ -440,38 +440,38 @@ class TestSchemaIntrospector:
 class TestOperationsDescribe:
     """Operation describe 테스트"""
 
-    def test_create_table_describe(self):
+    async def test_create_table_describe(self):
         """CreateTable describe"""
         op = CreateTable("users", [("id", "INTEGER PRIMARY KEY")])
         assert "Create table users" in op.describe()
 
-    def test_drop_table_describe(self):
+    async def test_drop_table_describe(self):
         """DropTable describe"""
         op = DropTable("users")
         assert "Drop table users" in op.describe()
 
-    def test_add_column_describe(self):
+    async def test_add_column_describe(self):
         """AddColumn describe"""
         op = AddColumn("users", "email", "VARCHAR(255)")
         assert "Add column email to users" in op.describe()
 
-    def test_drop_column_describe(self):
+    async def test_drop_column_describe(self):
         """DropColumn describe"""
         op = DropColumn("users", "email")
         assert "Drop column email from users" in op.describe()
 
-    def test_create_index_describe(self):
+    async def test_create_index_describe(self):
         """CreateIndex describe"""
         op = CreateIndex("users", "idx_email", ["email"])
         assert "Create" in op.describe()
         assert "index" in op.describe()
 
-    def test_rename_column_describe(self):
+    async def test_rename_column_describe(self):
         """RenameColumn describe"""
         op = RenameColumn("users", "old_name", "new_name")
         assert "Rename column" in op.describe()
 
-    def test_rename_table_describe(self):
+    async def test_rename_table_describe(self):
         """RenameTable describe"""
         op = RenameTable("old_table", "new_table")
         assert "Rename table" in op.describe()
@@ -480,7 +480,7 @@ class TestOperationsDescribe:
 class TestOperationsToSql:
     """Operation to_sql 테스트"""
 
-    def test_create_table_to_sql(self):
+    async def test_create_table_to_sql(self):
         """CreateTable to_sql"""
         op = CreateTable(
             "users",
@@ -493,24 +493,24 @@ class TestOperationsToSql:
         assert "CREATE TABLE users" in sql
         assert "id INTEGER PRIMARY KEY" in sql
 
-    def test_drop_table_to_sql(self):
+    async def test_drop_table_to_sql(self):
         """DropTable to_sql"""
         op = DropTable("users")
         assert op.to_sql(None) == "DROP TABLE users"
 
-    def test_add_column_to_sql(self):
+    async def test_add_column_to_sql(self):
         """AddColumn to_sql"""
         op = AddColumn("users", "email", "VARCHAR(255)")
         sql = op.to_sql(None)
         assert "ALTER TABLE users ADD COLUMN email VARCHAR(255)" == sql
 
-    def test_create_index_to_sql(self):
+    async def test_create_index_to_sql(self):
         """CreateIndex to_sql"""
         op = CreateIndex("users", "idx_email", ["email"])
         sql = op.to_sql(None)
         assert "CREATE INDEX idx_email ON users (email)" == sql
 
-    def test_create_unique_index_to_sql(self):
+    async def test_create_unique_index_to_sql(self):
         """CreateIndex unique to_sql"""
         op = CreateIndex("users", "idx_email", ["email"], unique=True)
         sql = op.to_sql(None)
@@ -520,14 +520,14 @@ class TestOperationsToSql:
 class TestOperationsForwardBackward:
     """Operation forward/backward 테스트"""
 
-    def test_create_table_forward(self, schema_editor, introspector):
+    async def test_create_table_forward(self, schema_editor, introspector):
         """CreateTable forward"""
         op = CreateTable("op_users", [("id", "INTEGER PRIMARY KEY")])
         op.forward(schema_editor)
 
         assert "op_users" in introspector.get_tables()
 
-    def test_create_table_backward(self, schema_editor, introspector):
+    async def test_create_table_backward(self, schema_editor, introspector):
         """CreateTable backward (drop)"""
         op = CreateTable("op_users", [("id", "INTEGER PRIMARY KEY")])
         op.forward(schema_editor)
@@ -535,7 +535,7 @@ class TestOperationsForwardBackward:
 
         assert "op_users" not in introspector.get_tables()
 
-    def test_drop_table_forward(self, schema_editor, introspector):
+    async def test_drop_table_forward(self, schema_editor, introspector):
         """DropTable forward"""
         schema_editor.create_table("temp", [("id", "INTEGER PRIMARY KEY")])
 
@@ -544,7 +544,7 @@ class TestOperationsForwardBackward:
 
         assert "temp" not in introspector.get_tables()
 
-    def test_drop_table_backward_with_columns(self, schema_editor, introspector):
+    async def test_drop_table_backward_with_columns(self, schema_editor, introspector):
         """DropTable backward (recreate)"""
         op = DropTable(
             "temp",
@@ -557,7 +557,7 @@ class TestOperationsForwardBackward:
         info = introspector.get_table_info("temp")
         assert "name" in info.columns
 
-    def test_add_column_forward(self, schema_editor, introspector):
+    async def test_add_column_forward(self, schema_editor, introspector):
         """AddColumn forward"""
         schema_editor.create_table("users", [("id", "INTEGER PRIMARY KEY")])
 
@@ -567,7 +567,7 @@ class TestOperationsForwardBackward:
         info = introspector.get_table_info("users")
         assert "email" in info.columns
 
-    def test_add_column_backward(self, schema_editor, introspector):
+    async def test_add_column_backward(self, schema_editor, introspector):
         """AddColumn backward (drop)"""
         schema_editor.create_table(
             "users",
@@ -580,7 +580,7 @@ class TestOperationsForwardBackward:
         info = introspector.get_table_info("users")
         assert "email" not in info.columns
 
-    def test_create_index_forward(self, schema_editor, introspector):
+    async def test_create_index_forward(self, schema_editor, introspector):
         """CreateIndex forward"""
         schema_editor.create_table(
             "users",
@@ -593,7 +593,7 @@ class TestOperationsForwardBackward:
         info = introspector.get_table_info("users")
         assert "idx_email" in info.indexes
 
-    def test_create_index_backward(self, schema_editor, introspector):
+    async def test_create_index_backward(self, schema_editor, introspector):
         """CreateIndex backward (drop)"""
         schema_editor.create_table(
             "users",
@@ -607,7 +607,7 @@ class TestOperationsForwardBackward:
         info = introspector.get_table_info("users")
         assert "idx_email" not in info.indexes
 
-    def test_rename_table_forward(self, schema_editor, introspector):
+    async def test_rename_table_forward(self, schema_editor, introspector):
         """RenameTable forward"""
         schema_editor.create_table("old_table", [("id", "INTEGER PRIMARY KEY")])
 
@@ -618,7 +618,7 @@ class TestOperationsForwardBackward:
         assert "new_table" in tables
         assert "old_table" not in tables
 
-    def test_rename_table_backward(self, schema_editor, introspector):
+    async def test_rename_table_backward(self, schema_editor, introspector):
         """RenameTable backward"""
         schema_editor.create_table("new_table", [("id", "INTEGER PRIMARY KEY")])
 
@@ -629,7 +629,7 @@ class TestOperationsForwardBackward:
         assert "old_table" in tables
         assert "new_table" not in tables
 
-    def test_rename_column_forward(self, schema_editor, introspector):
+    async def test_rename_column_forward(self, schema_editor, introspector):
         """RenameColumn forward"""
         schema_editor.create_table(
             "users",
@@ -643,7 +643,7 @@ class TestOperationsForwardBackward:
         assert "new_col" in info.columns
         assert "old_col" not in info.columns
 
-    def test_rename_column_backward(self, schema_editor, introspector):
+    async def test_rename_column_backward(self, schema_editor, introspector):
         """RenameColumn backward"""
         schema_editor.create_table(
             "users",
@@ -661,14 +661,14 @@ class TestOperationsForwardBackward:
 class TestRunSQL:
     """RunSQL 테스트"""
 
-    def test_run_sql_forward(self, schema_editor, introspector):
+    async def test_run_sql_forward(self, schema_editor, introspector):
         """RunSQL forward"""
         op = RunSQL("CREATE TABLE run_sql_test (id INTEGER PRIMARY KEY)")
         op.forward(schema_editor)
 
         assert "run_sql_test" in introspector.get_tables()
 
-    def test_run_sql_backward(self, schema_editor, introspector):
+    async def test_run_sql_backward(self, schema_editor, introspector):
         """RunSQL backward"""
         schema_editor.execute("CREATE TABLE run_sql_test (id INTEGER PRIMARY KEY)")
 
@@ -680,7 +680,7 @@ class TestRunSQL:
 
         assert "run_sql_test" not in introspector.get_tables()
 
-    def test_run_sql_describe(self):
+    async def test_run_sql_describe(self):
         """RunSQL describe"""
         op = RunSQL("SELECT * FROM users WHERE condition IS TRUE AND more")
         desc = op.describe()
@@ -690,7 +690,7 @@ class TestRunSQL:
 class TestRunPython:
     """RunPython 테스트"""
 
-    def test_run_python_forward(self, schema_editor, introspector):
+    async def test_run_python_forward(self, schema_editor, introspector):
         """RunPython forward"""
 
         def create_table(schema: SchemaEditor):
@@ -701,7 +701,7 @@ class TestRunPython:
 
         assert "python_test" in introspector.get_tables()
 
-    def test_run_python_backward(self, schema_editor, introspector):
+    async def test_run_python_backward(self, schema_editor, introspector):
         """RunPython backward"""
         schema_editor.create_table("python_test", [("id", "INTEGER PRIMARY KEY")])
 
@@ -716,7 +716,7 @@ class TestRunPython:
 
         assert "python_test" not in introspector.get_tables()
 
-    def test_run_python_describe(self):
+    async def test_run_python_describe(self):
         """RunPython describe"""
 
         def my_custom_function(schema):
@@ -734,7 +734,7 @@ class TestRunPython:
 class TestMigration:
     """Migration 테스트"""
 
-    def test_create_migration(self):
+    async def test_create_migration(self):
         """Migration 생성"""
         migration = Migration(
             name="0001_initial",
@@ -748,7 +748,7 @@ class TestMigration:
         assert migration.dependencies == []
         assert len(migration.operations) == 1
 
-    def test_migration_apply(self, schema_editor, introspector):
+    async def test_migration_apply(self, schema_editor, introspector):
         """Migration apply"""
         migration = Migration(
             name="0001_initial",
@@ -765,7 +765,7 @@ class TestMigration:
         info = introspector.get_table_info("mig_users")
         assert "name" in info.columns
 
-    def test_migration_rollback(self, schema_editor, introspector):
+    async def test_migration_rollback(self, schema_editor, introspector):
         """Migration rollback"""
         migration = Migration(
             name="0001_initial",
@@ -781,7 +781,7 @@ class TestMigration:
         migration.rollback(schema_editor)
         assert "mig_users" not in introspector.get_tables()
 
-    def test_migration_describe(self):
+    async def test_migration_describe(self):
         """Migration describe"""
         migration = Migration(
             name="0001_initial",
@@ -805,7 +805,7 @@ class TestMigration:
 class TestMigrationRegistry:
     """MigrationRegistry 테스트"""
 
-    def test_register_migration(self):
+    async def test_register_migration(self):
         """마이그레이션 등록"""
         registry = MigrationRegistry()
         migration = Migration(name="0001_initial", operations=[])
@@ -814,7 +814,7 @@ class TestMigrationRegistry:
 
         assert registry.get("0001_initial") is migration
 
-    def test_register_duplicate_raises(self):
+    async def test_register_duplicate_raises(self):
         """중복 등록 시 에러"""
         registry = MigrationRegistry()
         migration = Migration(name="0001_initial", operations=[])
@@ -824,12 +824,12 @@ class TestMigrationRegistry:
         with pytest.raises(ValueError):
             registry.register(migration)
 
-    def test_get_nonexistent(self):
+    async def test_get_nonexistent(self):
         """존재하지 않는 마이그레이션 조회"""
         registry = MigrationRegistry()
         assert registry.get("nonexistent") is None
 
-    def test_get_all(self):
+    async def test_get_all(self):
         """모든 마이그레이션 조회"""
         registry = MigrationRegistry()
         m1 = Migration(name="0001", operations=[])
@@ -843,7 +843,7 @@ class TestMigrationRegistry:
         assert all_migs[0].name == "0001"
         assert all_migs[1].name == "0002"
 
-    def test_get_pending(self):
+    async def test_get_pending(self):
         """미적용 마이그레이션 조회"""
         registry = MigrationRegistry()
         m1 = Migration(name="0001", operations=[])
@@ -875,12 +875,12 @@ class TestMigrationManager:
         registry = MigrationRegistry()
         return MigrationManager(session_factory, registry)
 
-    def test_get_applied_migrations_empty(self, manager):
+    async def test_get_applied_migrations_empty(self, manager):
         """적용된 마이그레이션 없음"""
         applied = manager.get_applied_migrations()
         assert applied == set()
 
-    def test_migrate_single(self, manager, introspector):
+    async def test_migrate_single(self, manager, introspector):
         """단일 마이그레이션 적용"""
         migration = Migration(
             name="0001_initial",
@@ -896,7 +896,7 @@ class TestMigrationManager:
         assert "mgr_users" in introspector.get_tables()
         assert "0001_initial" in manager.get_applied_migrations()
 
-    def test_migrate_multiple(self, manager, introspector):
+    async def test_migrate_multiple(self, manager, introspector):
         """여러 마이그레이션 적용"""
         m1 = Migration(
             name="0001_initial",
@@ -921,7 +921,7 @@ class TestMigrationManager:
         info = introspector.get_table_info("mgr_users")
         assert "name" in info.columns
 
-    def test_migrate_idempotent(self, manager):
+    async def test_migrate_idempotent(self, manager):
         """중복 적용 방지"""
         migration = Migration(
             name="0001_initial",
@@ -939,7 +939,7 @@ class TestMigrationManager:
         applied2 = manager.migrate()
         assert len(applied2) == 0
 
-    def test_migrate_with_dependency_error(self, manager):
+    async def test_migrate_with_dependency_error(self, manager):
         """의존성 미충족 시 에러"""
         migration = Migration(
             name="0002_add_name",
@@ -955,7 +955,7 @@ class TestMigrationManager:
 
         assert "depends on" in str(exc.value)
 
-    def test_rollback(self, manager, introspector):
+    async def test_rollback(self, manager, introspector):
         """마이그레이션 롤백"""
         migration = Migration(
             name="0001_initial",
@@ -973,7 +973,7 @@ class TestMigrationManager:
         assert "0001_initial" in rolled_back
         assert "mgr_users" not in introspector.get_tables()
 
-    def test_rollback_multiple(self, manager, introspector):
+    async def test_rollback_multiple(self, manager, introspector):
         """여러 마이그레이션 롤백"""
         m1 = Migration(
             name="0001_initial",
@@ -1002,7 +1002,7 @@ class TestMigrationManager:
         assert "mgr_users" not in introspector.get_tables()
         assert "mgr_posts" not in introspector.get_tables()
 
-    def test_rollback_to_target(self, manager, introspector):
+    async def test_rollback_to_target(self, manager, introspector):
         """특정 지점까지 롤백"""
         m1 = Migration(
             name="0001_initial",
@@ -1042,7 +1042,7 @@ class TestMigrationManager:
         assert "mgr_posts" not in introspector.get_tables()
         assert "mgr_comments" not in introspector.get_tables()
 
-    def test_status(self, manager):
+    async def test_status(self, manager):
         """마이그레이션 상태 확인"""
         m1 = Migration(name="0001_initial", operations=[])
         m2 = Migration(name="0002_second", operations=[])
@@ -1059,7 +1059,7 @@ class TestMigrationManager:
         assert status["pending"] == []
         assert status["total"] == 2
 
-    def test_get_pending_migrations(self, manager):
+    async def test_get_pending_migrations(self, manager):
         """미적용 마이그레이션 조회"""
         m1 = Migration(name="0001_initial", operations=[])
         m2 = Migration(name="0002_second", operations=[])
@@ -1075,7 +1075,7 @@ class TestMigrationManager:
         assert len(pending) == 1
         assert pending[0].name == "0002_second"
 
-    def test_create_tables_from_entities(self, manager, introspector):
+    async def test_create_tables_from_entities(self, manager, introspector):
         """엔티티로부터 테이블 생성"""
 
         @Entity(table_name="entity_users")
@@ -1101,7 +1101,7 @@ class TestMigrationGenerator:
         """MigrationGenerator"""
         return MigrationGenerator(session_factory, tmp_path / "migrations")
 
-    def test_make_migrations_new_table(self, generator, session_factory):
+    async def test_make_migrations_new_table(self, generator, session_factory):
         """새 테이블 마이그레이션 생성"""
 
         @Entity(table_name="gen_users")
@@ -1120,7 +1120,7 @@ class TestMigrationGenerator:
         assert len(create_ops) == 1
         assert create_ops[0].table_name == "gen_users"
 
-    def test_make_migrations_no_changes(self, generator, session_factory):
+    async def test_make_migrations_no_changes(self, generator, session_factory):
         """변경사항 없으면 None 반환"""
 
         @Entity(table_name="existing_table")
@@ -1139,7 +1139,7 @@ class TestMigrationGenerator:
         # 변경사항 없으므로 None
         assert migration is None
 
-    def test_make_migrations_add_column(self, generator, session_factory):
+    async def test_make_migrations_add_column(self, generator, session_factory):
         """컬럼 추가 마이그레이션 생성"""
         # 기존 테이블 생성
         with session_factory.session() as session:
@@ -1163,7 +1163,7 @@ class TestMigrationGenerator:
         assert len(add_column_ops) == 1
         assert add_column_ops[0].column_name == "email"
 
-    def test_migrations_dir_created(self, session_factory, tmp_path):
+    async def test_migrations_dir_created(self, session_factory, tmp_path):
         """마이그레이션 디렉토리 자동 생성"""
         migrations_dir = tmp_path / "new_migrations"
         generator = MigrationGenerator(session_factory, migrations_dir)
@@ -1179,7 +1179,7 @@ class TestMigrationGenerator:
 class TestMigrationIntegration:
     """마이그레이션 통합 테스트"""
 
-    def test_full_migration_lifecycle(self, session_factory):
+    async def test_full_migration_lifecycle(self, session_factory):
         """전체 마이그레이션 라이프사이클"""
         registry = MigrationRegistry()
         manager = MigrationManager(session_factory, registry)
@@ -1249,7 +1249,7 @@ class TestMigrationIntegration:
             info = introspector.get_table_info("lifecycle_users")
             assert "idx_email" not in info.indexes
 
-    def test_complex_migration_with_run_python(self, session_factory):
+    async def test_complex_migration_with_run_python(self, session_factory):
         """RunPython을 포함한 복잡한 마이그레이션"""
         registry = MigrationRegistry()
         manager = MigrationManager(session_factory, registry)

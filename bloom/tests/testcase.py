@@ -68,23 +68,23 @@ class TestCase(UnitTestCase):
         - 인스턴스 조회: get_instance(), get_instances()
         - Mock: override(), override_factory()
         - Assertion: assert_instance_of(), assert_injected(), assert_status()
-    
+
     사용 예시:
         # 방법 1: app_module 사용 (권장 - 전체 DI 컨텍스트)
         from application import application
-        
+
         class TestUserController(TestCase):
             app_module = application
-            
-            def test_list(self):
+
+            async def test_list(self):
                 response = self.get("/users/")
                 self.assert_status(response, 200)
-        
+
         # 방법 2: components 사용 (격리된 테스트)
         class TestUserService(TestCase):
             components = [UserService]
-            
-            def test_get_users(self):
+
+            async def test_get_users(self):
                 service = self.get_instance(UserService)
                 ...
     """
@@ -128,15 +128,17 @@ class TestCase(UnitTestCase):
             # ready_async() 호출 (동기 setUp에서)
             if self.auto_ready and self.components:
                 import asyncio
+
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
                     loop = None
-                
+
                 if loop and loop.is_running():
                     # 이벤트 루프가 실행 중이면 nested 실행은 불가능
                     # (이 경우는 드물며, 테스트에서는 일반적으로 발생하지 않음)
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(asyncio.run, self.app.ready_async())
                         future.result()
@@ -164,7 +166,7 @@ class TestCase(UnitTestCase):
         # components 방식인 경우에만 ContainerManager 정리
         # app_module 방식은 전역 Application이므로 정리하지 않음
         if self.app_module is None:
-            if hasattr(self, 'manager') and self.manager:
+            if hasattr(self, "manager") and self.manager:
                 self.manager.clear()
             set_current_manager(None)
 

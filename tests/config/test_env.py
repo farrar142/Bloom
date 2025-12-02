@@ -38,7 +38,7 @@ class Priority(int, Enum):
 class TestEnvInjection:
     """환경변수 주입 테스트"""
 
-    def test_env_str_injection(self):
+    async def test_env_str_injection(self):
         """문자열 환경변수 주입"""
         os.environ["TEST_PASSWORD"] = "secret123"
 
@@ -46,7 +46,7 @@ class TestEnvInjection:
         class Service:
             password: EnvStr[Literal["TEST_PASSWORD"]]
 
-        app = Application("test").scan(Service).ready()
+        app = await Application("test").scan(Service).ready_async()
         service = app.manager.get_instance(Service)
 
         assert service.password == "secret123"
@@ -54,7 +54,7 @@ class TestEnvInjection:
         # 정리
         del os.environ["TEST_PASSWORD"]
 
-    def test_env_int_injection(self):
+    async def test_env_int_injection(self):
         """정수 환경변수 주입"""
         os.environ["TEST_PORT"] = "8080"
 
@@ -62,7 +62,7 @@ class TestEnvInjection:
         class Service:
             port: EnvInt[Literal["TEST_PORT"]]
 
-        app = Application("test").scan(Service).ready()
+        app = await Application("test").scan(Service).ready_async()
         service = app.manager.get_instance(Service)
 
         assert service.port == 8080
@@ -70,7 +70,7 @@ class TestEnvInjection:
 
         del os.environ["TEST_PORT"]
 
-    def test_env_float_injection(self):
+    async def test_env_float_injection(self):
         """실수 환경변수 주입"""
         os.environ["TEST_RATE"] = "0.75"
 
@@ -78,7 +78,7 @@ class TestEnvInjection:
         class Service:
             rate: EnvFloat[Literal["TEST_RATE"]]
 
-        app = Application("test").scan(Service).ready()
+        app = await Application("test").scan(Service).ready_async()
         service = app.manager.get_instance(Service)
 
         assert service.rate == 0.75
@@ -86,7 +86,7 @@ class TestEnvInjection:
 
         del os.environ["TEST_RATE"]
 
-    def test_env_bool_injection(self):
+    async def test_env_bool_injection(self):
         """불리언 환경변수 주입"""
         os.environ["TEST_DEBUG"] = "true"
 
@@ -94,7 +94,7 @@ class TestEnvInjection:
         class Service:
             debug: EnvBool[Literal["TEST_DEBUG"]]
 
-        app = Application("test").scan(Service).ready()
+        app = await Application("test").scan(Service).ready_async()
         service = app.manager.get_instance(Service)
 
         assert service.debug is True
@@ -102,7 +102,7 @@ class TestEnvInjection:
 
         del os.environ["TEST_DEBUG"]
 
-    def test_env_bool_various_values(self):
+    async def test_env_bool_various_values(self):
         """다양한 불리언 값 테스트"""
         true_values = ["true", "1", "yes", "on", "True", "TRUE", "YES"]
         false_values = ["false", "0", "no", "off", "False", "FALSE", "NO", ""]
@@ -114,7 +114,7 @@ class TestEnvInjection:
             class TrueService:
                 flag: EnvBool[Literal["TEST_FLAG"]]
 
-            app = Application("test").scan(TrueService).ready()
+            app = await Application("test").scan(TrueService).ready_async()
             service = app.manager.get_instance(TrueService)
             assert service.flag is True, f"Expected True for '{val}'"
 
@@ -125,13 +125,13 @@ class TestEnvInjection:
             class FalseService:
                 flag: EnvBool[Literal["TEST_FLAG"]]
 
-            app = Application("test").scan(FalseService).ready()
+            app = await Application("test").scan(FalseService).ready_async()
             service = app.manager.get_instance(FalseService)
             assert service.flag is False, f"Expected False for '{val}'"
 
         del os.environ["TEST_FLAG"]
 
-    def test_env_missing_variable(self):
+    async def test_env_missing_variable(self):
         """환경변수가 없는 경우"""
         # 환경변수가 없는 경우 필드가 설정되지 않음
         if "NONEXISTENT_VAR" in os.environ:
@@ -141,13 +141,13 @@ class TestEnvInjection:
         class Service:
             missing: EnvStr[Literal["NONEXISTENT_VAR"]]
 
-        app = Application("test").scan(Service).ready()
+        app = await Application("test").scan(Service).ready_async()
         service = app.manager.get_instance(Service)
 
         # 환경변수가 없으면 해당 필드가 주입되지 않음
         assert not hasattr(service, "missing") or service.missing is None
 
-    def test_multiple_env_variables(self):
+    async def test_multiple_env_variables(self):
         """여러 환경변수 동시 주입"""
         os.environ["DB_HOST"] = "localhost"
         os.environ["DB_PORT"] = "5432"
@@ -159,7 +159,7 @@ class TestEnvInjection:
             port: EnvInt[Literal["DB_PORT"]]
             debug: EnvBool[Literal["DB_DEBUG"]]
 
-        app = Application("test").scan(DatabaseConfig).ready()
+        app = await Application("test").scan(DatabaseConfig).ready_async()
         config = app.manager.get_instance(DatabaseConfig)
 
         assert config.host == "localhost"
@@ -170,7 +170,7 @@ class TestEnvInjection:
         del os.environ["DB_PORT"]
         del os.environ["DB_DEBUG"]
 
-    def test_env_with_regular_dependency(self):
+    async def test_env_with_regular_dependency(self):
         """환경변수와 일반 의존성 혼합"""
         os.environ["API_KEY"] = "my-api-key"
 
@@ -187,7 +187,7 @@ class TestEnvInjection:
             def call(self):
                 return self.logger.log(f"Using key: {self.api_key}")
 
-        app = Application("test").scan(Logger, ApiClient).ready()
+        app = await Application("test").scan(Logger, ApiClient).ready_async()
         client = app.manager.get_instance(ApiClient)
 
         assert client.api_key == "my-api-key"
@@ -200,7 +200,7 @@ class TestEnvInjection:
 class TestEnvEnumInjection:
     """EnvEnum 환경변수 주입 테스트"""
 
-    def test_env_enum_by_name(self, reset_container_manager):
+    async def test_env_enum_by_name(self, reset_container_manager):
         """Enum 이름으로 환경변수 주입"""
         os.environ["APP_ENV"] = "PROD"  # Enum 이름
 
@@ -208,7 +208,7 @@ class TestEnvEnumInjection:
         class Service:
             env: EnvEnum[Environment, Literal["APP_ENV"]]
 
-        app = Application("test").scan(Service).ready()
+        app = await Application("test").scan(Service).ready_async()
         service = app.manager.get_instance(Service)
 
         assert service.env == Environment.PROD
@@ -216,7 +216,7 @@ class TestEnvEnumInjection:
 
         del os.environ["APP_ENV"]
 
-    def test_env_enum_by_value(self, reset_container_manager):
+    async def test_env_enum_by_value(self, reset_container_manager):
         """Enum 값으로 환경변수 주입"""
         os.environ["APP_ENV"] = "staging"  # Enum 값
 
@@ -224,7 +224,7 @@ class TestEnvEnumInjection:
         class Service:
             env: EnvEnum[Environment, Literal["APP_ENV"]]
 
-        app = Application("test").scan(Service).ready()
+        app = await Application("test").scan(Service).ready_async()
         service = app.manager.get_instance(Service)
 
         assert service.env == Environment.STAGING
@@ -232,7 +232,7 @@ class TestEnvEnumInjection:
 
         del os.environ["APP_ENV"]
 
-    def test_env_enum_log_level(self, reset_container_manager):
+    async def test_env_enum_log_level(self, reset_container_manager):
         """로그 레벨 Enum 주입"""
         os.environ["LOG_LEVEL"] = "WARNING"
 
@@ -240,14 +240,14 @@ class TestEnvEnumInjection:
         class LogConfig:
             level: EnvEnum[LogLevel, Literal["LOG_LEVEL"]]
 
-        app = Application("test").scan(LogConfig).ready()
+        app = await Application("test").scan(LogConfig).ready_async()
         config = app.manager.get_instance(LogConfig)
 
         assert config.level == LogLevel.WARNING
 
         del os.environ["LOG_LEVEL"]
 
-    def test_env_enum_missing_variable(self, reset_container_manager):
+    async def test_env_enum_missing_variable(self, reset_container_manager):
         """Enum 환경변수가 없는 경우"""
         if "NONEXISTENT_ENV" in os.environ:
             del os.environ["NONEXISTENT_ENV"]
@@ -256,13 +256,13 @@ class TestEnvEnumInjection:
         class Service:
             env: EnvEnum[Environment, Literal["NONEXISTENT_ENV"]]
 
-        app = Application("test").scan(Service).ready()
+        app = await Application("test").scan(Service).ready_async()
         service = app.manager.get_instance(Service)
 
         # 환경변수가 없으면 None
         assert not hasattr(service, "env") or service.env is None
 
-    def test_env_enum_invalid_value(self, reset_container_manager):
+    async def test_env_enum_invalid_value(self, reset_container_manager):
         """잘못된 Enum 값인 경우"""
         os.environ["APP_ENV"] = "invalid_value"
 
@@ -270,7 +270,7 @@ class TestEnvEnumInjection:
         class Service:
             env: EnvEnum[Environment, Literal["APP_ENV"]]
 
-        app = Application("test").scan(Service).ready()
+        app = await Application("test").scan(Service).ready_async()
         service = app.manager.get_instance(Service)
 
         # 잘못된 값이면 None 반환 (기본값)
@@ -278,7 +278,7 @@ class TestEnvEnumInjection:
 
         del os.environ["APP_ENV"]
 
-    def test_env_enum_with_other_env_types(self, reset_container_manager):
+    async def test_env_enum_with_other_env_types(self, reset_container_manager):
         """EnvEnum과 다른 Env 타입 혼합"""
         os.environ["APP_NAME"] = "MyApp"
         os.environ["APP_PORT"] = "8080"
@@ -292,7 +292,7 @@ class TestEnvEnumInjection:
             env: EnvEnum[Environment, Literal["APP_ENV"]]
             debug: EnvBool[Literal["APP_DEBUG"]]
 
-        app = Application("test").scan(AppConfig).ready()
+        app = await Application("test").scan(AppConfig).ready_async()
         config = app.manager.get_instance(AppConfig)
 
         assert config.name == "MyApp"
@@ -305,7 +305,7 @@ class TestEnvEnumInjection:
         del os.environ["APP_ENV"]
         del os.environ["APP_DEBUG"]
 
-    def test_env_enum_case_sensitivity(self, reset_container_manager):
+    async def test_env_enum_case_sensitivity(self, reset_container_manager):
         """Enum 이름은 대소문자 구분"""
         # LogLevel.DEBUG (이름) vs "DEBUG" (값)
         os.environ["LOG_LEVEL"] = "DEBUG"  # 이름과 값이 같음
@@ -314,7 +314,7 @@ class TestEnvEnumInjection:
         class Config:
             level: EnvEnum[LogLevel, Literal["LOG_LEVEL"]]
 
-        app = Application("test").scan(Config).ready()
+        app = await Application("test").scan(Config).ready_async()
         config = app.manager.get_instance(Config)
 
         assert config.level == LogLevel.DEBUG

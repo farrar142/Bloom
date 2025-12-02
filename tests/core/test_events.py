@@ -27,7 +27,7 @@ from bloom.core.events import (
 class TestInMemoryEventBus:
     """InMemoryEventBus 단위 테스트"""
 
-    def test_publish_and_subscribe(self):
+    async def test_publish_and_subscribe(self):
         """이벤트 발행 및 구독"""
 
         @dataclass
@@ -45,7 +45,7 @@ class TestInMemoryEventBus:
 
         assert received == ["hello"]
 
-    def test_multiple_handlers(self):
+    async def test_multiple_handlers(self):
         """여러 핸들러 구독"""
 
         @dataclass
@@ -68,7 +68,7 @@ class TestInMemoryEventBus:
         assert 10 in results
         assert 15 in results
 
-    def test_inheritance_handler(self):
+    async def test_inheritance_handler(self):
         """부모 타입 핸들러도 호출"""
 
         @dataclass
@@ -101,7 +101,7 @@ class TestInMemoryEventBus:
         assert len(child_received) == 1
         assert child_received[0] == "test"
 
-    def test_unsubscribe(self):
+    async def test_unsubscribe(self):
         """구독 해제"""
 
         @dataclass
@@ -122,7 +122,7 @@ class TestInMemoryEventBus:
         bus.publish(TestEvent())
         assert len(called) == 1  # 더 이상 호출되지 않음
 
-    def test_clear(self):
+    async def test_clear(self):
         """모든 구독 해제"""
 
         @dataclass
@@ -146,7 +146,7 @@ class TestInMemoryEventBus:
 class TestSystemEventBus:
     """SystemEventBus DI 통합 테스트"""
 
-    def test_system_event_bus_injectable(self):
+    async def test_system_event_bus_injectable(self):
         """SystemEventBus를 DI로 주입받을 수 있음"""
 
         received_events = []
@@ -171,7 +171,7 @@ class TestSystemEventBus:
         app = Application("test_system_events")
         app.scan(EventLogger)
         app.scan(SomeService)
-        app.ready()
+        await app.ready_async()
 
         # EventLogger가 주입받은 SystemEventBus 확인
         logger = app.manager.get_instance(EventLogger)
@@ -187,7 +187,7 @@ class TestSystemEventBus:
 class TestApplicationEventBus:
     """ApplicationEventBus DI 통합 테스트"""
 
-    def test_application_event_bus_injectable(self):
+    async def test_application_event_bus_injectable(self):
         """ApplicationEventBus를 DI로 주입받을 수 있음"""
 
         @Component
@@ -196,13 +196,13 @@ class TestApplicationEventBus:
 
         app = Application("test_app_events")
         app.scan(Publisher)
-        app.ready()
+        await app.ready_async()
 
         publisher = app.manager.get_instance(Publisher)
         assert publisher.event_bus is not None
         assert isinstance(publisher.event_bus, ApplicationEventBus)
 
-    def test_event_listener_decorator(self):
+    async def test_event_listener_decorator(self):
         """@EventListener 데코레이터로 이벤트 구독"""
 
         @dataclass
@@ -234,7 +234,7 @@ class TestApplicationEventBus:
         app.scan(OrderService)
         app.scan(EmailService)
         app.scan(InventoryService)
-        app.ready()
+        await app.ready_async()
 
         # 주문 생성
         order_service = app.manager.get_instance(OrderService)
@@ -244,7 +244,7 @@ class TestApplicationEventBus:
         assert "email:ORD-001" in received
         assert "inventory:ORD-001" in received
 
-    def test_multiple_events(self):
+    async def test_multiple_events(self):
         """여러 종류의 이벤트 처리"""
 
         @dataclass
@@ -280,7 +280,7 @@ class TestApplicationEventBus:
         app = Application("test_multi_events")
         app.scan(AuditService)
         app.scan(UserService)
-        app.ready()
+        await app.ready_async()
 
         user_service = app.manager.get_instance(UserService)
         user_service.register("user-1")
@@ -297,7 +297,7 @@ class TestApplicationEventBus:
 class TestMixedEvents:
     """시스템 이벤트와 애플리케이션 이벤트 혼합 사용"""
 
-    def test_both_event_buses_available(self):
+    async def test_both_event_buses_available(self):
         """두 이벤트 버스 모두 주입 가능"""
 
         @Component
@@ -307,7 +307,7 @@ class TestMixedEvents:
 
         app = Application("test_mixed")
         app.scan(MixedService)
-        app.ready()
+        await app.ready_async()
 
         service = app.manager.get_instance(MixedService)
         assert service.system_events is not None
@@ -323,7 +323,7 @@ class TestMixedEvents:
 class TestCustomApplicationEventBus:
     """사용자가 @Factory로 커스텀 ApplicationEventBus를 생성"""
 
-    def test_factory_creates_custom_event_bus(self):
+    async def test_factory_creates_custom_event_bus(self):
         """@Factory로 생성한 ApplicationEventBus가 사용됨"""
         from bloom.core.decorators import Factory
 
@@ -357,7 +357,7 @@ class TestCustomApplicationEventBus:
         app = Application("test_custom_bus")
         app.scan(EventBusConfig)
         app.scan(Publisher)
-        app.ready()
+        await app.ready_async()
 
         publisher = app.manager.get_instance(Publisher)
         publisher.emit("hello")
@@ -371,7 +371,7 @@ class TestCustomApplicationEventBus:
         assert isinstance(published, TestEvent)
         assert published.message == "hello"
 
-    def test_default_event_bus_when_no_factory(self):
+    async def test_default_event_bus_when_no_factory(self):
         """@Factory가 없으면 기본 ApplicationEventBus 생성"""
 
         @Component
@@ -380,7 +380,7 @@ class TestCustomApplicationEventBus:
 
         app = Application("test_default_bus")
         app.scan(SimpleService)
-        app.ready()
+        await app.ready_async()
 
         service = app.manager.get_instance(SimpleService)
         assert service.event_bus is not None

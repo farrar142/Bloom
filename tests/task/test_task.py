@@ -43,7 +43,7 @@ from bloom.task import (
 class TestFixedRateTrigger:
     """FixedRateTrigger 테스트"""
 
-    def test_next_execution_time_first_run(self):
+    async def test_next_execution_time_first_run(self):
         """첫 실행: initial_delay 적용"""
         trigger = FixedRateTrigger(seconds=10)
         now = datetime.now()
@@ -53,7 +53,7 @@ class TestFixedRateTrigger:
         assert next_time is not None
         assert next_time <= now + timedelta(seconds=1)
 
-    def test_next_execution_time_with_initial_delay(self):
+    async def test_next_execution_time_with_initial_delay(self):
         """initial_delay 지정 테스트"""
         trigger = FixedRateTrigger(seconds=10, initial_delay=5)
         next_time = trigger.next_execution_time(None)
@@ -62,7 +62,7 @@ class TestFixedRateTrigger:
         assert next_time is not None
         assert next_time >= expected_min
 
-    def test_next_execution_time_after_run(self):
+    async def test_next_execution_time_after_run(self):
         """실행 후 다음 실행 시간"""
         trigger = FixedRateTrigger(seconds=30)
         last_execution = datetime.now()
@@ -72,7 +72,7 @@ class TestFixedRateTrigger:
         assert next_time is not None
         assert abs((next_time - expected).total_seconds()) < 1
 
-    def test_with_minutes(self):
+    async def test_with_minutes(self):
         """minutes 단위 테스트"""
         trigger = FixedRateTrigger(minutes=2)
         last_execution = datetime.now()
@@ -82,7 +82,7 @@ class TestFixedRateTrigger:
         assert next_time is not None
         assert abs((next_time - expected).total_seconds()) < 1
 
-    def test_with_hours(self):
+    async def test_with_hours(self):
         """hours 단위 테스트"""
         trigger = FixedRateTrigger(hours=1)
         last_execution = datetime.now()
@@ -92,7 +92,7 @@ class TestFixedRateTrigger:
         assert next_time is not None
         assert abs((next_time - expected).total_seconds()) < 1
 
-    def test_combined_units(self):
+    async def test_combined_units(self):
         """여러 단위 조합"""
         trigger = FixedRateTrigger(hours=1, minutes=30, seconds=15)
         last_execution = datetime.now()
@@ -103,7 +103,7 @@ class TestFixedRateTrigger:
         assert next_time is not None
         assert abs((next_time - expected).total_seconds()) < 1
 
-    def test_repr(self):
+    async def test_repr(self):
         """문자열 표현"""
         trigger = FixedRateTrigger(seconds=30, initial_delay=5)
         assert "FixedRateTrigger" in repr(trigger)
@@ -113,7 +113,7 @@ class TestFixedRateTrigger:
 class TestFixedDelayTrigger:
     """FixedDelayTrigger 테스트"""
 
-    def test_next_execution_time_first_run(self):
+    async def test_next_execution_time_first_run(self):
         """첫 실행: initial_delay 적용"""
         trigger = FixedDelayTrigger(seconds=10)
         next_time = trigger.next_execution_time(None)
@@ -121,7 +121,7 @@ class TestFixedDelayTrigger:
         assert next_time is not None
         assert next_time <= datetime.now() + timedelta(seconds=1)
 
-    def test_next_execution_time_after_run(self):
+    async def test_next_execution_time_after_run(self):
         """완료 후 다음 실행 시간"""
         trigger = FixedDelayTrigger(seconds=30)
         last_execution = datetime.now()
@@ -135,7 +135,7 @@ class TestFixedDelayTrigger:
 class TestCronTrigger:
     """CronTrigger 테스트"""
 
-    def test_every_minute(self):
+    async def test_every_minute(self):
         """매분 실행"""
         trigger = CronTrigger("* * * * *")
         now = datetime.now().replace(second=0, microsecond=0)
@@ -145,7 +145,7 @@ class TestCronTrigger:
         assert next_time is not None
         assert next_time == expected
 
-    def test_specific_minute(self):
+    async def test_specific_minute(self):
         """특정 분에 실행"""
         trigger = CronTrigger("30 * * * *")
         now = datetime.now().replace(minute=0, second=0, microsecond=0)
@@ -154,7 +154,7 @@ class TestCronTrigger:
         assert next_time is not None
         assert next_time.minute == 30
 
-    def test_specific_hour(self):
+    async def test_specific_hour(self):
         """특정 시에 실행"""
         trigger = CronTrigger("0 9 * * *")
         now = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -164,7 +164,7 @@ class TestCronTrigger:
         assert next_time.hour == 9
         assert next_time.minute == 0
 
-    def test_weekday_only(self):
+    async def test_weekday_only(self):
         """평일에만 실행 (월-금)"""
         trigger = CronTrigger("0 9 * * 1-5")
         # 다음 실행 시간이 평일인지 확인
@@ -173,7 +173,7 @@ class TestCronTrigger:
         assert next_time is not None
         assert next_time.weekday() < 5  # 0=월, 4=금
 
-    def test_step_values(self):
+    async def test_step_values(self):
         """스텝 값 테스트 (*/15)"""
         trigger = CronTrigger("*/15 * * * *")
         now = datetime.now().replace(minute=0, second=0, microsecond=0)
@@ -183,7 +183,7 @@ class TestCronTrigger:
         # 다음 실행은 0, 15, 30, 45분 중 하나
         assert next_time.minute in [0, 15, 30, 45]
 
-    def test_repr(self):
+    async def test_repr(self):
         """문자열 표현"""
         trigger = CronTrigger("0 9 * * 1-5")
         assert "CronTrigger" in repr(trigger)
@@ -198,7 +198,7 @@ class TestCronTrigger:
 class TestTaskResult:
     """TaskResult 테스트"""
 
-    def test_get_result(self):
+    async def test_get_result(self):
         """결과 가져오기"""
         from concurrent.futures import ThreadPoolExecutor
 
@@ -209,7 +209,7 @@ class TestTaskResult:
         assert result.get() == "hello"
         executor.shutdown()
 
-    def test_get_with_timeout(self):
+    async def test_get_with_timeout(self):
         """타임아웃 테스트"""
         from concurrent.futures import ThreadPoolExecutor
 
@@ -223,7 +223,7 @@ class TestTaskResult:
         future.cancel()
         executor.shutdown(wait=False)
 
-    def test_ready_status(self):
+    async def test_ready_status(self):
         """ready() 상태 확인"""
         from concurrent.futures import ThreadPoolExecutor
 
@@ -236,7 +236,7 @@ class TestTaskResult:
         assert result.ready() is True
         executor.shutdown()
 
-    def test_successful_status(self):
+    async def test_successful_status(self):
         """successful() 상태 확인"""
         from concurrent.futures import ThreadPoolExecutor
 
@@ -249,7 +249,7 @@ class TestTaskResult:
         assert result.failed() is False
         executor.shutdown()
 
-    def test_failed_status(self):
+    async def test_failed_status(self):
         """failed() 상태 확인"""
         from concurrent.futures import ThreadPoolExecutor
 
@@ -267,7 +267,7 @@ class TestTaskResult:
         assert result.successful() is False
         executor.shutdown()
 
-    def test_revoke(self):
+    async def test_revoke(self):
         """태스크 취소"""
         from concurrent.futures import ThreadPoolExecutor
 
@@ -285,7 +285,7 @@ class TestTaskResult:
 
         executor.shutdown(wait=False)
 
-    def test_add_callback(self):
+    async def test_add_callback(self):
         """콜백 등록"""
         from concurrent.futures import ThreadPoolExecutor
 
@@ -306,7 +306,7 @@ class TestTaskResult:
         assert len(callback_called) == 1
         executor.shutdown()
 
-    def test_repr(self):
+    async def test_repr(self):
         """문자열 표현"""
         from concurrent.futures import ThreadPoolExecutor
 
@@ -379,7 +379,7 @@ class TestAsyncTaskResult:
 class TestScheduledTask:
     """ScheduledTask 테스트"""
 
-    def test_create_scheduled_task(self):
+    async def test_create_scheduled_task(self):
         """스케줄 태스크 생성"""
 
         def my_handler():
@@ -396,7 +396,7 @@ class TestScheduledTask:
         assert task.is_enabled is True
         assert task.execution_count == 0
 
-    def test_pause_resume(self):
+    async def test_pause_resume(self):
         """일시정지/재개"""
         trigger = FixedRateTrigger(seconds=10)
         task = ScheduledTask(
@@ -413,7 +413,7 @@ class TestScheduledTask:
         task.resume()
         assert task.is_enabled is True
 
-    def test_cancel(self):
+    async def test_cancel(self):
         """취소"""
         trigger = FixedRateTrigger(seconds=10)
         task = ScheduledTask(
@@ -494,7 +494,7 @@ class TestScheduledTask:
         result = await task.execute()
         assert result == "async done"
 
-    def test_info(self):
+    async def test_info(self):
         """정보 조회"""
         trigger = FixedRateTrigger(seconds=30)
         task = ScheduledTask(
@@ -519,7 +519,7 @@ class TestScheduledTask:
 class TestTaskDecorator:
     """@Task 데코레이터 테스트"""
 
-    def test_task_decorator_basic(self):
+    async def test_task_decorator_basic(self):
         """기본 @Task 데코레이터"""
 
         class MyService:
@@ -531,7 +531,7 @@ class TestTaskDecorator:
         assert isinstance(MyService.my_task, TaskDescriptor)
         assert is_task(MyService.my_task._handler) is True
 
-    def test_task_decorator_with_options(self):
+    async def test_task_decorator_with_options(self):
         """옵션이 있는 @Task"""
 
         class MyService:
@@ -544,7 +544,7 @@ class TestTaskDecorator:
         assert element.name == "custom-name"
         assert element.max_retries == 3
 
-    def test_bound_task_direct_call(self):
+    async def test_bound_task_direct_call(self):
         """BoundTask 직접 호출"""
 
         class MyService:
@@ -561,7 +561,7 @@ class TestTaskDecorator:
         result = bound("hello")
         assert result == "echo: hello"
 
-    def test_bound_task_delay_without_backend(self):
+    async def test_bound_task_delay_without_backend(self):
         """백엔드 없이 delay() 호출 시 에러"""
 
         class MyService:
@@ -574,7 +574,7 @@ class TestTaskDecorator:
         with pytest.raises(RuntimeError, match="TaskBackend"):
             service.my_task.delay()
 
-    def test_bound_task_schedule_without_backend(self):
+    async def test_bound_task_schedule_without_backend(self):
         """백엔드 없이 schedule() 호출 시 에러"""
 
         class MyService:
@@ -596,7 +596,7 @@ class TestTaskDecorator:
 class TestAsyncioTaskBackend:
     """AsyncioTaskBackend 테스트"""
 
-    def test_submit_sync(self):
+    async def test_submit_sync(self):
         """동기 태스크 제출"""
         backend = AsyncioTaskBackend()
 
@@ -694,7 +694,7 @@ class TestAsyncioTaskBackend:
 class TestTaskMethodAdvice:
     """TaskMethodAdvice 테스트"""
 
-    def test_advice_supports(self):
+    async def test_advice_supports(self):
         """supports() 메서드"""
         backend = AsyncioTaskBackend()
         advice = TaskMethodAdvice(backend)
@@ -756,7 +756,7 @@ class TestTaskMethodAdvice:
 class TestTaskIntegration:
     """Task 시스템 통합 테스트"""
 
-    def test_full_workflow_sync(self):
+    async def test_full_workflow_sync(self):
         """동기 워크플로우 테스트"""
 
         class EmailService:
@@ -858,7 +858,7 @@ class TestTaskApplicationIntegration:
     실제 Application을 사용하여 모든 컴포넌트가 올바르게 연결되는지 확인합니다.
     """
 
-    def test_component_with_task_and_factory_injection(self):
+    async def test_component_with_task_and_factory_injection(self):
         """@Component에서 @Task 사용 + @Factory로 TaskBackend 주입"""
         from bloom import Application, Component
         from bloom.core.decorators import Factory
@@ -908,7 +908,7 @@ class TestTaskApplicationIntegration:
         assert value == "Notification sent: Background Task"
         assert len(service.notifications) == 2
 
-    def test_service_with_dependency_injection_and_task(self):
+    async def test_service_with_dependency_injection_and_task(self):
         """의존성 주입이 있는 서비스에서 @Task 사용"""
         from bloom import Application, Component
         from bloom.core.decorators import Factory
@@ -1083,7 +1083,7 @@ class TestTaskApplicationIntegration:
         finally:
             await backend.shutdown()
 
-    def test_multiple_tasks_in_single_component(self):
+    async def test_multiple_tasks_in_single_component(self):
         """하나의 컴포넌트에 여러 @Task 메서드"""
         from bloom import Application, Component
         from bloom.core.decorators import Factory
@@ -1135,7 +1135,7 @@ class TestTaskApplicationIntegration:
         assert len(service.orders) == 1
         assert len(service.invoices) == 1
 
-    def test_task_with_controller(self):
+    async def test_task_with_controller(self):
         """@Controller 내부에서 @Task 사용 (Background Job 패턴)"""
         from bloom import Application, Component
         from bloom.core.decorators import Factory
@@ -1194,7 +1194,7 @@ class TestTaskApplicationIntegration:
         job_service = app.manager.get_instance(BackgroundJobService)
         assert "JOB001" in job_service.jobs
 
-    def test_task_error_handling(self):
+    async def test_task_error_handling(self):
         """@Task에서 예외 발생 시 처리"""
         from bloom import Application, Component
         from bloom.core.decorators import Factory

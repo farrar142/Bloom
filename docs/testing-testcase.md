@@ -24,7 +24,7 @@ class TestUserService(TestCase):
     # 테스트에 필요한 컴포넌트 등록
     components = [UserRepository, UserService]
 
-    def test_list_users(self):
+    async def test_list_users(self):
         service = self.get_instance(UserService)
         users = service.list_users()
         self.assertEqual(users, ["alice", "bob"])
@@ -65,7 +65,7 @@ class TestWithConfig(TestCase):
 등록된 컴포넌트의 인스턴스를 조회합니다.
 
 ```python
-def test_get_instance(self):
+async def test_get_instance(self):
     service = self.get_instance(UserService)
     self.assertIsNotNone(service)
 ```
@@ -75,7 +75,7 @@ def test_get_instance(self):
 해당 타입의 모든 인스턴스를 조회합니다 (서브클래스 포함).
 
 ```python
-def test_get_all_handlers(self):
+async def test_get_all_handlers(self):
     handlers = self.get_instances(EventHandler)
     self.assertEqual(len(handlers), 3)
 ```
@@ -85,7 +85,7 @@ def test_get_all_handlers(self):
 인스턴스 존재 여부를 확인합니다.
 
 ```python
-def test_instance_exists(self):
+async def test_instance_exists(self):
     self.assertTrue(self.has_instance(UserService))
     self.assertFalse(self.has_instance(UnregisteredService))
 ```
@@ -97,7 +97,7 @@ def test_instance_exists(self):
 ### `get(path, *, headers=None, query_params=None) -> TestResponse`
 
 ```python
-def test_get_users(self):
+async def test_get_users(self):
     response = self.get("/api/users")
     self.assert_success(response)
     self.assertEqual(response.json(), ["alice", "bob"])
@@ -106,7 +106,7 @@ def test_get_users(self):
 ### `post(path, *, json=None, body=None, headers=None) -> TestResponse`
 
 ```python
-def test_create_user(self):
+async def test_create_user(self):
     response = self.post("/api/users", json={"name": "charlie"})
     self.assert_status(response, 201)
 ```
@@ -114,7 +114,7 @@ def test_create_user(self):
 ### `put(path, *, json=None, body=None, headers=None) -> TestResponse`
 
 ```python
-def test_update_user(self):
+async def test_update_user(self):
     response = self.put("/api/users/1", json={"name": "updated"})
     self.assert_success(response)
 ```
@@ -122,7 +122,7 @@ def test_update_user(self):
 ### `delete(path, *, headers=None) -> TestResponse`
 
 ```python
-def test_delete_user(self):
+async def test_delete_user(self):
     response = self.delete("/api/users/1")
     self.assert_status(response, 204)
 ```
@@ -130,7 +130,7 @@ def test_delete_user(self):
 ### `patch(path, *, json=None, body=None, headers=None) -> TestResponse`
 
 ```python
-def test_patch_user(self):
+async def test_patch_user(self):
     response = self.patch("/api/users/1", json={"status": "active"})
     self.assert_success(response)
 ```
@@ -142,7 +142,7 @@ def test_patch_user(self):
 의존성을 mock 인스턴스로 대체합니다.
 
 ```python
-def test_with_mock(self):
+async def test_with_mock(self):
     class FakeRepository:
         def get_users(self):
             return ["fake_user"]
@@ -161,7 +161,7 @@ def test_with_mock(self):
 팩토리 함수로 mock을 생성합니다. 호출 시마다 새 인스턴스가 생성됩니다.
 
 ```python
-def test_with_factory_mock(self):
+async def test_with_factory_mock(self):
     call_count = 0
 
     def create_fake():
@@ -179,7 +179,7 @@ def test_with_factory_mock(self):
 ### 타입 검증
 
 ```python
-def test_type_assertion(self):
+async def test_type_assertion(self):
     service = self.get_instance(UserService)
     self.assert_instance_of(service, UserService)
 ```
@@ -187,7 +187,7 @@ def test_type_assertion(self):
 ### 필드 주입 검증
 
 ```python
-def test_injection(self):
+async def test_injection(self):
     service = self.get_instance(UserService)
 
     # 필드가 주입되었는지 확인하고, 주입된 값 반환
@@ -198,7 +198,7 @@ def test_injection(self):
 ### HTTP 응답 검증
 
 ```python
-def test_response_assertions(self):
+async def test_response_assertions(self):
     response = self.get("/api/users")
 
     # 상태 코드 검증
@@ -220,7 +220,7 @@ def test_response_assertions(self):
 코루틴을 동기적으로 실행합니다.
 
 ```python
-def test_async_code(self):
+async def test_async_code(self):
     async def fetch_data():
         return {"data": "value"}
 
@@ -233,7 +233,7 @@ def test_async_code(self):
 디버깅용 컨테이너 트리를 문자열로 반환합니다.
 
 ```python
-def test_debug(self):
+async def test_debug(self):
     tree = self.print_container_tree()
     print(tree)
     # ContainerManager: test
@@ -251,7 +251,7 @@ def test_debug(self):
 특정 타입의 컨테이너 정보를 조회합니다.
 
 ```python
-def test_container_info(self):
+async def test_container_info(self):
     info = self.get_container_info(UserService)
     self.assertTrue(info["exists"])
     self.assertEqual(info["target"], "UserService")
@@ -349,13 +349,13 @@ class UserController:
 class TestUserController(TestCase):
     components = [UserRepository, UserService, UserController]
 
-    def test_list_users_empty(self):
+    async def test_list_users_empty(self):
         """빈 사용자 목록 조회"""
         response = self.get("/users")
         self.assert_success(response)
         self.assert_json_equal(response, [])
 
-    def test_create_and_list_user(self):
+    async def test_create_and_list_user(self):
         """사용자 생성 및 조회"""
         # 사용자 생성
         response = self.post("/users", json={
@@ -372,7 +372,7 @@ class TestUserController(TestCase):
         self.assertEqual(len(users), 1)
         self.assertEqual(users[0]["email"], "alice@example.com")
 
-    def test_with_mock_repository(self):
+    async def test_with_mock_repository(self):
         """Repository를 Mock으로 대체"""
         class MockRepository:
             def find_all(self):
@@ -383,7 +383,7 @@ class TestUserController(TestCase):
             users = response.json()
             self.assertEqual(users[0]["id"], 999)
 
-    def test_service_injection(self):
+    async def test_service_injection(self):
         """서비스 주입 확인"""
         controller = self.get_instance(UserController)
         service = self.assert_injected(controller, "service", UserService)
@@ -399,7 +399,7 @@ class TestUserController(TestCase):
 class TestUserService(TestCase):
     components = [UserRepository, UserService]
 
-    def test_create_user(self):
+    async def test_create_user(self):
         service = self.get_instance(UserService)
         # 모든 기능이 self에서 접근 가능
         self.assert_instance_of(service, UserService)
@@ -408,7 +408,7 @@ class TestUserService(TestCase):
 ### 일반 pytest 사용
 
 ```python
-def test_create_user(reset_container_manager):
+async def test_create_user(reset_container_manager):
     app = create_test_app("test", UserRepository, UserService)
     service = app.manager.get_instance(UserService)
     assert isinstance(service, UserService)
