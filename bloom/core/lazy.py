@@ -121,7 +121,7 @@ class LazyFieldProxy[T]:
                 manager = container._get_manager()
                 if manager is not None:
                     manager.lifecycle.invoke_prototype_post_construct(
-                        instance, container
+                        instance, container, prototype_mode
                     )
                     # InstanceCreatedEvent 발행
                     self._lfp_publish_instance_created(manager, instance, scope)

@@ -250,6 +250,9 @@ class async_call_scope:
     CALL_SCOPED 프로토타입 인스턴스가 같은 컨텍스트 내에서 공유됩니다.
     비동기 컨텍스트 매니저(__aenter__/__aexit__)도 올바르게 처리됩니다.
     
+    RequestContext도 함께 시작하여 CALL_SCOPED async @PostConstruct를 지원합니다.
+    이미 RequestContext가 활성화되어 있으면 재시작하지 않습니다.
+    
     사용법:
         async with async_call_scope(instance, "method_name"):
             # 이 블록 내에서 CALL_SCOPED 인스턴스가 공유됨
@@ -276,6 +279,7 @@ class async_call_scope:
         self.method_name = method_name
         self.trace_id = trace_id
         self._frame: CallFrame | None = None
+        self._owns_request_context = False  # RequestContext를 시작했는지 여부
     
     async def __aenter__(self) -> "async_call_scope":
         if self.trace_id:
@@ -284,9 +288,21 @@ class async_call_scope:
             set_trace_id()  # 자동 생성
         
         self._frame = push_frame(self.instance, self.method_name)
+        
+        # RequestContext 시작 (아직 없으면)
+        from bloom.core.request_context import RequestContext
+        if not RequestContext.is_active():
+            RequestContext.start()
+            self._owns_request_context = True
+        
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        # 우리가 RequestContext를 시작했으면 종료
+        if self._owns_request_context:
+            from bloom.core.request_context import RequestContext
+            await RequestContext.end_async()
+        
         await pop_frame_async()
         return None  # 예외 전파
 

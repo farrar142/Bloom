@@ -25,6 +25,7 @@ from .registry import LifecycleRegistry
 if TYPE_CHECKING:
     from bloom.core.manager import ContainerManager
     from bloom.core.container import Container
+    from bloom.core.container.element import PrototypeMode
 
 
 class LifecycleManager(AbstractManager[LifecycleRegistry]):
@@ -236,7 +237,10 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         return method_names
 
     def invoke_prototype_post_construct(
-        self, instance: Any, container: "Container"
+        self,
+        instance: Any,
+        container: "Container",
+        prototype_mode: "PrototypeMode | None" = None,
     ) -> None:
         """
         PROTOTYPE 인스턴스의 @PostConstruct 메서드들을 호출합니다.
@@ -249,37 +253,54 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         Args:
             instance: PROTOTYPE 인스턴스
             container: 컨테이너
+            prototype_mode: PROTOTYPE 모드 (CALL_SCOPED 등)
 
         Raises:
             Exception: PostConstruct 실패 시 예외 전파
+            RuntimeError: 일반 PROTOTYPE에서 비동기 @PostConstruct 사용 시
         """
+        from bloom.core.container.element import PrototypeMode
+        from bloom.core.request_context import RequestContext
+
         target_cls = container.target
         method_names = self._get_lifecycle_method_names(
             target_cls, LifecycleType.POST_CONSTRUCT
         )
 
+        is_call_scoped = prototype_mode == PrototypeMode.CALL_SCOPED
+
         for method_name in method_names:
             method = getattr(instance, method_name, None)
             if method is not None:
                 result = method()
-                # 비동기 메서드인 경우 경고 (PROTOTYPE에서는 지원 안 함)
+                # 비동기 메서드인 경우
                 if inspect.iscoroutine(result):
-                    result.close()  # 코루틴 정리
-                    raise RuntimeError(
-                        f"Async @PostConstruct is not supported for PROTOTYPE scope: "
-                        f"{target_cls.__name__}.{method_name}"
-                    )
+                    if is_call_scoped:
+                        # CALL_SCOPED: REQUEST와 동일하게 pending에 등록
+                        RequestContext.add_pending_init(result)
+                    else:
+                        # 일반 PROTOTYPE: 지원 안 함
+                        result.close()  # 코루틴 정리
+                        raise RuntimeError(
+                            f"Async @PostConstruct is not supported for PROTOTYPE scope. "
+                            f"Use CALL_SCOPED mode instead: "
+                            f"{target_cls.__name__}.{method_name}"
+                        )
 
         # Initializable 프로토콜 지원 (initialize가 @PostConstruct가 아닌 경우만)
         if isinstance(instance, Initializable):
             if "initialize" not in method_names:
                 result = instance.initialize()
                 if inspect.iscoroutine(result):
-                    result.close()  # 코루틴 정리
-                    raise RuntimeError(
-                        f"Async initialize() is not supported for PROTOTYPE scope: "
-                        f"{target_cls.__name__}.initialize"
-                    )
+                    if is_call_scoped:
+                        RequestContext.add_pending_init(result)
+                    else:
+                        result.close()  # 코루틴 정리
+                        raise RuntimeError(
+                            f"Async initialize() is not supported for PROTOTYPE scope. "
+                            f"Use CALL_SCOPED mode instead: "
+                            f"{target_cls.__name__}.initialize"
+                        )
 
     def invoke_request_post_construct(
         self, instance: Any, container: "Container"

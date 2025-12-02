@@ -1443,6 +1443,155 @@ class TestFactoryScopeEdgeCases:
             if log.startswith("execute:"):
                 assert i < commit_idx, f"execute가 commit 후에 있음: {log}"
 
+    @pytest.mark.asyncio
+    async def test_call_scoped_async_post_construct(self):
+        """CALL_SCOPED는 비동기 @PostConstruct를 지원
+
+        일반 PROTOTYPE은 비동기 @PostConstruct를 지원하지 않지만,
+        CALL_SCOPED는 RequestContext.add_pending_init()을 통해 지원합니다.
+        """
+        import asyncio
+
+        init_log = []
+
+        class AsyncResource:
+            def __init__(self, id: int):
+                self.id = id
+                self.initialized = False
+
+            @PostConstruct
+            async def async_init(self):
+                await asyncio.sleep(0.01)  # 비동기 작업 시뮬레이션
+                self.initialized = True
+                init_log.append(f"async_init:{self.id}")
+
+        counter = [0]
+
+        @Component
+        class Config:
+            @Factory
+            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            def resource(self) -> AsyncResource:
+                counter[0] += 1
+                return AsyncResource(counter[0])
+
+        @Component
+        class Service:
+            res: AsyncResource
+
+            async def do_work(self):
+                # 이 시점에 async_init이 완료되어 있어야 함
+                assert self.res.initialized, "비동기 초기화가 완료되지 않음"
+                return f"work:{self.res.id}"
+
+        app = Application("test")
+        app.scan(Config, Service).ready()
+
+        service = app.manager.get_instance(Service)
+
+        from bloom.core.advice.tracing import async_call_scope
+        from bloom.core.request_context import RequestContext
+
+        init_log.clear()
+
+        async with async_call_scope(service, "do_work", trace_id="test"):
+            # 웹 핸들러 흐름 시뮬레이션:
+            # 1. 의존성 접근으로 인스턴스 생성 + pending에 등록
+            #    LazyFieldProxy의 속성에 접근해야 실제 인스턴스가 생성됨
+            resource_id = service.res.id  # 속성 접근으로 resolve 트리거
+            
+            # 2. pending async 초기화 실행 (웹에서는 핸들러 호출 전에 실행)
+            await RequestContext.run_pending_init()
+            
+            # 3. 이제 초기화 완료되어 있어야 함
+            assert service.res.initialized, "비동기 초기화가 완료되지 않음"
+            result = await service.do_work()
+
+        assert result == "work:1"
+        assert resource_id == 1
+        assert init_log == ["async_init:1"]
+
+    @pytest.mark.asyncio
+    async def test_call_scoped_async_post_construct_order(self):
+        """CALL_SCOPED 비동기 @PostConstruct 여러 개 테스트
+
+        CALL_SCOPED에서 여러 의존성의 async @PostConstruct가
+        모두 pending에 등록되고 run_pending_init()에서 실행됩니다.
+        """
+        import asyncio
+
+        init_log = []
+
+        class AsyncCache:
+            def __init__(self, name: str):
+                self.name = name
+                self.connected = False
+
+            @PostConstruct
+            async def connect(self):
+                await asyncio.sleep(0.01)
+                self.connected = True
+                init_log.append(f"cache_connect:{self.name}")
+
+        class AsyncQueue:
+            def __init__(self, name: str):
+                self.name = name
+                self.ready = False
+
+            @PostConstruct
+            async def initialize(self):
+                await asyncio.sleep(0.01)
+                self.ready = True
+                init_log.append(f"queue_init:{self.name}")
+
+        @Component
+        class Config:
+            @Factory
+            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            def cache(self) -> AsyncCache:
+                return AsyncCache("redis")
+
+            @Factory
+            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            def queue(self) -> AsyncQueue:
+                return AsyncQueue("rabbitmq")
+
+        @Component
+        class Service:
+            cache: AsyncCache
+            queue: AsyncQueue
+
+            async def process(self):
+                assert self.cache.connected, "Cache not connected"
+                assert self.queue.ready, "Queue not ready"
+                return "processed"
+
+        app = Application("test")
+        app.scan(Config, Service).ready()
+
+        service = app.manager.get_instance(Service)
+
+        from bloom.core.advice.tracing import async_call_scope
+        from bloom.core.request_context import RequestContext
+
+        init_log.clear()
+
+        async with async_call_scope(service, "process", trace_id="test"):
+            # 의존성 접근으로 인스턴스 생성 + pending에 등록
+            _ = service.cache.name
+            _ = service.queue.name
+            
+            # pending async 초기화 실행
+            await RequestContext.run_pending_init()
+            
+            result = await service.process()
+
+        assert result == "processed"
+        # 두 초기화가 모두 실행됨 (순서는 접근 순서에 따름)
+        assert "cache_connect:redis" in init_log
+        assert "queue_init:rabbitmq" in init_log
+        assert len(init_log) == 2
+
 
 # ============================================================================
 # 특수 케이스 테스트
