@@ -821,9 +821,7 @@ class SessionFactory:
     async def create_async(self) -> AsyncSession:
         """새 비동기 세션 생성"""
         connection = await self._backend.pool.acquire_async()
-        return AsyncSession(
-            connection, self._backend.pool, autoflush=self._autoflush
-        )
+        return AsyncSession(connection, self._backend.pool, autoflush=self._autoflush)
 
     @contextmanager
     def session(self) -> Iterator[Session]:
