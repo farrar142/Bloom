@@ -194,6 +194,48 @@ class Post:
     user_id = ForeignKey[int]("users.id")  # 실제 FK 컬럼
 ```
 
+#### foreign_key 자동 추론
+
+`foreign_key`를 지정하지 않으면 `{owner_table}_{pk_db_name}` 형태로 자동 추론됩니다:
+
+```python
+# 기본 케이스: users 테이블 + id PK → users_id
+@Entity(table_name="users")
+class User:
+    id = PrimaryKey[int](auto_increment=True)
+    posts: "OneToMany[Post]" = OneToMany("Post")  # foreign_key="users_id" 자동 추론
+
+@Entity(table_name="posts")
+class Post:
+    id = PrimaryKey[int](auto_increment=True)
+    users_id = ForeignKey[int]("users.id")  # 자동 추론된 FK명과 일치
+```
+
+PrimaryKey에 `name` 또는 `db_name`이 지정된 경우 해당 값을 사용합니다:
+
+```python
+# PK에 name 지정: accounts 테이블 + account_pk → accounts_account_pk
+@Entity(table_name="accounts")
+class Account:
+    id = PrimaryKey[int](name="account_pk")  # DB 컬럼명: account_pk
+    orders: "OneToMany[Order]" = OneToMany("Order")  # foreign_key="accounts_account_pk" 자동 추론
+
+@Entity(table_name="orders")
+class Order:
+    id = PrimaryKey[int](auto_increment=True)
+    accounts_account_pk = ForeignKey[int]("accounts.id")
+```
+
+`__tablename__`이 없으면 클래스명 소문자를 사용합니다:
+
+```python
+# __tablename__ 없음: Team → team + id → team_id
+@Entity
+class Team:
+    id = PrimaryKey[int](auto_increment=True)
+    members: "OneToMany[Member]" = OneToMany("Member")  # foreign_key="team_id" 자동 추론
+```
+
 #### FetchType (Lazy vs Eager)
 
 `OneToMany`는 `FetchType.LAZY`(기본값)와 `FetchType.EAGER`를 지원합니다:
@@ -246,7 +288,7 @@ with session_factory.session() as session:
 async with session_factory.async_session() as session:
     # async_first(), async_all() 등 사용
     user = await session.query(User).filter(User.id == 1).async_first()
-    
+
     # Eager 관계는 자동으로 로드됨
     # Lazy 관계는 user.posts로 접근 가능 (Session 바인딩됨)
     posts = user.posts  # list[Post] 반환

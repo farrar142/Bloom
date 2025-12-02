@@ -88,7 +88,8 @@ class QueryResult(Generic[T]):
 
         # 타겟 클래스 resolve
         target_cls = descriptor._resolve_target()
-        fk_column = getattr(target_cls, descriptor._foreign_key, None)
+        fk_name = descriptor.foreign_key
+        fk_column = getattr(target_cls, fk_name, None)
         if fk_column is None:
             return
 
@@ -103,7 +104,7 @@ class QueryResult(Generic[T]):
         # 부모별로 그룹핑
         children_by_parent: dict[Any, list[Any]] = {pk: [] for pk in pk_values}
         for child in children:
-            parent_pk = getattr(child, descriptor._foreign_key, None)
+            parent_pk = getattr(child, fk_name, None)
             if parent_pk in children_by_parent:
                 children_by_parent[parent_pk].append(child)
 
@@ -331,7 +332,9 @@ class Query(Generic[T]):
     def _ensure_async_session(self) -> AsyncSession:
         """비동기 세션 확인"""
         if self._async_session is None:
-            raise ValueError("No async session. Call with_session(async_session) first.")
+            raise ValueError(
+                "No async session. Call with_session(async_session) first."
+            )
         return self._async_session
 
     # -------------------------------------------------------------------------
@@ -389,7 +392,8 @@ class Query(Generic[T]):
 
         # 타겟 클래스 resolve
         target_cls = descriptor._resolve_target()
-        fk_column = getattr(target_cls, descriptor._foreign_key, None)
+        fk_name = descriptor.foreign_key
+        fk_column = getattr(target_cls, fk_name, None)
         if fk_column is None:
             return
 
@@ -404,7 +408,7 @@ class Query(Generic[T]):
         # 부모별로 그룹핑
         children_by_parent: dict[Any, list[Any]] = {pk: [] for pk in pk_values}
         for child in children:
-            parent_pk = getattr(child, descriptor._foreign_key, None)
+            parent_pk = getattr(child, fk_name, None)
             if parent_pk in children_by_parent:
                 children_by_parent[parent_pk].append(child)
 
@@ -511,7 +515,9 @@ class Query(Generic[T]):
         sql, params = self.build()
         rows = [row async for row in session.execute(sql, params)]
         results = [
-            self._bind_async_session(dict_to_entity(self.entity_cls, dict(row)), session)
+            self._bind_async_session(
+                dict_to_entity(self.entity_cls, dict(row)), session
+            )
             for row in rows
         ]
         # Eager 로딩 처리
@@ -555,7 +561,8 @@ class Query(Generic[T]):
             return
 
         target_cls = descriptor._resolve_target()
-        fk_column = getattr(target_cls, descriptor._foreign_key, None)
+        fk_name = descriptor.foreign_key
+        fk_column = getattr(target_cls, fk_name, None)
         if fk_column is None:
             return
 
@@ -570,7 +577,7 @@ class Query(Generic[T]):
         # 부모별로 그룹핑
         children_by_parent: dict[Any, list[Any]] = {pk: [] for pk in pk_values}
         for child in children:
-            parent_pk = getattr(child, descriptor._foreign_key, None)
+            parent_pk = getattr(child, fk_name, None)
             if parent_pk in children_by_parent:
                 children_by_parent[parent_pk].append(child)
 

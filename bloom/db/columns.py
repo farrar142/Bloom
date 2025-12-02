@@ -74,7 +74,7 @@ class Column[T]:
         primary_key: bool = False,
     ):
         self.field_name: str = ""  # __set_name__에서 설정
-        self._db_name = db_name  # 명시적 DB 컬럼명
+        self._db_name = db_name or name  # 명시적 DB 컬럼명 (name도 db_name으로 사용)
         self.nullable = nullable
         self.unique = unique
         self._default = default
@@ -403,11 +403,29 @@ class OneToMany[T]:
     - LAZY (기본): 접근 시점에 쿼리 실행하여 로드
     - EAGER: 부모 엔티티 로드 시 함께 로드
 
+    foreign_key 자동 추론:
+    - foreign_key를 지정하지 않으면 `{owner_table}_{pk_db_name}` 형태로 자동 추론
+    - owner_table: 소유자 엔티티의 __tablename__ (없으면 클래스명 소문자)
+    - pk_db_name: PrimaryKey의 db_name (또는 name, 또는 field_name)
+
     Examples:
+        # foreign_key 명시적 지정
         @Entity
         class User:
             id = PrimaryKey[int](auto_increment=True)
             posts = OneToMany["Post"](foreign_key="user_id")
+
+        # foreign_key 자동 추론 (users_id 생성)
+        @Entity(table_name="users")
+        class User:
+            id = PrimaryKey[int](auto_increment=True)
+            posts = OneToMany["Post"]()  # foreign_key="users_id" 자동 추론
+
+        # PK에 name 지정된 경우
+        @Entity(table_name="accounts")
+        class Account:
+            id = PrimaryKey[int](name="account_pk")  # DB 컬럼명: account_pk
+            orders = OneToMany["Order"]()  # foreign_key="accounts_account_pk" 자동 추론
 
         # 접근 시 자동으로 쿼리 실행
         user.posts  # list[Post] 반환
@@ -422,17 +440,17 @@ class OneToMany[T]:
         self,
         target: type[T] | str,
         *,
-        foreign_key: str,
+        foreign_key: str | None = None,
         fetch: FetchType = FetchType.LAZY,
     ):
         """
         Args:
             target: 대상 엔티티 클래스 또는 문자열 (순환 임포트 방지)
-            foreign_key: 대상 엔티티의 ForeignKey 필드명
+            foreign_key: 대상 엔티티의 ForeignKey 필드명 (미지정 시 {owner_table}_{pk} 형태로 자동 추론)
             fetch: 로딩 전략 (LAZY 또는 EAGER, 기본값: LAZY)
         """
         self._target = target
-        self._foreign_key = foreign_key
+        self._foreign_key: str | None = foreign_key
         self._fetch = fetch
         self._field_name: str = ""
         self._owner: type | None = None
@@ -487,6 +505,36 @@ class OneToMany[T]:
         return self._fetch
 
     @property
+    def foreign_key(self) -> str:
+        """외래키 필드명 (자동 추론 포함)"""
+        if self._foreign_key is not None:
+            return self._foreign_key
+
+        # 자동 추론: {owner_table}_{pk_column_name}
+        if self._owner is None:
+            raise ValueError("Cannot infer foreign key without owner class")
+
+        owner_table = getattr(self._owner, "__tablename__", None)
+        if owner_table is None:
+            # 기본 테이블명: 클래스명 소문자
+            owner_table = self._owner.__name__.lower()
+
+        # PK 필드명과 실제 DB 컬럼명 가져오기
+        pk_field_name = getattr(self._owner, "__bloom_pk__", "id")
+
+        # __bloom_columns__에서 직접 컬럼 객체 가져오기 (디스크립터 __get__ 우회)
+        columns = getattr(self._owner, "__bloom_columns__", {})
+        pk_column = columns.get(pk_field_name)
+
+        # PK 컬럼의 db_name 사용 (db_name은 _db_name 또는 field_name 반환)
+        if pk_column is not None and hasattr(pk_column, "db_name"):
+            pk_col_name = pk_column.db_name
+        else:
+            pk_col_name = pk_field_name
+
+        return f"{owner_table}_{pk_col_name}"
+
+    @property
     def is_lazy(self) -> bool:
         """Lazy 로딩 여부"""
         return self._fetch == FetchType.LAZY
@@ -522,10 +570,11 @@ class OneToMany[T]:
         # Lazy 모드: 즉시 쿼리 실행
         from .query import Query
 
-        fk_column = getattr(target_cls, self._foreign_key, None)
+        fk_name = self.foreign_key
+        fk_column = getattr(target_cls, fk_name, None)
         if fk_column is None:
             raise ValueError(
-                f"Foreign key '{self._foreign_key}' not found in {target_cls.__name__}"
+                f"Foreign key '{fk_name}' not found in {target_cls.__name__}"
             )
 
         # Session 가져오기 (엔티티에 바인딩된 세션)

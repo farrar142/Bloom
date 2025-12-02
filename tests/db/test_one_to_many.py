@@ -179,6 +179,170 @@ class TestOneToManyStringTarget:
         assert resolved is Author
 
 
+class TestForeignKeyInference:
+    """foreign_key 자동 추론 테스트"""
+
+    def test_explicit_foreign_key(self):
+        """명시적 foreign_key 지정"""
+        descriptor = Author.__dict__["books"]
+        assert descriptor.foreign_key == "author_id"
+
+    def test_infer_from_table_and_pk(self):
+        """테이블명_pk필드명 형태로 자동 추론"""
+
+        @Entity(table_name="users")
+        class User:
+            id = PrimaryKey[int](auto_increment=True)
+            name = StringColumn(max_length=100)
+            # foreign_key 생략 - users_id로 자동 추론
+            posts: "OneToMany[Post]" = OneToMany("Post")
+
+        @Entity(table_name="posts")
+        class Post:
+            id = PrimaryKey[int](auto_increment=True)
+            title = StringColumn(max_length=200)
+            users_id = ForeignKey[int]("users.id")
+
+        descriptor = User.__dict__["posts"]
+        assert descriptor.foreign_key == "users_id"
+
+    def test_infer_with_custom_pk_db_name(self):
+        """PK에 name 지정된 경우 해당 db_name으로 추론"""
+
+        @Entity(table_name="categories")
+        class Category:
+            id = PrimaryKey[int](name="category_pk")  # DB 컬럼명: category_pk
+            name = StringColumn(max_length=100)
+            # foreign_key 생략 - categories_category_pk로 자동 추론
+            items: "OneToMany[Item]" = OneToMany("Item")
+
+        @Entity(table_name="items")
+        class Item:
+            id = PrimaryKey[int](auto_increment=True)
+            name = StringColumn(max_length=200)
+            categories_category_pk = ForeignKey[int]("categories.id")
+
+        descriptor = Category.__dict__["items"]
+        assert descriptor.foreign_key == "categories_category_pk"
+
+    def test_infer_with_custom_pk_field_name(self):
+        """PK 필드명이 id가 아닌 경우"""
+
+        @Entity(table_name="departments")
+        class Department:
+            dept_id = PrimaryKey[int](auto_increment=True)
+            name = StringColumn(max_length=100)
+            # foreign_key 생략 - departments_dept_id로 자동 추론
+            employees: "OneToMany[Employee]" = OneToMany("Employee")
+
+        @Entity(table_name="employees")
+        class Employee:
+            id = PrimaryKey[int](auto_increment=True)
+            name = StringColumn(max_length=100)
+            departments_dept_id = ForeignKey[int]("departments.dept_id")
+
+        descriptor = Department.__dict__["employees"]
+        assert descriptor.foreign_key == "departments_dept_id"
+
+    def test_infer_without_tablename(self):
+        """__tablename__ 없으면 클래스명 소문자 사용"""
+
+        @Entity
+        class Team:
+            id = PrimaryKey[int](auto_increment=True)
+            name = StringColumn(max_length=100)
+            members: "OneToMany[Member]" = OneToMany("Member")
+
+        @Entity
+        class Member:
+            id = PrimaryKey[int](auto_increment=True)
+            name = StringColumn(max_length=100)
+            team_id = ForeignKey[int]("team.id")
+
+        descriptor = Team.__dict__["members"]
+        # Team -> team (소문자) + id
+        assert descriptor.foreign_key == "team_id"
+
+    def test_infer_with_weird_pk_db_name(self):
+        """PK의 db_name이 완전히 다른 이름인 경우"""
+
+        @Entity(table_name="accounts")
+        class Account:
+            id = PrimaryKey[int](
+                name="something_weird_pk"
+            )  # DB 컬럼명: something_weird_pk
+            email = StringColumn(max_length=200)
+            # foreign_key 생략 - accounts_something_weird_pk로 자동 추론
+            orders: "OneToMany[Order]" = OneToMany("Order")
+
+        @Entity(table_name="orders")
+        class Order:
+            id = PrimaryKey[int](auto_increment=True)
+            amount = IntegerColumn(default=0)
+            accounts_something_weird_pk = ForeignKey[int]("accounts.id")
+
+        descriptor = Account.__dict__["orders"]
+        assert descriptor.foreign_key == "accounts_something_weird_pk"
+
+    def test_infer_with_db_name_param(self):
+        """PK에 db_name 파라미터 사용 시"""
+
+        @Entity(table_name="companies")
+        class Company:
+            id = PrimaryKey[int](db_name="company_uuid")  # db_name 직접 사용
+            name = StringColumn(max_length=100)
+            branches: "OneToMany[Branch]" = OneToMany("Branch")
+
+        @Entity(table_name="branches")
+        class Branch:
+            id = PrimaryKey[int](auto_increment=True)
+            location = StringColumn(max_length=200)
+            companies_company_uuid = ForeignKey[int]("companies.id")
+
+        descriptor = Company.__dict__["branches"]
+        assert descriptor.foreign_key == "companies_company_uuid"
+
+    def test_infer_with_both_name_and_db_name(self):
+        """name과 db_name 둘 다 지정된 경우 db_name 우선"""
+
+        @Entity(table_name="projects")
+        class Project:
+            # db_name이 우선됨
+            id = PrimaryKey[int](name="proj_id", db_name="project_identifier")
+            title = StringColumn(max_length=100)
+            tasks: "OneToMany[Task]" = OneToMany("Task")
+
+        @Entity(table_name="tasks")
+        class Task:
+            id = PrimaryKey[int](auto_increment=True)
+            name = StringColumn(max_length=100)
+            projects_project_identifier = ForeignKey[int]("projects.id")
+
+        descriptor = Project.__dict__["tasks"]
+        assert descriptor.foreign_key == "projects_project_identifier"
+
+    def test_infer_complex_table_name_and_pk(self):
+        """복잡한 테이블명과 PK 조합"""
+
+        @Entity(table_name="user_profiles")
+        class UserProfile:
+            profile_uuid = PrimaryKey[int](name="profile_unique_id")
+            bio = StringColumn(max_length=500)
+            photos: "OneToMany[Photo]" = OneToMany("Photo")
+
+        @Entity(table_name="photos")
+        class Photo:
+            id = PrimaryKey[int](auto_increment=True)
+            url = StringColumn(max_length=500)
+            user_profiles_profile_unique_id = ForeignKey[int](
+                "user_profiles.profile_uuid"
+            )
+
+        descriptor = UserProfile.__dict__["photos"]
+        # user_profiles (테이블명) + profile_unique_id (PK의 db_name)
+        assert descriptor.foreign_key == "user_profiles_profile_unique_id"
+
+
 # =============================================================================
 # Session 통합 테스트
 # =============================================================================
