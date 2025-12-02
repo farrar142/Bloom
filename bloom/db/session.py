@@ -392,6 +392,8 @@ class Session:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if exc_type is not None:
             self.rollback()
+        else:
+            self.commit()
         self.close()
 
 
@@ -769,6 +771,8 @@ class AsyncSession:
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if exc_type is not None:
             await self.rollback()
+        else:
+            await self.commit()
         await self.close()
 
 
