@@ -529,31 +529,34 @@ async def async_session():
 
     session = await factory.create_async()
 
-    # 테이블 생성
-    await session._connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS "order" (
-            id INTEGER PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            amount INTEGER NOT NULL,
-            status TEXT DEFAULT 'pending'
+    try:
+        # 테이블 생성
+        await session._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS "order" (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                amount INTEGER NOT NULL,
+                status TEXT DEFAULT 'pending'
+            )
+            """
         )
-        """
-    )
 
-    # 테스트 데이터 삽입
-    await session._connection.execute(
-        'INSERT INTO "order" (id, user_id, amount, status) VALUES (1, 1, 100, "completed")'
-    )
-    await session._connection.execute(
-        'INSERT INTO "order" (id, user_id, amount, status) VALUES (2, 1, 200, "completed")'
-    )
-    await session._connection.execute(
-        'INSERT INTO "order" (id, user_id, amount, status) VALUES (3, 2, 300, "completed")'
-    )
+        # 테스트 데이터 삽입
+        await session._connection.execute(
+            'INSERT INTO "order" (id, user_id, amount, status) VALUES (1, 1, 100, "completed")'
+        )
+        await session._connection.execute(
+            'INSERT INTO "order" (id, user_id, amount, status) VALUES (2, 1, 200, "completed")'
+        )
+        await session._connection.execute(
+            'INSERT INTO "order" (id, user_id, amount, status) VALUES (3, 2, 300, "completed")'
+        )
 
-    yield session
-    await session.close()
+        yield session
+    finally:
+        # :memory: DB의 경우 release_async가 연결을 닫지 않으므로 직접 닫기
+        await session._connection.raw.close()
 
 
 @pytest.mark.asyncio
