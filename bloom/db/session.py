@@ -92,8 +92,15 @@ class Session:
     # -------------------------------------------------------------------------
 
     def add(self, entity: T) -> T:
-        """엔티티 추가 (INSERT 예약)"""
+        """엔티티 추가 (INSERT 예약)
+
+        OneToMany 관계의 자식 엔티티들도 재귀적으로 추가됩니다.
+        """
         self._check_closed()
+
+        # 이미 추가된 엔티티면 스킵 (재귀 방지)
+        if entity in self._new or entity in self._identity_map.values():
+            return entity
 
         tracker: DirtyTracker | None = getattr(entity, "__bloom_tracker__", None)
         if tracker is None:
@@ -112,7 +119,12 @@ class Session:
         return entity
 
     def _bind_session_to_tracked_lists(self, entity: Any) -> None:
-        """엔티티의 OneToMany TrackedList에 세션 바인딩"""
+        """엔티티의 OneToMany TrackedList에 세션 바인딩 및 기존 아이템 추가
+
+        session.add(parent) 호출 시:
+        1. TrackedList에 세션 바인딩
+        2. 이미 append된 자식 엔티티들도 세션에 추가 (cascade)
+        """
         from .columns import OneToMany, TrackedList
 
         relations = getattr(type(entity), "__bloom_relations__", {})
@@ -123,6 +135,9 @@ class Session:
                     tracked_list = relation._cache[entity]
                     if isinstance(tracked_list, TrackedList):
                         tracked_list._session = self
+                        # 이미 append된 아이템들도 세션에 추가 (cascade)
+                        for item in tracked_list:
+                            self.add(item)  # 재귀 - 이미 추가된 건 스킵됨
 
     def add_all(self, entities: list[T]) -> list[T]:
         """여러 엔티티 추가"""
@@ -287,7 +302,7 @@ class Session:
 
     def _sync_and_update_tracked_list_fk(self, entity: Any) -> None:
         """엔티티의 TrackedList에 있는 자식들의 FK 값 동기화 및 UPDATE
-        
+
         entity가 insert되어 PK가 할당된 후 호출됩니다.
         TrackedList에 append된 자식 엔티티들의 FK를 entity의 PK로 업데이트하고,
         이미 insert된 자식은 UPDATE 쿼리로 FK를 설정합니다.
@@ -296,7 +311,7 @@ class Session:
 
         relations = getattr(type(entity), "__bloom_relations__", {})
         pk_value = get_pk_value(entity)
-        
+
         if pk_value is None:
             return  # PK가 없으면 skip
 
@@ -305,7 +320,7 @@ class Session:
                 # 캐시에서 TrackedList 가져오기
                 if entity not in relation._cache:
                     continue
-                    
+
                 tracked_list = relation._cache[entity]
                 if not isinstance(tracked_list, TrackedList):
                     continue
@@ -321,7 +336,7 @@ class Session:
                     if current_fk is None:
                         # FK가 None인 경우 설정
                         setattr(child, fk_field_name, pk_value)
-                        
+
                         # 이미 insert된 자식이면 UPDATE
                         child_pk = get_pk_value(child)
                         if child_pk is not None:
@@ -336,7 +351,7 @@ class Session:
 
         pk_col = meta.primary_key
         pk_value = get_pk_value(entity)
-        
+
         if pk_col is None or pk_value is None:
             return
 
@@ -344,7 +359,7 @@ class Session:
         fk_column = meta.columns.get(fk_field)
         if fk_column is None:
             return
-        
+
         fk_db_name = getattr(fk_column, "db_name", fk_field)
 
         sql = f'UPDATE "{meta.table_name}" SET "{fk_db_name}" = :fk_value WHERE "{pk_col}" = :pk_value'
@@ -545,8 +560,15 @@ class AsyncSession:
     # -------------------------------------------------------------------------
 
     def add(self, entity: T) -> T:
-        """엔티티 추가 (INSERT 예약)"""
+        """엔티티 추가 (INSERT 예약)
+
+        OneToMany 관계의 자식 엔티티들도 재귀적으로 추가됩니다.
+        """
         self._check_closed()
+
+        # 이미 추가된 엔티티면 스킵 (재귀 방지)
+        if entity in self._new or entity in self._identity_map.values():
+            return entity
 
         tracker: DirtyTracker | None = getattr(entity, "__bloom_tracker__", None)
         if tracker is None:
@@ -565,7 +587,12 @@ class AsyncSession:
         return entity
 
     def _bind_session_to_tracked_lists(self, entity: Any) -> None:
-        """엔티티의 OneToMany TrackedList에 세션 바인딩"""
+        """엔티티의 OneToMany TrackedList에 세션 바인딩 및 기존 아이템 추가
+
+        session.add(parent) 호출 시:
+        1. TrackedList에 세션 바인딩
+        2. 이미 append된 자식 엔티티들도 세션에 추가 (cascade)
+        """
         from .columns import OneToMany, TrackedList
 
         relations = getattr(type(entity), "__bloom_relations__", {})
@@ -576,6 +603,9 @@ class AsyncSession:
                     tracked_list = relation._cache[entity]
                     if isinstance(tracked_list, TrackedList):
                         tracked_list._session = self
+                        # 이미 append된 아이템들도 세션에 추가 (cascade)
+                        for item in tracked_list:
+                            self.add(item)  # 재귀 - 이미 추가된 건 스킵됨
 
     def add_all(self, entities: list[T]) -> list[T]:
         """여러 엔티티 추가"""
