@@ -1,30 +1,30 @@
 """{{app_name}} Schemas
 
 요청/응답 스키마를 정의합니다.
+Entity 필드에 맞게 수정하세요.
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .entities import {{app_name_pascal}}
 
 
 @dataclass
 class {{app_name_pascal}}Create:
     """생성 요청 스키마"""
-    name: str
+    pass  # TODO: 필드 정의
 
 
 @dataclass
 class {{app_name_pascal}}Update:
     """수정 요청 스키마"""
-    name: str | None = None
+    pass  # TODO: 필드 정의
 
 
 @dataclass
 class {{app_name_pascal}}Response:
     """응답 스키마"""
     id: int
-    name: str
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "{{app_name_pascal}}Response":
-        return cls(id=data["id"], name=data["name"])
+    # TODO: 필드 정의

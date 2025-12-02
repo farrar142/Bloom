@@ -3,53 +3,38 @@
 HTTP 엔드포인트를 정의합니다.
 """
 
-from bloom import Controller, Get, Post, Put, Delete
-from bloom.web import HttpRequest, HttpResponse
+from bloom import Controller, Get, Post, Put, Delete, RequestMapping
+from bloom.web import HttpResponse
 
 from .services import {{app_name_pascal}}Service
-from .schemas import {{app_name_pascal}}Response
 
 
-@Controller("/{{app_name}}")
+@Controller
+@RequestMapping("/{{app_name}}")
 class {{app_name_pascal}}Controller:
     """{{app_name_pascal}} API 컨트롤러"""
 
     service: {{app_name_pascal}}Service
 
     @Get("/")
-    async def list(self, request: HttpRequest) -> HttpResponse:
+    async def list(self) -> list[dict]:
         """목록 조회"""
         items = self.service.get_all()
-        return HttpResponse.json({"items": items})
+        # TODO: Entity를 Response 형태로 변환
+        return [{"id": item.id} for item in items]
 
     @Get("/{id}")
-    async def get(self, request: HttpRequest, id: int) -> HttpResponse:
+    async def get(self, id: int) -> dict | HttpResponse:
         """단일 조회"""
         item = self.service.get_by_id(id)
         if item is None:
-            return HttpResponse.json({"error": "Not found"}, status=404)
-        return HttpResponse.json(item)
-
-    @Post("/")
-    async def create(self, request: HttpRequest) -> HttpResponse:
-        """생성"""
-        data = await request.json()
-        item = self.service.create(data)
-        return HttpResponse.json(item, status=201)
-
-    @Put("/{id}")
-    async def update(self, request: HttpRequest, id: int) -> HttpResponse:
-        """수정"""
-        data = await request.json()
-        item = self.service.update(id, data)
-        if item is None:
-            return HttpResponse.json({"error": "Not found"}, status=404)
-        return HttpResponse.json(item)
+            return HttpResponse.not_found()
+        return {"id": item.id}
 
     @Delete("/{id}")
-    async def delete(self, request: HttpRequest, id: int) -> HttpResponse:
+    async def delete(self, id: int) -> dict | HttpResponse:
         """삭제"""
         success = self.service.delete(id)
         if not success:
-            return HttpResponse.json({"error": "Not found"}, status=404)
-        return HttpResponse.json({"message": "Deleted"})
+            return HttpResponse.not_found()
+        return {"message": "Deleted"}

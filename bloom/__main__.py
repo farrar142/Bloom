@@ -344,7 +344,7 @@ def startapp(name: str, directory: str | None):
       - controllers.py   (HTTP 엔드포인트)
       - services.py      (비즈니스 로직)
       - repositories.py  (데이터 접근)
-      - models.py        (도메인 모델)
+      - entities.py      (ORM 엔티티)
       - schemas.py       (요청/응답 스키마)
 
     \b

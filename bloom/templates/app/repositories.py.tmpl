@@ -1,74 +1,28 @@
 """{{app_name}} Repositories
 
 데이터 접근 레이어를 정의합니다.
+CrudRepository를 상속하여 기본 CRUD 메서드를 사용합니다.
 """
 
-from typing import Any
+from bloom.db import CrudRepository
 
-from bloom import Component
-
-# from bloom.db import SessionFactory
+from .entities import {{app_name_pascal}}
 
 
-@Component
-class {{app_name_pascal}}Repository:
+class {{app_name_pascal}}Repository(CrudRepository[{{app_name_pascal}}, int]):
     """{{app_name_pascal}} 레포지토리
 
-    데이터베이스 접근을 담당합니다.
-    실제 사용 시 SessionFactory를 주입받아 사용합니다.
+    CrudRepository 기본 메서드:
+      - find_by_id(id) -> Entity | None
+      - find_all() -> list[Entity]
+      - find_one(condition) -> Entity | None
+      - save(entity) -> Entity
+      - delete(entity) -> None
+      - delete_by_id(id) -> bool
+      - count() -> int
+    
+    커스텀 메서드 예시:
+        def find_by_name(self, name: str) -> {{app_name_pascal}} | None:
+            return self.find_one({{app_name_pascal}}.name == name)
     """
-
-    # session_factory: SessionFactory  # DB 사용 시 주석 해제
-
-    def __init__(self) -> None:
-        # 임시 인메모리 저장소
-        self._data: dict[int, dict[str, Any]] = {}
-        self._next_id = 1
-
-    def find_all(self) -> list[dict[str, Any]]:
-        """전체 조회"""
-        return list(self._data.values())
-
-    def find_by_id(self, id: int) -> dict[str, Any] | None:
-        """ID로 조회"""
-        return self._data.get(id)
-
-    def save(self, entity: dict[str, Any]) -> dict[str, Any]:
-        """저장 (생성/수정)"""
-        if "id" not in entity or entity["id"] is None:
-            entity["id"] = self._next_id
-            self._next_id += 1
-        self._data[entity["id"]] = entity
-        return entity
-
-    def delete_by_id(self, id: int) -> bool:
-        """ID로 삭제"""
-        if id in self._data:
-            del self._data[id]
-            return True
-        return False
-
-
-# =============================================================================
-# DB 사용 예시 (필요시 주석 해제)
-# =============================================================================
-
-# @Component
-# class {{app_name_pascal}}Repository:
-#     session_factory: SessionFactory
-#
-#     async def find_all(self) -> list[{{app_name_pascal}}Model]:
-#         async with self.session_factory.session() as session:
-#             result = await session.execute(select({{app_name_pascal}}Model))
-#             return result.scalars().all()
-#
-#     async def find_by_id(self, id: int) -> {{app_name_pascal}}Model | None:
-#         async with self.session_factory.session() as session:
-#             return await session.get({{app_name_pascal}}Model, id)
-#
-#     async def save(self, entity: {{app_name_pascal}}Model) -> {{app_name_pascal}}Model:
-#         async with self.session_factory.session() as session:
-#             session.add(entity)
-#             await session.commit()
-#             await session.refresh(entity)
-#             return entity
+    pass

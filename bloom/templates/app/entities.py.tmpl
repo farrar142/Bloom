@@ -1,0 +1,29 @@
+"""{{app_name}} Entities
+
+도메인 엔티티를 정의합니다.
+@Entity 데코레이터로 ORM 모델을 정의합니다.
+"""
+
+from datetime import datetime
+from bloom.db import (
+    Entity,
+    PrimaryKey,
+    StringColumn,
+    IntegerColumn,
+    BooleanColumn,
+    DateTimeColumn,
+)
+
+
+@Entity(table_name="{{app_name}}")
+class {{app_name_pascal}}:
+    """{{app_name_pascal}} 엔티티
+    
+    예시:
+        name = StringColumn(max_length=255, nullable=False)
+        is_active = BooleanColumn(default=True)
+        created_at = DateTimeColumn(default=datetime.now)
+    """
+
+    id = PrimaryKey[int](auto_increment=True)
+    # TODO: 필드 정의
