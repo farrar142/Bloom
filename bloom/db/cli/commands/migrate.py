@@ -186,6 +186,8 @@ def migrate(ctx: DBContext, target: str | None, fake: bool, check: bool):
         rolled_back = _rollback_all(manager, registry, fake)
         if rolled_back:
             click.echo(f"\n✓ Rolled back {len(rolled_back)} migration(s).")
+        # 롤백 후 스키마 검사
+        _check_schema_drift(ctx, session_factory)
         return
 
     # target 이름 resolve (부분 매칭 지원)
@@ -226,6 +228,8 @@ def migrate(ctx: DBContext, target: str | None, fake: bool, check: bool):
                     click.echo(f"  Rolled back: {name}")
 
             click.echo("\nDone.")
+            # 롤백 후 스키마 검사
+            _check_schema_drift(ctx, session_factory)
             return
         else:
             click.echo(f"Already at migration {target}. Nothing to do.")
