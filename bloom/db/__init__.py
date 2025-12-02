@@ -7,6 +7,8 @@ Features:
 - Dirty tracking for optimized updates
 - Django-style migrations
 - Django-style annotate/aggregate with GROUP BY
+- Subquery support (IN, EXISTS, scalar)
+- JOIN support (INNER, LEFT, RIGHT, FULL, CROSS)
 """
 
 from .expressions import (
@@ -23,6 +25,16 @@ from .expressions import (
     Max,
     HavingCondition,
     HavingConditionGroup,
+    # Subquery
+    Subquery,
+    SubqueryCondition,
+    SubqueryInCondition,
+    ScalarSubquery,
+    # JOIN
+    JoinType,
+    JoinClause,
+    JoinCondition,
+    on,
 )
 from .columns import (
     Column,
@@ -87,6 +99,16 @@ __all__ = [
     "Max",
     "HavingCondition",
     "HavingConditionGroup",
+    # Subquery
+    "Subquery",
+    "SubqueryCondition",
+    "SubqueryInCondition",
+    "ScalarSubquery",
+    # JOIN
+    "JoinType",
+    "JoinClause",
+    "JoinCondition",
+    "on",
     # Columns
     "Column",
     "PrimaryKey",

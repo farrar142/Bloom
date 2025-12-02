@@ -436,12 +436,26 @@ class FieldExpression[T]:
     # 컬렉션 연산
     # -------------------------------------------------------------------------
 
-    def in_(self, values: list[T]) -> Condition:
-        """IN 연산"""
+    def in_(self, values: list[T] | Subquery) -> Condition | "SubqueryInCondition":
+        """IN 연산 (리스트 또는 서브쿼리)
+
+        Examples:
+            User.id.in_([1, 2, 3])
+            User.id.in_(Query(Order).select(Order.user_id).subquery())
+        """
+        if isinstance(values, Subquery):
+            return SubqueryInCondition(self.name, values, negate=False)
         return Condition(self.name, "IN", values)
 
-    def not_in(self, values: list[T]) -> Condition:
-        """NOT IN 연산"""
+    def not_in(self, values: list[T] | Subquery) -> Condition | "SubqueryInCondition":
+        """NOT IN 연산 (리스트 또는 서브쿼리)
+
+        Examples:
+            User.id.not_in([1, 2, 3])
+            User.id.not_in(Query(Order).select(Order.user_id).subquery())
+        """
+        if isinstance(values, Subquery):
+            return SubqueryInCondition(self.name, values, negate=True)
         return Condition(self.name, "NOT IN", values)
 
     def between(self, low: T, high: T) -> Condition:
@@ -477,3 +491,304 @@ class FieldExpression[T]:
 
     def __hash__(self) -> int:
         return hash(self.name)
+
+
+# =============================================================================
+# Subquery
+# =============================================================================
+
+
+class Subquery:
+    """서브쿼리 표현식
+
+    Query 객체를 서브쿼리로 사용할 수 있게 해줍니다.
+
+    Examples:
+        # IN 서브쿼리
+        active_user_ids = Query(User).filter(User.status == "active").select(User.id)
+        orders = Query(Order).filter(Order.user_id.in_(Subquery(active_user_ids)))
+
+        # EXISTS 서브쿼리
+        has_orders = Subquery(Query(Order).filter(Order.user_id == User.id)).exists()
+        users = Query(User).filter(has_orders)
+
+        # Scalar 서브쿼리 (단일 값)
+        avg_amount = Subquery(Query(Order).annotate(avg=Avg(Order.amount))).scalar("avg")
+        orders = Query(Order).filter(Order.amount > avg_amount)
+    """
+
+    def __init__(self, query: Any, alias: str | None = None):
+        """
+        Args:
+            query: Query 객체
+            alias: 서브쿼리 별칭
+        """
+        self._query = query
+        self._alias = alias
+        self._param_offset: int = 0
+
+    def as_(self, alias: str) -> "Subquery":
+        """별칭 지정"""
+        self._alias = alias
+        return self
+
+    def to_sql(self, param_prefix: str = "sq") -> tuple[str, dict[str, Any]]:
+        """SQL 생성
+
+        Returns:
+            (sql, params)
+        """
+        sql, params = self._query.build()
+
+        # 파라미터 이름 재매핑 (충돌 방지)
+        new_params: dict[str, Any] = {}
+        for old_key, value in params.items():
+            new_key = f"{param_prefix}_{old_key}"
+            sql = sql.replace(f":{old_key}", f":{new_key}")
+            new_params[new_key] = value
+
+        subquery_sql = f"({sql})"
+        if self._alias:
+            subquery_sql = f"{subquery_sql} AS {self._alias}"
+
+        return subquery_sql, new_params
+
+    def exists(self) -> "SubqueryCondition":
+        """EXISTS 조건 생성"""
+        return SubqueryCondition(self, "EXISTS")
+
+    def not_exists(self) -> "SubqueryCondition":
+        """NOT EXISTS 조건 생성"""
+        return SubqueryCondition(self, "NOT EXISTS")
+
+    def scalar(self, column: str | None = None) -> "ScalarSubquery":
+        """스칼라 서브쿼리 (단일 값 반환)
+
+        Args:
+            column: 반환할 컬럼명 (None이면 첫 번째 컬럼)
+        """
+        return ScalarSubquery(self, column)
+
+
+@dataclass
+class SubqueryInCondition:
+    """서브쿼리 IN 조건
+
+    Examples:
+        User.id.in_(subquery)      →  "id" IN (SELECT ...)
+        User.id.not_in(subquery)   →  "id" NOT IN (SELECT ...)
+    """
+
+    field: str
+    subquery: Subquery
+    negate: bool = False
+
+    def __and__(
+        self, other: Condition | ConditionGroup | "SubqueryInCondition"
+    ) -> ConditionGroup:
+        return ConditionGroup("AND", [self, other])  # type: ignore
+
+    def __or__(
+        self, other: Condition | ConditionGroup | "SubqueryInCondition"
+    ) -> ConditionGroup:
+        return ConditionGroup("OR", [self, other])  # type: ignore
+
+    def to_sql(self, param_prefix: str = "sq") -> tuple[str, dict[str, Any]]:
+        """SQL 생성"""
+        subquery_sql, params = self.subquery.to_sql(param_prefix)
+        op = "NOT IN" if self.negate else "IN"
+        return f'"{self.field}" {op} {subquery_sql}', params
+
+
+@dataclass
+class SubqueryCondition:
+    """서브쿼리 조건 (EXISTS, NOT EXISTS 등)
+
+    Examples:
+        Subquery(query).exists()       →  EXISTS (SELECT ...)
+        Subquery(query).not_exists()   →  NOT EXISTS (SELECT ...)
+    """
+
+    subquery: Subquery
+    operator: str  # "EXISTS", "NOT EXISTS"
+
+    def __and__(
+        self, other: Condition | ConditionGroup | "SubqueryCondition"
+    ) -> ConditionGroup:
+        return ConditionGroup("AND", [self, other])  # type: ignore
+
+    def __or__(
+        self, other: Condition | ConditionGroup | "SubqueryCondition"
+    ) -> ConditionGroup:
+        return ConditionGroup("OR", [self, other])  # type: ignore
+
+    def to_sql(self, param_prefix: str = "sq") -> tuple[str, dict[str, Any]]:
+        """SQL 생성"""
+        subquery_sql, params = self.subquery.to_sql(param_prefix)
+        return f"{self.operator} {subquery_sql}", params
+
+
+@dataclass(eq=False)
+class ScalarSubquery:
+    """스칼라 서브쿼리 - 단일 값을 반환하는 서브쿼리
+
+    비교 연산자를 지원하여 WHERE 절에서 사용 가능합니다.
+
+    Examples:
+        avg_amount = Subquery(Query(Order).annotate(avg=Avg(Order.amount))).scalar()
+        Order.amount > avg_amount  →  "amount" > (SELECT AVG(amount) FROM orders)
+    """
+
+    subquery: Subquery
+    column: str | None = None
+
+    def __eq__(self, other: Any) -> Condition:  # type: ignore[override]
+        return Condition(f"({self._get_sql()})", "=", other)
+
+    def __ne__(self, other: Any) -> Condition:  # type: ignore[override]
+        return Condition(f"({self._get_sql()})", "!=", other)
+
+    def __gt__(self, other: Any) -> Condition:
+        return Condition(f"({self._get_sql()})", ">", other)
+
+    def __ge__(self, other: Any) -> Condition:
+        return Condition(f"({self._get_sql()})", ">=", other)
+
+    def __lt__(self, other: Any) -> Condition:
+        return Condition(f"({self._get_sql()})", "<", other)
+
+    def __le__(self, other: Any) -> Condition:
+        return Condition(f"({self._get_sql()})", "<=", other)
+
+    def __radd__(self, other: Any) -> "ScalarSubqueryExpr":
+        return ScalarSubqueryExpr(self, other, "+", reverse=True)
+
+    def __rsub__(self, other: Any) -> "ScalarSubqueryExpr":
+        return ScalarSubqueryExpr(self, other, "-", reverse=True)
+
+    def _get_sql(self) -> str:
+        sql, _ = self.subquery.to_sql()
+        return sql
+
+    def to_sql(self, param_prefix: str = "sq") -> tuple[str, dict[str, Any]]:
+        """SQL 생성"""
+        return self.subquery.to_sql(param_prefix)
+
+
+@dataclass
+class ScalarSubqueryExpr:
+    """스칼라 서브쿼리 표현식 (산술 연산 지원)"""
+
+    scalar: ScalarSubquery
+    value: Any
+    operator: str
+    reverse: bool = False
+
+    def to_sql(self, param_prefix: str = "sq") -> tuple[str, dict[str, Any]]:
+        sql, params = self.scalar.to_sql(param_prefix)
+        param_name = f"{param_prefix}_val"
+        params[param_name] = self.value
+        if self.reverse:
+            return f":{param_name} {self.operator} {sql}", params
+        return f"{sql} {self.operator} :{param_name}", params
+
+
+# =============================================================================
+# JOIN
+# =============================================================================
+
+
+class JoinType:
+    """JOIN 타입"""
+
+    INNER = "INNER JOIN"
+    LEFT = "LEFT JOIN"
+    RIGHT = "RIGHT JOIN"
+    FULL = "FULL OUTER JOIN"
+    CROSS = "CROSS JOIN"
+
+
+@dataclass
+class JoinClause:
+    """JOIN 절 표현
+
+    Examples:
+        JoinClause(Order, User, Order.user_id == User.id, JoinType.INNER)
+        → INNER JOIN "users" ON "orders"."user_id" = "users"."id"
+    """
+
+    target: type[Any]  # 조인할 엔티티 클래스
+    condition: Condition | ConditionGroup | None  # ON 조건
+    join_type: str = JoinType.INNER  # JOIN 타입
+    alias: str | None = None  # 테이블 별칭
+
+    def to_sql(self, param_prefix: str = "j") -> tuple[str, dict[str, Any]]:
+        """SQL JOIN 절 생성"""
+        from .entity import get_entity_meta
+
+        meta = get_entity_meta(self.target)
+        if meta is None:
+            raise ValueError(f"{self.target.__name__} is not an Entity")
+
+        table_name = meta.table_name
+        if self.alias:
+            table_ref = f'"{table_name}" AS {self.alias}'
+        else:
+            table_ref = f'"{table_name}"'
+
+        if self.join_type == JoinType.CROSS or self.condition is None:
+            return f"{self.join_type} {table_ref}", {}
+
+        cond_sql, params = self.condition.to_sql(param_prefix)
+        return f"{self.join_type} {table_ref} ON {cond_sql}", params
+
+
+@dataclass
+class JoinCondition:
+    """JOIN ON 조건 - 두 테이블의 컬럼 비교
+
+    Examples:
+        on(Order.user_id, User.id)  →  "orders"."user_id" = "users"."id"
+    """
+
+    left_field: str | FieldExpression[Any]
+    right_field: str | FieldExpression[Any]
+    operator: str = "="
+    left_table: str | None = None
+    right_table: str | None = None
+
+    def __post_init__(self) -> None:
+        if hasattr(self.left_field, "name"):
+            self.left_field = self.left_field.name  # type: ignore
+        if hasattr(self.right_field, "name"):
+            self.right_field = self.right_field.name  # type: ignore
+
+    def to_sql(self, param_prefix: str = "j") -> tuple[str, dict[str, Any]]:
+        """SQL 조건 생성 (파라미터 없이 컬럼 간 비교)"""
+        left = (
+            f'"{self.left_table}"."{self.left_field}"'
+            if self.left_table
+            else f'"{self.left_field}"'
+        )
+        right = (
+            f'"{self.right_table}"."{self.right_field}"'
+            if self.right_table
+            else f'"{self.right_field}"'
+        )
+        return f"{left} {self.operator} {right}", {}
+
+
+def on(
+    left: str | FieldExpression[Any],
+    right: str | FieldExpression[Any],
+    operator: str = "=",
+    left_table: str | None = None,
+    right_table: str | None = None,
+) -> JoinCondition:
+    """JOIN ON 조건 헬퍼 함수
+
+    Examples:
+        on(Order.user_id, User.id)
+        on("user_id", "id", left_table="orders", right_table="users")
+    """
+    return JoinCondition(left, right, operator, left_table, right_table)

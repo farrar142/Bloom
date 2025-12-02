@@ -13,6 +13,13 @@ from .expressions import (
     AggregateFunction,
     HavingCondition,
     HavingConditionGroup,
+    JoinClause,
+    JoinType,
+    JoinCondition,
+    Subquery,
+    SubqueryCondition,
+    SubqueryInCondition,
+    on,
 )
 from .entity import EntityMeta, get_entity_meta, dict_to_entity
 
@@ -217,6 +224,8 @@ class Query(Generic[T]):
     _aggregates: dict[str, AggregateFunction] = field(default_factory=dict)
     _group_by: list[str] = field(default_factory=list)
     _having: list[HavingCondition | HavingConditionGroup] = field(default_factory=list)
+    _joins: list[JoinClause] = field(default_factory=list)
+    _subquery_params: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._meta = get_entity_meta(self.entity_cls)
@@ -371,18 +380,165 @@ class Query(Generic[T]):
         new_query._having = [*self._having, *conditions]
         return new_query
 
+    # -------------------------------------------------------------------------
+    # JOIN 메서드
+    # -------------------------------------------------------------------------
+
+    def join(
+        self,
+        target: type[Any],
+        condition: Condition | ConditionGroup | JoinCondition,
+        alias: str | None = None,
+    ) -> Self:
+        """INNER JOIN 추가
+
+        Examples:
+            from bloom.db import on
+
+            # 방법 1: on() 헬퍼 사용
+            query = (
+                Query(Order)
+                .join(User, on(Order.user_id, User.id))
+            )
+
+            # 방법 2: 일반 Condition 사용 (값 비교용)
+            query = (
+                Query(Order)
+                .join(User, Order.user_id == User.id)
+            )
+        """
+        return self._add_join(target, condition, JoinType.INNER, alias)
+
+    def left_join(
+        self,
+        target: type[Any],
+        condition: Condition | ConditionGroup | JoinCondition,
+        alias: str | None = None,
+    ) -> Self:
+        """LEFT JOIN 추가
+
+        Examples:
+            query = (
+                Query(User)
+                .left_join(Order, on(User.id, Order.user_id))
+            )
+        """
+        return self._add_join(target, condition, JoinType.LEFT, alias)
+
+    def right_join(
+        self,
+        target: type[Any],
+        condition: Condition | ConditionGroup | JoinCondition,
+        alias: str | None = None,
+    ) -> Self:
+        """RIGHT JOIN 추가
+
+        Examples:
+            query = (
+                Query(Order)
+                .right_join(User, on(Order.user_id, User.id))
+            )
+        """
+        return self._add_join(target, condition, JoinType.RIGHT, alias)
+
+    def full_join(
+        self,
+        target: type[Any],
+        condition: Condition | ConditionGroup | JoinCondition,
+        alias: str | None = None,
+    ) -> Self:
+        """FULL OUTER JOIN 추가
+
+        Examples:
+            query = (
+                Query(User)
+                .full_join(Order, on(User.id, Order.user_id))
+            )
+        """
+        return self._add_join(target, condition, JoinType.FULL, alias)
+
+    def cross_join(self, target: type[Any], alias: str | None = None) -> Self:
+        """CROSS JOIN 추가
+
+        Examples:
+            query = Query(User).cross_join(Role)
+        """
+        return self._add_join(target, None, JoinType.CROSS, alias)
+
+    def _add_join(
+        self,
+        target: type[Any],
+        condition: Condition | ConditionGroup | JoinCondition | None,
+        join_type: str,
+        alias: str | None,
+    ) -> Self:
+        """JOIN 추가 내부 메서드"""
+        new_query = copy(self)
+        join_clause = JoinClause(
+            target=target,
+            condition=condition,
+            join_type=join_type,
+            alias=alias,
+        )
+        new_query._joins = [*self._joins, join_clause]
+        return new_query
+
+    # -------------------------------------------------------------------------
+    # Subquery 지원
+    # -------------------------------------------------------------------------
+
+    def subquery(self, alias: str | None = None) -> Subquery:
+        """현재 쿼리를 서브쿼리로 변환
+
+        Examples:
+            # IN 서브쿼리
+            active_users = Query(User).filter(User.status == "active").select(User.id)
+            orders = Query(Order).filter(Order.user_id.in_(active_users.subquery()))
+
+            # EXISTS 서브쿼리
+            has_orders = Query(Order).filter(Order.user_id == User.id).subquery().exists()
+        """
+        return Subquery(self, alias)
+
     def _build_where(self) -> tuple[str | None, dict[str, Any]]:
-        """WHERE 절 생성"""
+        """WHERE 절 생성 (서브쿼리 조건 포함)"""
         if not self._conditions:
             return None, {}
 
-        if len(self._conditions) == 1:
-            cond = self._conditions[0]
-            return cond.to_sql("w")
+        parts: list[str] = []
+        params: dict[str, Any] = {}
 
-        # 여러 조건은 AND로 결합
-        group = ConditionGroup("AND", list(self._conditions))
-        return group.to_sql("w")
+        for i, cond in enumerate(self._conditions):
+            prefix = f"w_{i}"
+            if isinstance(cond, (SubqueryCondition, SubqueryInCondition)):
+                sql, sub_params = cond.to_sql(prefix)
+            elif isinstance(cond, (Condition, ConditionGroup)):
+                sql, sub_params = cond.to_sql(prefix)
+            else:
+                sql, sub_params = cond.to_sql(prefix)
+            parts.append(sql)
+            params.update(sub_params)
+
+        if len(parts) == 1:
+            return parts[0], params
+
+        return f"({' AND '.join(parts)})", params
+
+    def _build_joins(self) -> tuple[str, dict[str, Any]]:
+        """JOIN 절 생성"""
+        if not self._joins:
+            return "", {}
+
+        parts: list[str] = []
+        params: dict[str, Any] = {}
+
+        for i, join in enumerate(self._joins):
+            prefix = f"j_{i}"
+            sql, join_params = join.to_sql(prefix)
+            parts.append(sql)
+            params.update(join_params)
+
+        return " ".join(parts), params
 
     def _build_order_by(self) -> list[str]:
         """ORDER BY 절 생성"""
@@ -415,6 +571,8 @@ class Query(Generic[T]):
             raise ValueError("Entity meta not found")
 
         where_sql, params = self._build_where()
+        join_sql, join_params = self._build_joins()
+        params.update(join_params)
         order_by = self._build_order_by()
         group_by = self._build_group_by()
         having_sql, having_params = self._build_having()
@@ -435,6 +593,10 @@ class Query(Generic[T]):
             cols_str = ", ".join(f'"{c}"' for c in columns)
 
         sql = f'SELECT {cols_str} FROM "{self._meta.table_name}"'
+
+        # JOIN 절 추가
+        if join_sql:
+            sql += f" {join_sql}"
 
         if where_sql:
             sql += f" WHERE {where_sql}"
