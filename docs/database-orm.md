@@ -211,8 +211,8 @@ class User:
 
     # EAGER: 부모 로드 시 함께 로드
     comments: "OneToMany[Comment]" = OneToMany(
-        "Comment", 
-        foreign_key="user_id", 
+        "Comment",
+        foreign_key="user_id",
         fetch=FetchType.EAGER
     )
 ```
@@ -222,18 +222,34 @@ class User:
 `OneToMany` 접근 시 `list[T]`가 바로 반환됩니다. Session에서 엔티티를 조회하면 자동으로 Session이 바인딩됩니다:
 
 ```python
+# 동기 Session
 with session_factory.session() as session:
     # Session에서 조회한 엔티티는 Session이 자동 바인딩됨
     user = session.query(User).filter(User.id == 1).first()
-    
+
     # posts 접근 시 자동으로 쿼리 실행 (LAZY)
     posts = user.posts  # list[Post] 반환
-    
+
     for post in posts:
         print(post.title)
-    
+
     # 두 번째 접근 시 캐시된 결과 반환 (추가 쿼리 없음)
     same_posts = user.posts
+```
+
+#### AsyncSession 사용
+
+비동기 세션에서는 `async_*` 메서드를 사용합니다:
+
+```python
+# 비동기 AsyncSession
+async with session_factory.async_session() as session:
+    # async_first(), async_all() 등 사용
+    user = await session.query(User).filter(User.id == 1).async_first()
+    
+    # Eager 관계는 자동으로 로드됨
+    # Lazy 관계는 user.posts로 접근 가능 (Session 바인딩됨)
+    posts = user.posts  # list[Post] 반환
 ```
 
 #### 문자열 타겟
@@ -265,7 +281,7 @@ with session_factory.session() as session:
         User.is_active == True,
         User.age >= 18
     ).all()
-````
+```
 
 ### 비교 연산자
 

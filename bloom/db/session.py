@@ -443,6 +443,10 @@ class AsyncSession:
     def dialect(self) -> Any:
         return getattr(self._connection, "dialect", None)
 
+    def query(self, entity_cls: type[T]) -> Query[T]:
+        """쿼리 빌더 생성 (비동기용)"""
+        return Query(entity_cls).with_session(self)
+
     # -------------------------------------------------------------------------
     # CRUD Operations
     # -------------------------------------------------------------------------

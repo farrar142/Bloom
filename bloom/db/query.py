@@ -9,7 +9,7 @@ from .expressions import Condition, ConditionGroup, OrderBy, FieldExpression
 from .entity import EntityMeta, get_entity_meta, dict_to_entity
 
 if TYPE_CHECKING:
-    from .session import Session
+    from .session import Session, AsyncSession
     from .columns import Column
 
 T = TypeVar("T")
@@ -77,7 +77,11 @@ class QueryResult(Generic[T]):
 
         # 부모 PK 수집
         pk_name = getattr(self._entity_cls, "__bloom_pk__", "id")
-        pk_values = [getattr(entity, pk_name) for entity in self._results if getattr(entity, pk_name, None) is not None]
+        pk_values = [
+            getattr(entity, pk_name)
+            for entity in self._results
+            if getattr(entity, pk_name, None) is not None
+        ]
 
         if not pk_values:
             return
@@ -89,7 +93,12 @@ class QueryResult(Generic[T]):
             return
 
         # IN 쿼리로 모든 자식 한 번에 조회
-        children = Query(target_cls).filter(fk_column.in_(pk_values)).with_session(self._session).all()
+        children = (
+            Query(target_cls)
+            .filter(fk_column.in_(pk_values))
+            .with_session(self._session)
+            .all()
+        )
 
         # 부모별로 그룹핑
         children_by_parent: dict[Any, list[Any]] = {pk: [] for pk in pk_values}
@@ -182,16 +191,24 @@ class Query(Generic[T]):
     _offset: int | None = None
     _select_columns: list[str] | None = None
     _session: Session | None = None
+    _async_session: AsyncSession | None = None
 
     def __post_init__(self) -> None:
         self._meta = get_entity_meta(self.entity_cls)
         if self._meta is None:
             raise ValueError(f"{self.entity_cls.__name__} is not an Entity")
 
-    def with_session(self, session: Session) -> Self:
-        """세션 설정"""
+    def with_session(self, session: Session | AsyncSession) -> Self:
+        """세션 설정 (동기/비동기 모두 지원)"""
+        from .session import AsyncSession as AsyncSessionClass
+
         new_query = copy(self)
-        new_query._session = session
+        if isinstance(session, AsyncSessionClass):
+            new_query._async_session = session
+            new_query._session = None
+        else:
+            new_query._session = session
+            new_query._async_session = None
         return new_query
 
     def filter(self, *conditions: Condition | ConditionGroup) -> Self:
@@ -306,13 +323,19 @@ class Query(Generic[T]):
         return sql, params
 
     def _ensure_session(self) -> Session:
-        """세션 확인"""
+        """동기 세션 확인"""
         if self._session is None:
             raise ValueError("No session. Call with_session() first.")
         return self._session
 
+    def _ensure_async_session(self) -> AsyncSession:
+        """비동기 세션 확인"""
+        if self._async_session is None:
+            raise ValueError("No async session. Call with_session(async_session) first.")
+        return self._async_session
+
     # -------------------------------------------------------------------------
-    # 실행 메서드
+    # 동기 실행 메서드
     # -------------------------------------------------------------------------
 
     def all(self) -> list[T]:
@@ -372,7 +395,10 @@ class Query(Generic[T]):
 
         # IN 쿼리로 모든 자식 한 번에 조회
         children = (
-            Query(target_cls).filter(fk_column.in_(pk_values)).with_session(session).all()
+            Query(target_cls)
+            .filter(fk_column.in_(pk_values))
+            .with_session(session)
+            .all()
         )
 
         # 부모별로 그룹핑
@@ -474,6 +500,157 @@ class Query(Generic[T]):
     def __repr__(self) -> str:
         sql, params = self.build()
         return f"Query({sql!r}, params={params})"
+
+    # -------------------------------------------------------------------------
+    # 비동기 실행 메서드
+    # -------------------------------------------------------------------------
+
+    async def async_all(self) -> list[T]:
+        """[Async] 모든 결과 반환"""
+        session = self._ensure_async_session()
+        sql, params = self.build()
+        rows = [row async for row in session.execute(sql, params)]
+        results = [
+            self._bind_async_session(dict_to_entity(self.entity_cls, dict(row)), session)
+            for row in rows
+        ]
+        # Eager 로딩 처리
+        await self._async_load_eager_relations(results, session)
+        return results
+
+    def _bind_async_session(self, entity: T, session: AsyncSession) -> T:
+        """엔티티에 AsyncSession 바인딩"""
+        object.__setattr__(entity, "__bloom_session__", session)
+        return entity
+
+    async def _async_load_eager_relations(
+        self, results: list[T], session: AsyncSession
+    ) -> None:
+        """[Async] Eager 관계 로딩"""
+        if not results:
+            return
+
+        from .columns import OneToMany
+
+        relations = getattr(self.entity_cls, "__bloom_relations__", {})
+        for rel_name, descriptor in relations.items():
+            if isinstance(descriptor, OneToMany) and descriptor.is_eager:
+                await self._async_load_one_to_many_eager(descriptor, results, session)
+
+    async def _async_load_one_to_many_eager(
+        self, descriptor: Any, results: list[T], session: AsyncSession
+    ) -> None:
+        """[Async] OneToMany Eager 로딩 (N+1 방지를 위해 IN 쿼리 사용)"""
+        if not results:
+            return
+
+        pk_name = getattr(self.entity_cls, "__bloom_pk__", "id")
+        pk_values = [
+            getattr(entity, pk_name)
+            for entity in results
+            if getattr(entity, pk_name, None) is not None
+        ]
+
+        if not pk_values:
+            return
+
+        target_cls = descriptor._resolve_target()
+        fk_column = getattr(target_cls, descriptor._foreign_key, None)
+        if fk_column is None:
+            return
+
+        # IN 쿼리로 모든 자식 한 번에 조회
+        children = await (
+            Query(target_cls)
+            .filter(fk_column.in_(pk_values))
+            .with_session(session)
+            .async_all()
+        )
+
+        # 부모별로 그룹핑
+        children_by_parent: dict[Any, list[Any]] = {pk: [] for pk in pk_values}
+        for child in children:
+            parent_pk = getattr(child, descriptor._foreign_key, None)
+            if parent_pk in children_by_parent:
+                children_by_parent[parent_pk].append(child)
+
+        # 각 부모에 자식 데이터 설정
+        for entity in results:
+            pk = getattr(entity, pk_name, None)
+            if pk is not None:
+                descriptor.set_loaded_data(entity, children_by_parent.get(pk, []))
+
+    async def async_first(self) -> T | None:
+        """[Async] 첫 번째 결과"""
+        results = await self.limit(1).async_all()
+        return results[0] if results else None
+
+    async def async_one(self) -> T:
+        """[Async] 정확히 하나"""
+        results = await self.async_all()
+        if len(results) == 0:
+            raise ValueError("No result found")
+        if len(results) > 1:
+            raise ValueError(f"Expected 1 result, got {len(results)}")
+        return results[0]
+
+    async def async_one_or_none(self) -> T | None:
+        """[Async] 하나 또는 None"""
+        results = await self.limit(2).async_all()
+        if len(results) > 1:
+            raise ValueError(f"Expected 0 or 1 result, got {len(results)}")
+        return results[0] if results else None
+
+    async def async_count(self) -> int:
+        """[Async] 결과 수"""
+        session = self._ensure_async_session()
+        if self._meta is None:
+            raise ValueError("Entity meta not found")
+
+        where_sql, params = self._build_where()
+        sql = f'SELECT COUNT(*) as cnt FROM "{self._meta.table_name}"'
+        if where_sql:
+            sql += f" WHERE {where_sql}"
+
+        rows = [row async for row in session.execute(sql, params)]
+        return rows[0]["cnt"] if rows else 0
+
+    async def async_exists(self) -> bool:
+        """[Async] 존재 여부"""
+        return await self.limit(1).async_count() > 0
+
+    async def async_delete(self) -> int:
+        """[Async] 조건에 맞는 레코드 삭제"""
+        session = self._ensure_async_session()
+        if self._meta is None:
+            raise ValueError("Entity meta not found")
+
+        where_sql, params = self._build_where()
+        sql = f'DELETE FROM "{self._meta.table_name}"'
+        if where_sql:
+            sql += f" WHERE {where_sql}"
+
+        return await session.execute_update(sql, params)
+
+    async def async_update(self, **values: Any) -> int:
+        """[Async] 조건에 맞는 레코드 업데이트"""
+        session = self._ensure_async_session()
+        if self._meta is None:
+            raise ValueError("Entity meta not found")
+
+        where_sql, params = self._build_where()
+
+        set_parts: list[str] = []
+        for i, (k, v) in enumerate(values.items()):
+            param_name = f"set_{i}"
+            set_parts.append(f'"{k}" = :{param_name}')
+            params[param_name] = v
+
+        sql = f'UPDATE "{self._meta.table_name}" SET {", ".join(set_parts)}'
+        if where_sql:
+            sql += f" WHERE {where_sql}"
+
+        return await session.execute_update(sql, params)
 
 
 # =============================================================================
