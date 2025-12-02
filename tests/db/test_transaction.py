@@ -672,3 +672,404 @@ class TestPropagationScenarios:
         assert len(self.factory.created_sessions) == 2
         assert session_audit.committed is True
         assert session_order.rolled_back is True
+
+
+# =============================================================================
+# 엣지케이스 테스트
+# =============================================================================
+
+
+class TestTransactionEdgeCases:
+    """트랜잭션 엣지케이스 테스트"""
+    
+    def setup_method(self):
+        while pop_transaction():
+            pass
+        self.factory = MockSessionFactory()
+        self.advice = TransactionAdvice(self.factory)
+    
+    def _make_container(self, propagation: Propagation) -> HandlerContainer:
+        def dummy():
+            pass
+        container = HandlerContainer.get_or_create(dummy)
+        container.add_elements(TransactionalElement(propagation=propagation))
+        return container
+    
+    def test_double_commit_ignored(self):
+        """이미 커밋된 트랜잭션에 다시 커밋 시도 - 무시됨"""
+        container = self._make_container(Propagation.REQUIRED)
+        
+        with call_scope():
+            tx_ctx, _ = self.advice.begin_transaction_sync(container, 1)
+            
+            # 첫 번째 커밋
+            self.advice.commit_transaction_sync(tx_ctx)
+            assert tx_ctx.committed is True
+            
+            # 두 번째 커밋 시도 - 무시됨 (예외 없음)
+            self.advice.commit_transaction_sync(tx_ctx)
+        
+        session = self.factory.created_sessions[0]
+        # commit은 1번만 호출됨
+        assert session.operations.count("commit") == 1
+    
+    def test_double_rollback_ignored(self):
+        """이미 롤백된 트랜잭션에 다시 롤백 시도 - 무시됨"""
+        container = self._make_container(Propagation.REQUIRED)
+        
+        with call_scope():
+            tx_ctx, _ = self.advice.begin_transaction_sync(container, 1)
+            
+            # 첫 번째 롤백
+            self.advice.rollback_transaction_sync(tx_ctx)
+            assert tx_ctx.rolled_back is True
+            
+            # 두 번째 롤백 시도 - 무시됨
+            self.advice.rollback_transaction_sync(tx_ctx)
+        
+        session = self.factory.created_sessions[0]
+        assert session.operations.count("rollback") == 1
+    
+    def test_commit_after_rollback_ignored(self):
+        """롤백 후 커밋 시도 - 무시됨"""
+        container = self._make_container(Propagation.REQUIRED)
+        
+        with call_scope():
+            tx_ctx, _ = self.advice.begin_transaction_sync(container, 1)
+            
+            self.advice.rollback_transaction_sync(tx_ctx)
+            self.advice.commit_transaction_sync(tx_ctx)
+        
+        session = self.factory.created_sessions[0]
+        assert session.rolled_back is True
+        assert session.committed is False
+    
+    def test_rollback_after_commit_ignored(self):
+        """커밋 후 롤백 시도 - 무시됨"""
+        container = self._make_container(Propagation.REQUIRED)
+        
+        with call_scope():
+            tx_ctx, _ = self.advice.begin_transaction_sync(container, 1)
+            
+            self.advice.commit_transaction_sync(tx_ctx)
+            self.advice.rollback_transaction_sync(tx_ctx)
+        
+        session = self.factory.created_sessions[0]
+        assert session.committed is True
+        assert session.rolled_back is False
+    
+    def test_empty_transaction_stack_pop(self):
+        """빈 스택에서 pop - None 반환"""
+        result = pop_transaction()
+        assert result is None
+    
+    def test_deeply_nested_transactions(self):
+        """깊이 중첩된 트랜잭션 (5레벨)"""
+        containers = [self._make_container(Propagation.REQUIRED) for _ in range(5)]
+        
+        with call_scope():
+            txs = []
+            # 5개의 REQUIRED 트랜잭션 시작 - 모두 첫 번째에 합류
+            for i, container in enumerate(containers):
+                tx, is_new = self.advice.begin_transaction_sync(container, i + 1)
+                txs.append((tx, is_new))
+            
+            # 첫 번째만 새로 시작, 나머지는 합류
+            assert txs[0][1] is True  # is_new
+            for i in range(1, 5):
+                assert txs[i][1] is False
+                assert txs[i][0] is txs[0][0]  # 같은 트랜잭션
+            
+            # 커밋
+            self.advice.commit_transaction_sync(txs[0][0])
+        
+        assert len(self.factory.created_sessions) == 1
+    
+    def test_deeply_nested_requires_new(self):
+        """깊이 중첩된 REQUIRES_NEW (각각 별도 트랜잭션)"""
+        containers = [self._make_container(Propagation.REQUIRES_NEW) for _ in range(3)]
+        
+        with call_scope():
+            txs = []
+            for i, container in enumerate(containers):
+                tx, is_new = self.advice.begin_transaction_sync(container, i + 1)
+                txs.append(tx)
+                assert is_new is True
+            
+            assert get_transaction_depth() == 3
+            
+            # 역순으로 커밋 (내부 → 외부)
+            for tx in reversed(txs):
+                self.advice.commit_transaction_sync(tx)
+        
+        assert len(self.factory.created_sessions) == 3
+        for session in self.factory.created_sessions:
+            assert session.committed is True
+    
+    def test_mixed_propagation_chain(self):
+        """혼합 전파 체인: REQUIRED -> REQUIRES_NEW -> REQUIRED"""
+        container_required1 = self._make_container(Propagation.REQUIRED)
+        container_requires_new = self._make_container(Propagation.REQUIRES_NEW)
+        container_required2 = self._make_container(Propagation.REQUIRED)
+        
+        with call_scope():
+            # 1. REQUIRED - 새 트랜잭션
+            tx1, is_new1 = self.advice.begin_transaction_sync(container_required1, 1)
+            assert is_new1 is True
+            
+            # 2. REQUIRES_NEW - 새 트랜잭션
+            tx2, is_new2 = self.advice.begin_transaction_sync(container_requires_new, 2)
+            assert is_new2 is True
+            assert tx2 is not tx1
+            
+            # 3. REQUIRED - tx2에 합류 (현재 활성 트랜잭션)
+            tx3, is_new3 = self.advice.begin_transaction_sync(container_required2, 3)
+            assert is_new3 is False
+            assert tx3 is tx2  # REQUIRES_NEW 트랜잭션에 합류
+            
+            # 역순으로 정리
+            self.advice.commit_transaction_sync(tx2)
+            self.advice.commit_transaction_sync(tx1)
+        
+        assert len(self.factory.created_sessions) == 2
+    
+    def test_not_supported_suspends_transaction(self):
+        """NOT_SUPPORTED: 기존 트랜잭션 일시 중단"""
+        container_required = self._make_container(Propagation.REQUIRED)
+        container_not_supported = self._make_container(Propagation.NOT_SUPPORTED)
+        
+        with call_scope():
+            tx1, _ = self.advice.begin_transaction_sync(container_required, 1)
+            assert has_active_transaction() is True
+            
+            # NOT_SUPPORTED - 트랜잭션 없이 실행
+            tx2, is_new = self.advice.begin_transaction_sync(container_not_supported, 2)
+            assert tx2 is None
+            assert is_new is False
+            # 기존 트랜잭션은 여전히 스택에 있음
+            assert has_active_transaction() is True
+            
+            self.advice.commit_transaction_sync(tx1)
+    
+    def test_supports_propagation_scenarios(self):
+        """SUPPORTS 다양한 시나리오"""
+        container_supports = self._make_container(Propagation.SUPPORTS)
+        container_required = self._make_container(Propagation.REQUIRED)
+        
+        # 시나리오 1: 트랜잭션 없이 시작
+        with call_scope():
+            tx, is_new = self.advice.begin_transaction_sync(container_supports, 1)
+            assert tx is None
+            assert is_new is False
+        
+        # 시나리오 2: 기존 트랜잭션에 합류
+        with call_scope():
+            tx1, _ = self.advice.begin_transaction_sync(container_required, 1)
+            tx2, is_new = self.advice.begin_transaction_sync(container_supports, 2)
+            
+            assert tx2 is tx1
+            assert is_new is False
+            
+            self.advice.commit_transaction_sync(tx1)
+    
+    def test_transaction_context_isolation(self):
+        """ContextVar 격리 - 각 call_scope는 독립적"""
+        container = self._make_container(Propagation.REQUIRED)
+        
+        # 첫 번째 call_scope
+        with call_scope():
+            tx1, _ = self.advice.begin_transaction_sync(container, 1)
+            assert has_active_transaction() is True
+            self.advice.commit_transaction_sync(tx1)
+        
+        # call_scope 종료 후
+        assert has_active_transaction() is False
+        
+        # 두 번째 call_scope - 새로운 트랜잭션
+        with call_scope():
+            tx2, is_new = self.advice.begin_transaction_sync(container, 1)
+            assert is_new is True  # 새 트랜잭션
+            assert tx2 is not tx1
+            self.advice.commit_transaction_sync(tx2)
+        
+        assert len(self.factory.created_sessions) == 2
+
+
+class TestTransactionMethodAdviceEdgeCases:
+    """TransactionMethodAdvice 엣지케이스"""
+    
+    def setup_method(self):
+        while pop_transaction():
+            pass
+    
+    def test_joined_transaction_not_committed_twice(self):
+        """합류한 트랜잭션은 커밋하지 않음"""
+        factory = MockSessionFactory()
+        advice = create_transaction_method_advice(factory)
+        
+        @Transactional()
+        def outer_method():
+            pass
+        
+        @Transactional()
+        def inner_method():
+            pass
+        
+        outer_container = HandlerContainer.get_or_create(outer_method)
+        inner_container = HandlerContainer.get_or_create(inner_method)
+        
+        outer_context = InvocationContext(
+            container=outer_container,
+            instance=None,
+            args=(),
+            kwargs={},
+        )
+        inner_context = InvocationContext(
+            container=inner_container,
+            instance=None,
+            args=(),
+            kwargs={},
+        )
+        
+        with call_scope():
+            # outer 시작
+            advice.before_sync(outer_context)
+            assert outer_context.get_attribute("__tx_is_new__") is True
+            
+            # inner 시작 (합류)
+            advice.before_sync(inner_context)
+            assert inner_context.get_attribute("__tx_is_new__") is False
+            
+            # inner 종료 - 커밋하지 않음
+            advice.after_sync(inner_context, None)
+            
+            # outer 종료 - 커밋
+            advice.after_sync(outer_context, None)
+        
+        session = factory.created_sessions[0]
+        # commit은 1번만
+        assert session.operations.count("commit") == 1
+    
+    def test_inner_error_does_not_rollback_if_joined(self):
+        """합류한 트랜잭션에서 에러 - 롤백하지 않음 (외부에서 처리)"""
+        factory = MockSessionFactory()
+        advice = create_transaction_method_advice(factory)
+        
+        @Transactional()
+        def outer_method():
+            pass
+        
+        @Transactional()
+        def inner_method():
+            pass
+        
+        outer_container = HandlerContainer.get_or_create(outer_method)
+        inner_container = HandlerContainer.get_or_create(inner_method)
+        
+        outer_context = InvocationContext(
+            container=outer_container,
+            instance=None,
+            args=(),
+            kwargs={},
+        )
+        inner_context = InvocationContext(
+            container=inner_container,
+            instance=None,
+            args=(),
+            kwargs={},
+        )
+        
+        with call_scope():
+            # outer 시작
+            advice.before_sync(outer_context)
+            
+            # inner 시작 (합류)
+            advice.before_sync(inner_context)
+            
+            # inner에서 에러 발생 - 합류했으므로 롤백 안 함
+            with pytest.raises(ValueError):
+                advice.on_error_sync(inner_context, ValueError("inner error"))
+            
+            # outer에서 에러 처리 - 롤백
+            with pytest.raises(ValueError):
+                advice.on_error_sync(outer_context, ValueError("propagated"))
+        
+        session = factory.created_sessions[0]
+        assert session.rolled_back is True
+        assert session.operations.count("rollback") == 1
+
+
+class TestAsyncTransactionEdgeCases:
+    """비동기 트랜잭션 엣지케이스"""
+    
+    def setup_method(self):
+        while pop_transaction():
+            pass
+        self.factory = MockSessionFactory()
+        self.advice = TransactionAdvice(self.factory)
+    
+    def _make_container(self, propagation: Propagation) -> HandlerContainer:
+        def dummy():
+            pass
+        container = HandlerContainer.get_or_create(dummy)
+        container.add_elements(TransactionalElement(propagation=propagation))
+        return container
+    
+    @pytest.mark.asyncio
+    async def test_async_mandatory_without_existing_raises(self):
+        """비동기 MANDATORY: 트랜잭션 없으면 예외"""
+        container = self._make_container(Propagation.MANDATORY)
+        
+        with call_scope():
+            with pytest.raises(TransactionRequiredError):
+                await self.advice.begin_transaction_async(container, 1)
+    
+    @pytest.mark.asyncio
+    async def test_async_never_with_existing_raises(self):
+        """비동기 NEVER: 트랜잭션 있으면 예외"""
+        container_required = self._make_container(Propagation.REQUIRED)
+        container_never = self._make_container(Propagation.NEVER)
+        
+        with call_scope():
+            tx, _ = await self.advice.begin_transaction_async(container_required, 1)
+            
+            with pytest.raises(TransactionNotAllowedError):
+                await self.advice.begin_transaction_async(container_never, 2)
+            
+            await self.advice.commit_transaction_async(tx)
+    
+    @pytest.mark.asyncio
+    async def test_async_double_commit_ignored(self):
+        """비동기 이중 커밋 - 무시됨"""
+        container = self._make_container(Propagation.REQUIRED)
+        
+        with call_scope():
+            tx, _ = await self.advice.begin_transaction_async(container, 1)
+            
+            await self.advice.commit_transaction_async(tx)
+            await self.advice.commit_transaction_async(tx)
+        
+        session = self.factory.created_sessions[0]
+        assert session.operations.count("commit") == 1
+    
+    @pytest.mark.asyncio
+    async def test_async_mixed_propagation(self):
+        """비동기 혼합 전파"""
+        container_required = self._make_container(Propagation.REQUIRED)
+        container_requires_new = self._make_container(Propagation.REQUIRES_NEW)
+        container_supports = self._make_container(Propagation.SUPPORTS)
+        
+        with call_scope():
+            tx1, _ = await self.advice.begin_transaction_async(container_required, 1)
+            tx2, is_new2 = await self.advice.begin_transaction_async(container_requires_new, 2)
+            tx3, is_new3 = await self.advice.begin_transaction_async(container_supports, 3)
+            
+            assert is_new2 is True
+            assert tx2 is not tx1
+            assert is_new3 is False
+            assert tx3 is tx2  # REQUIRES_NEW에 합류
+            
+            await self.advice.commit_transaction_async(tx2)
+            await self.advice.commit_transaction_async(tx1)
+        
+        assert len(self.factory.created_sessions) == 2
