@@ -1,12 +1,13 @@
-# Bloom TestCase - Django 스타일 테스트 케이스
+# Bloom BloomTestCase - pytest 기반 테스트 케이스
 
-Bloom의 `TestCase`는 Django의 `TestCase`처럼 모든 테스트 기능을 하나의 클래스에 통합하여 제공합니다.
+Bloom의 `BloomTestCase`는 pytest 기반의 클래스형 테스트를 지원합니다.
+unittest.TestCase를 상속하지 않고 순수 pytest 스타일로 동작합니다.
 
 ## 기본 사용법
 
 ```python
 from bloom import Component
-from bloom.tests import TestCase
+from bloom.tests import BloomTestCase
 
 @Component
 class UserRepository:
@@ -20,34 +21,32 @@ class UserService:
     def list_users(self) -> list[str]:
         return self.repository.get_users()
 
-class TestUserService(TestCase):
+class TestUserService(BloomTestCase):
     # 테스트에 필요한 컴포넌트 등록
     components = [UserRepository, UserService]
 
     async def test_list_users(self):
         service = self.get_instance(UserService)
         users = service.list_users()
-        self.assertEqual(users, ["alice", "bob"])
+        assert users == ["alice", "bob"]
 ```
 
 ## 클래스 속성
 
-| 속성         | 타입         | 기본값   | 설명                                   |
-| ------------ | ------------ | -------- | -------------------------------------- |
-| `app_name`   | `str`        | `"test"` | Application 이름                       |
-| `components` | `list[type]` | `[]`     | 스캔할 컴포넌트 리스트                 |
-| `config`     | `dict`       | `None`   | 설정 딕셔너리                          |
-| `auto_ready` | `bool`       | `True`   | setUp에서 자동으로 `ready()` 호출 여부 |
+| 속성         | 타입             | 기본값   | 설명                   |
+| ------------ | ---------------- | -------- | ---------------------- |
+| `app_name`   | `str`            | `"test"` | Application 이름       |
+| `components` | `list[type]`     | `[]`     | 스캔할 컴포넌트 리스트 |
+| `config`     | `dict[str, Any]` | `None`   | 설정 딕셔너리          |
 
 ```python
-class TestWithConfig(TestCase):
+class TestWithConfig(BloomTestCase):
     app_name = "my_app"
     components = [MyService, MyRepository]
     config = {
         "database": {"host": "localhost", "port": 5432},
         "debug": True,
     }
-    auto_ready = True  # 기본값
 ```
 
 ## 인스턴스 속성
@@ -56,362 +55,310 @@ class TestWithConfig(TestCase):
 | --------- | ------------------ | -------------------------- |
 | `app`     | `Application`      | Bloom Application 인스턴스 |
 | `manager` | `ContainerManager` | DI 컨테이너 매니저         |
-| `client`  | `TestClient`       | HTTP 테스트 클라이언트     |
+| `client`  | `BloomTestClient`  | HTTP 테스트 클라이언트     |
 
 ## DI Container 메서드
 
-### `get_instance(target_type) -> T`
+### `get_instance(type_) -> T`
 
 등록된 컴포넌트의 인스턴스를 조회합니다.
 
 ```python
 async def test_get_instance(self):
     service = self.get_instance(UserService)
-    self.assertIsNotNone(service)
+    assert service is not None
 ```
 
-### `get_instances(target_type) -> list[T]`
+### `get_instances(type_) -> list[T]`
 
 해당 타입의 모든 인스턴스를 조회합니다 (서브클래스 포함).
 
 ```python
 async def test_get_all_handlers(self):
     handlers = self.get_instances(EventHandler)
-    self.assertEqual(len(handlers), 3)
+    assert len(handlers) == 3
 ```
 
-### `has_instance(target_type) -> bool`
+### `has_instance(type_) -> bool`
 
 인스턴스 존재 여부를 확인합니다.
 
 ```python
 async def test_instance_exists(self):
-    self.assertTrue(self.has_instance(UserService))
-    self.assertFalse(self.has_instance(UnregisteredService))
+    assert self.has_instance(UserService)
+    assert not self.has_instance(UnregisteredService)
 ```
 
 ## HTTP 테스트 메서드
 
-`TestCase`는 동기 HTTP 메서드를 제공합니다. 내부적으로 비동기를 동기로 래핑합니다.
+`BloomTestCase`는 비동기 HTTP 메서드를 제공합니다.
 
-### `get(path, *, headers=None, query_params=None) -> TestResponse`
+### `get(path, **kwargs) -> AssertableResponse`
 
 ```python
 async def test_get_users(self):
-    response = self.get("/api/users")
-    self.assert_success(response)
-    self.assertEqual(response.json(), ["alice", "bob"])
+    response = await self.get("/api/users")
+    response.assert_ok()
+    response.assert_json(["alice", "bob"])
 ```
 
-### `post(path, *, json=None, body=None, headers=None) -> TestResponse`
+### `post(path, **kwargs) -> AssertableResponse`
 
 ```python
 async def test_create_user(self):
-    response = self.post("/api/users", json={"name": "charlie"})
-    self.assert_status(response, 201)
+    response = await self.post("/api/users", json={"name": "charlie"})
+    response.assert_status(201)
+    response.assert_json_contains({"name": "charlie"})
 ```
 
-### `put(path, *, json=None, body=None, headers=None) -> TestResponse`
+### `put(path, **kwargs) -> AssertableResponse`
 
 ```python
 async def test_update_user(self):
-    response = self.put("/api/users/1", json={"name": "updated"})
-    self.assert_success(response)
+    response = await self.put("/api/users/1", json={"name": "updated"})
+    response.assert_ok()
 ```
 
-### `delete(path, *, headers=None) -> TestResponse`
-
-```python
-async def test_delete_user(self):
-    response = self.delete("/api/users/1")
-    self.assert_status(response, 204)
-```
-
-### `patch(path, *, json=None, body=None, headers=None) -> TestResponse`
+### `patch(path, **kwargs) -> AssertableResponse`
 
 ```python
 async def test_patch_user(self):
-    response = self.patch("/api/users/1", json={"status": "active"})
-    self.assert_success(response)
+    response = await self.patch("/api/users/1", json={"name": "patched"})
+    response.assert_ok()
 ```
 
-## Mock 메서드
+### `delete(path, **kwargs) -> AssertableResponse`
 
-### `override(target_type, instance) -> ContextManager`
+```python
+async def test_delete_user(self):
+    response = await self.delete("/api/users/1")
+    response.assert_status(204)
+```
 
-의존성을 mock 인스턴스로 대체합니다.
+### `client` 속성
+
+더 세밀한 제어가 필요한 경우 `client` 속성을 직접 사용할 수 있습니다.
+
+```python
+async def test_custom_headers(self):
+    response = await self.client.get(
+        "/api/protected",
+        headers={"Authorization": "Bearer token123"}
+    )
+    response.assert_ok()
+```
+
+## Mock / Override 메서드
+
+### `override(type_, instance) -> ContextManager`
+
+의존성을 임시로 오버라이드합니다.
 
 ```python
 async def test_with_mock(self):
     class FakeRepository:
         def get_users(self):
             return ["fake_user"]
-
+    
     with self.override(UserRepository, FakeRepository()):
         service = self.get_instance(UserService)
-        # 이제 service.repository는 FakeRepository
         users = service.list_users()
-        self.assertEqual(users, ["fake_user"])
-
-    # with 블록 종료 후 원래 인스턴스 복원
+        assert users == ["fake_user"]
 ```
 
-### `override_factory(target_type, factory) -> ContextManager`
+### `override_factory(type_, factory) -> ContextManager`
 
-팩토리 함수로 mock을 생성합니다. 호출 시마다 새 인스턴스가 생성됩니다.
+팩토리를 사용하여 의존성을 오버라이드합니다.
 
 ```python
-async def test_with_factory_mock(self):
-    call_count = 0
-
-    def create_fake():
-        nonlocal call_count
-        call_count += 1
-        return FakeRepository()
-
-    with self.override_factory(UserRepository, create_fake):
-        # 팩토리가 호출됨
-        pass
+async def test_with_factory(self):
+    with self.override_factory(UserRepository, lambda: FakeRepository()):
+        repo = self.get_instance(UserRepository)
+        assert isinstance(repo, FakeRepository)
 ```
 
-## Assertion 메서드
+## Assertion 헬퍼
 
-### 타입 검증
+### `assert_instance(obj, type_) -> T`
+
+타입 검증 후 객체를 반환합니다.
 
 ```python
-async def test_type_assertion(self):
+async def test_type_check(self):
     service = self.get_instance(UserService)
-    self.assert_instance_of(service, UserService)
+    typed_service = self.assert_instance(service, UserService)
+    # typed_service는 타입 힌트가 적용됨
 ```
 
-### 필드 주입 검증
+### `assert_injected(obj, field, type_=None) -> T`
+
+필드가 주입되었는지 검증합니다.
 
 ```python
 async def test_injection(self):
     service = self.get_instance(UserService)
-
-    # 필드가 주입되었는지 확인하고, 주입된 값 반환
     repo = self.assert_injected(service, "repository", UserRepository)
-    self.assertIsNotNone(repo)
+    assert repo is not None
 ```
 
-### HTTP 응답 검증
+### `assert_container_exists(type_) -> None`
+
+컨테이너가 등록되었는지 검증합니다.
 
 ```python
-async def test_response_assertions(self):
-    response = self.get("/api/users")
-
-    # 상태 코드 검증
-    self.assert_status(response, 200)
-    self.assert_success(response)      # 2xx
-    self.assert_not_found(response)    # 404
-    self.assert_bad_request(response)  # 400
-    self.assert_unauthorized(response) # 401
-    self.assert_forbidden(response)    # 403
-
-    # JSON 검증
-    self.assert_json_equal(response, {"users": ["alice", "bob"]})
+async def test_container(self):
+    self.assert_container_exists(UserService)
 ```
 
-## 유틸리티 메서드
+## AssertableResponse 체이닝
 
-### `run_async(coro) -> Any`
-
-코루틴을 동기적으로 실행합니다.
+HTTP 응답에 대한 assertion을 체이닝할 수 있습니다.
 
 ```python
-async def test_async_code(self):
-    async def fetch_data():
-        return {"data": "value"}
-
-    result = self.run_async(fetch_data())
-    self.assertEqual(result, {"data": "value"})
+async def test_chained_assertions(self):
+    (await self.get("/api/users"))
+        .assert_ok()
+        .assert_content_type("application/json")
+        .assert_json(["alice", "bob"])
 ```
 
-### `print_container_tree() -> str`
+### 주요 AssertableResponse 메서드
 
-디버깅용 컨테이너 트리를 문자열로 반환합니다.
+| 메서드                           | 설명                                                   |
+| -------------------------------- | ------------------------------------------------------ |
+| `assert_ok()`                    | 상태 코드가 200인지 검증                               |
+| `assert_status(code)`            | 상태 코드 검증                                         |
+| `assert_json(expected)`          | JSON 응답 검증                                         |
+| `assert_json_contains(subset)`   | JSON 응답이 subset을 포함하는지 검증                   |
+| `assert_json_path(path, value)`  | JSON 경로의 값 검증 (예: `"data.users[0].name"`)       |
+| `assert_content_type(type_)`     | Content-Type 검증                                      |
+| `assert_header(key, value)`      | 헤더 값 검증                                           |
+| `assert_header_exists(key)`      | 헤더 존재 여부 검증                                    |
+| `assert_text_contains(text)`     | 응답 텍스트가 특정 문자열을 포함하는지 검증            |
+
+## 테스트 격리
+
+각 테스트 메서드는 독립적인 `Application` 인스턴스에서 실행됩니다.
 
 ```python
-async def test_debug(self):
-    tree = self.print_container_tree()
-    print(tree)
-    # ContainerManager: test
-    # ========================================
-    # Containers:
-    #   UserRepository: 1 container(s)
-    #   UserService: 1 container(s)
-    # Instances:
-    #   UserRepository: 1 instance(s)
-    #   UserService: 1 instance(s)
+class TestIsolation(BloomTestCase):
+    components = [Counter]
+    
+    async def test_a(self):
+        counter = self.get_instance(Counter)
+        counter.increment()
+        assert counter.value == 1
+    
+    async def test_b(self):
+        # test_a와 완전히 독립
+        counter = self.get_instance(Counter)
+        assert counter.value == 0  # 0부터 시작
 ```
-
-### `get_container_info(target) -> dict`
-
-특정 타입의 컨테이너 정보를 조회합니다.
-
-```python
-async def test_container_info(self):
-    info = self.get_container_info(UserService)
-    self.assertTrue(info["exists"])
-    self.assertEqual(info["target"], "UserService")
-```
-
-## AsyncTestCase
-
-비동기 테스트가 필요한 경우 `AsyncTestCase`를 사용합니다.
-
-```python
-import pytest
-from bloom.tests import AsyncTestCase
-
-class TestAsyncService(AsyncTestCase):
-    components = [AsyncUserService]
-
-    @pytest.mark.asyncio
-    async def test_async_method(self):
-        service = self.get_instance(AsyncUserService)
-        result = await service.fetch_users()
-        self.assertEqual(result, ["alice", "bob"])
-
-    @pytest.mark.asyncio
-    async def test_async_http(self):
-        # 비동기 HTTP 메서드 사용
-        response = await self.async_get("/api/users")
-        self.assert_success(response)
-```
-
-### 비동기 HTTP 메서드
-
-| 메서드           | 설명               |
-| ---------------- | ------------------ |
-| `async_get()`    | 비동기 GET 요청    |
-| `async_post()`   | 비동기 POST 요청   |
-| `async_put()`    | 비동기 PUT 요청    |
-| `async_delete()` | 비동기 DELETE 요청 |
-| `async_patch()`  | 비동기 PATCH 요청  |
 
 ## 전체 예제
 
 ```python
-from dataclasses import dataclass
 from bloom import Component
-from bloom.web import Controller, Get, Post
-from bloom.web.params.types import RequestBody
-from bloom.tests import TestCase
-
-# === 컴포넌트 정의 ===
-
-@dataclass
-class CreateUserRequest:
-    name: str
-    email: str
+from bloom.tests import BloomTestCase
+from bloom.web import Controller, RequestMapping, Get, Post
 
 @Component
 class UserRepository:
-    _users: list[dict] = None
-
-    def __post_init__(self):
-        self._users = []
-
-    def create(self, name: str, email: str) -> dict:
-        user = {"id": len(self._users) + 1, "name": name, "email": email}
-        self._users.append(user)
-        return user
-
-    def find_all(self) -> list[dict]:
+    def __init__(self):
+        self._users = ["alice", "bob"]
+    
+    def get_all(self) -> list[str]:
         return self._users
+    
+    def add(self, name: str) -> None:
+        self._users.append(name)
 
 @Component
 class UserService:
     repository: UserRepository
-
-    def create_user(self, name: str, email: str) -> dict:
-        return self.repository.create(name, email)
-
-    def get_users(self) -> list[dict]:
-        return self.repository.find_all()
+    
+    def list_users(self) -> list[str]:
+        return self.repository.get_all()
+    
+    def create_user(self, name: str) -> str:
+        self.repository.add(name)
+        return name
 
 @Controller
+@RequestMapping("/api/users")
 class UserController:
     service: UserService
+    
+    @Get("/")
+    def list_users(self) -> list[str]:
+        return self.service.list_users()
+    
+    @Post("/")
+    def create_user(self, name: str) -> dict:
+        created = self.service.create_user(name)
+        return {"name": created}
 
-    @Get("/users")
-    def list_users(self) -> list[dict]:
-        return self.service.get_users()
 
-    @Post("/users")
-    def create_user(self, body: RequestBody[CreateUserRequest]) -> dict:
-        return self.service.create_user(body.name, body.email)
-
-# === 테스트 ===
-
-class TestUserController(TestCase):
+class TestUserAPI(BloomTestCase):
     components = [UserRepository, UserService, UserController]
-
-    async def test_list_users_empty(self):
-        """빈 사용자 목록 조회"""
-        response = self.get("/users")
-        self.assert_success(response)
-        self.assert_json_equal(response, [])
-
-    async def test_create_and_list_user(self):
-        """사용자 생성 및 조회"""
-        # 사용자 생성
-        response = self.post("/users", json={
-            "name": "Alice",
-            "email": "alice@example.com"
-        })
-        self.assert_success(response)
-        user = response.json()
-        self.assertEqual(user["name"], "Alice")
-
-        # 목록 조회
-        response = self.get("/users")
-        users = response.json()
-        self.assertEqual(len(users), 1)
-        self.assertEqual(users[0]["email"], "alice@example.com")
-
-    async def test_with_mock_repository(self):
-        """Repository를 Mock으로 대체"""
-        class MockRepository:
-            def find_all(self):
-                return [{"id": 999, "name": "Mock User"}]
-
-        with self.override(UserRepository, MockRepository()):
-            response = self.get("/users")
-            users = response.json()
-            self.assertEqual(users[0]["id"], 999)
-
-    async def test_service_injection(self):
-        """서비스 주입 확인"""
-        controller = self.get_instance(UserController)
-        service = self.assert_injected(controller, "service", UserService)
-        repo = self.assert_injected(service, "repository", UserRepository)
-        self.assertIsNotNone(repo)
-```
-
-## TestCase vs 일반 pytest
-
-### TestCase 사용 (권장)
-
-```python
-class TestUserService(TestCase):
-    components = [UserRepository, UserService]
-
+    
+    async def test_list_users(self):
+        """사용자 목록 조회"""
+        response = await self.get("/api/users/")
+        response.assert_ok()
+        response.assert_json(["alice", "bob"])
+    
     async def test_create_user(self):
-        service = self.get_instance(UserService)
-        # 모든 기능이 self에서 접근 가능
-        self.assert_instance_of(service, UserService)
+        """사용자 생성"""
+        response = await self.post("/api/users/", json={"name": "charlie"})
+        response.assert_ok()
+        response.assert_json_contains({"name": "charlie"})
+    
+    async def test_with_mock_repository(self):
+        """Mock Repository로 테스트"""
+        class FakeRepository:
+            def get_all(self) -> list[str]:
+                return ["fake_user"]
+            def add(self, name: str) -> None:
+                pass
+        
+        with self.override(UserRepository, FakeRepository()):
+            response = await self.get("/api/users/")
+            response.assert_json(["fake_user"])
 ```
 
-### 일반 pytest 사용
+## pytest 함수형 스타일과의 비교
+
+### 클래스형 (BloomTestCase)
 
 ```python
-async def test_create_user(reset_container_manager):
-    app = create_test_app("test", UserRepository, UserService)
-    service = app.manager.get_instance(UserService)
-    assert isinstance(service, UserService)
+class TestUserService(BloomTestCase):
+    components = [UserService]
+    
+    async def test_get_users(self):
+        service = self.get_instance(UserService)
+        assert service.get_users() == ["alice", "bob"]
 ```
 
-`TestCase`는 보일러플레이트를 줄이고, Django 스타일의 일관된 테스트 패턴을 제공합니다.
+### 함수형 (fixtures)
+
+```python
+import pytest
+from bloom.tests import BloomTestClient
+
+@pytest.fixture
+async def app():
+    from bloom import Application
+    app = Application("test")
+    app.scan(UserService)
+    await app.ready_async()
+    yield app
+    await app.shutdown_async()
+
+async def test_get_users(app):
+    async with BloomTestClient(app) as client:
+        response = await client.get("/api/users")
+        response.assert_ok()
+```
+
+클래스형은 fixture 설정이 간편하고, 관련 테스트를 그룹화하기 좋습니다.

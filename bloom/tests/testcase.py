@@ -1,473 +1,256 @@
-"""Django 스타일 TestCase 클래스
+"""Bloom pytest 기반 테스트 모듈
 
-Django의 TestCase처럼 모든 테스트 기능을 하나의 클래스에 통합합니다.
+클래스 기반의 pytest 테스트를 지원합니다.
+unittest.TestCase를 상속하지 않고 순수 pytest 스타일로 동작합니다.
 
-사용 예시:
-    ```python
-    from bloom.tests import TestCase
+Usage:
+    from bloom.tests import BloomTestCase
     from bloom import Component
-
+    
     @Component
     class UserService:
-        def get_users(self) -> list:
+        def get_users(self):
             return ["user1", "user2"]
-
-    class TestUserService(TestCase):
+    
+    class TestUserService(BloomTestCase):
         components = [UserService]
-
+        
         async def test_get_users(self):
             service = self.get_instance(UserService)
-            users = service.get_users()
-            self.assertEqual(users, ["user1", "user2"])
-
+            assert service.get_users() == ["user1", "user2"]
+        
         async def test_with_mock(self):
             class FakeService:
                 def get_users(self):
                     return ["fake"]
-
+            
             with self.override(UserService, FakeService()):
                 service = self.get_instance(UserService)
-                self.assertEqual(service.get_users(), ["fake"])
-    ```
+                assert service.get_users() == ["fake"]
+        
+        async def test_http(self):
+            response = await self.get("/api/users")
+            assert response.ok
+            response.assert_json(["user1", "user2"])
 """
 
 from __future__ import annotations
 
-import asyncio
+import pytest
+from typing import TYPE_CHECKING, Any, TypeVar, Iterator, Callable
 from contextlib import contextmanager
-from typing import Any, Callable, TypeVar, Iterator, TYPE_CHECKING
-from unittest import TestCase as UnitTestCase
-
-from .client import TestClient, TestResponse
-from .mock import MockContainer, _FactoryWrapper
-from ..application import Application
-from ..core.manager import ContainerManager, set_current_manager
 
 if TYPE_CHECKING:
-    from ..core.container import Container
-
+    from bloom.application import Application
+    from bloom.core.manager import ContainerManager
 
 T = TypeVar("T")
 
 
-class TestCase(UnitTestCase):
-    """
-    Bloom 통합 테스트 케이스
-
-    Django의 TestCase처럼 모든 테스트 기능을 하나의 클래스에 제공합니다.
-
+class BloomTestCase:
+    """pytest 기반 Bloom 테스트 케이스
+    
+    클래스 속성을 통해 테스트 환경을 설정하고,
+    pytest의 fixture 시스템과 연동하여 자동으로 Application을 초기화합니다.
+    
     클래스 속성:
-        app_module: 전체 Application 인스턴스 (권장, 전체 DI 컨텍스트 사용)
+        components: 스캔할 컴포넌트 리스트
         app_name: Application 이름 (기본: "test")
-        components: 스캔할 컴포넌트 리스트 (격리된 테스트용)
         config: 설정 딕셔너리
-        auto_ready: True면 setUp에서 자동으로 ready() 호출
-
-    사용 가능한 메서드:
-        - HTTP 테스트: get(), post(), put(), delete(), patch()
-        - 인스턴스 조회: get_instance(), get_instances()
-        - Mock: override(), override_factory()
-        - Assertion: assert_instance_of(), assert_injected(), assert_status()
-
+    
+    자동 제공되는 속성:
+        app: Application 인스턴스
+        manager: ContainerManager
+        client: BloomTestClient (HTTP 테스트용)
+    
     사용 예시:
-        # 방법 1: app_module 사용 (권장 - 전체 DI 컨텍스트)
-        from application import application
-
-        class TestUserController(TestCase):
-            app_module = application
-
-            async def test_list(self):
-                response = self.get("/users/")
-                self.assert_status(response, 200)
-
-        # 방법 2: components 사용 (격리된 테스트)
-        class TestUserService(TestCase):
-            components = [UserService]
-
-            async def test_get_users(self):
-                service = self.get_instance(UserService)
-                ...
+        class TestMyService(BloomTestCase):
+            components = [MyService, MyRepository]
+            config = {"database.url": "sqlite:///:memory:"}
+            
+            async def test_something(self):
+                service = self.get_instance(MyService)
+                assert service is not None
+            
+            async def test_http(self):
+                response = await self.get("/api/data")
+                response.assert_ok()
     """
-
-    # 클래스 레벨 설정
-    app_module: Application | None = None  # 전체 Application 사용 (권장)
-    app_name: str = "test"
+    
+    # pytest가 이 클래스를 테스트로 수집하지 않도록
+    __test__ = False
+    
+    # 클래스 레벨 설정 (서브클래스에서 오버라이드)
     components: list[type] = []
+    app_name: str = "test"
     config: dict[str, Any] | None = None
-    auto_ready: bool = True
-
-    # 인스턴스 속성
-    app: Application
-    manager: ContainerManager
-    client: TestClient
-    _mock_container: MockContainer
-    _loop: asyncio.AbstractEventLoop | None
-
-    def setUp(self) -> None:
-        """테스트 설정 - 각 테스트 전에 호출됨"""
-        super().setUp()
-
-        # app_module이 지정되면 해당 Application 사용
-        if self.app_module is not None:
-            self.app = self.app_module
-            self.manager = self.app.manager
-        else:
-            # 새 Application 생성 (components 방식)
-            self.app = Application(self.app_name)
-            self.manager = self.app.manager
-            self.manager.clear()
-
-            # 설정 로드
-            if self.config:
-                self.app.load_config(self.config, source_type="dict")
-
-            # 컴포넌트 스캔
-            for component in self.components:
-                self.app.scan(component)
-
-            # ready_async() 호출 (동기 setUp에서)
-            if self.auto_ready and self.components:
-                import asyncio
-
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-
-                if loop and loop.is_running():
-                    # 이벤트 루프가 실행 중이면 nested 실행은 불가능
-                    # (이 경우는 드물며, 테스트에서는 일반적으로 발생하지 않음)
-                    import concurrent.futures
-
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(asyncio.run, self.app.ready_async())
-                        future.result()
-                else:
-                    # 새 이벤트 루프에서 실행
-                    asyncio.run(self.app.ready_async())
-
-        # TestClient 생성
-        self.client = TestClient(self.app)
-
-        # MockContainer 초기화
+    
+    # 인스턴스 속성 (setup_method에서 초기화)
+    app: "Application"
+    manager: "ContainerManager"
+    _client: "BloomTestClient | None"
+    _mock_container: "MockContainer"
+    
+    def __init_subclass__(cls, **kwargs):
+        """서브클래스 생성 시 __test__ = True로 설정"""
+        super().__init_subclass__(**kwargs)
+        # 서브클래스는 테스트로 수집되어야 함
+        cls.__test__ = True
+    
+    @pytest.fixture(autouse=True)
+    async def _setup_bloom(self):
+        """pytest fixture - 각 테스트 전에 자동 실행"""
+        from bloom.application import Application
+        from .mock import MockContainer
+        
+        # Application 생성
+        self.app = Application(self.app_name)
+        self.manager = self.app.manager
+        
+        # 설정 로드
+        if self.config:
+            self.app.load_config(self.config, source_type="dict")
+        
+        # 컴포넌트 스캔
+        for component in self.components:
+            self.app.scan(component)
+        
+        # ready_async 호출
+        if self.components:
+            await self.app.ready_async()
+        
+        # Mock 컨테이너 초기화
         self._mock_container = MockContainer()
-
-        # 이벤트 루프
-        self._loop = None
-
-    def tearDown(self) -> None:
-        """테스트 정리 - 각 테스트 후에 호출됨"""
-        super().tearDown()
-
-        # 이벤트 루프 정리
-        if self._loop and not self._loop.is_running():
-            self._loop.close()
-
-        # components 방식인 경우에만 ContainerManager 정리
-        # app_module 방식은 전역 Application이므로 정리하지 않음
-        if self.app_module is None:
-            if hasattr(self, "manager") and self.manager:
-                self.manager.clear()
-            set_current_manager(None)
-
-    # === 이벤트 루프 ===
-
-    @property
-    def loop(self) -> asyncio.AbstractEventLoop:
-        """이벤트 루프 반환"""
-        if self._loop is None:
-            try:
-                self._loop = asyncio.get_running_loop()
-            except RuntimeError:
-                self._loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self._loop)
-        return self._loop
-
-    def run_async(self, coro) -> Any:
-        """코루틴 동기 실행"""
-        return self.loop.run_until_complete(coro)
-
-    # === DI Container 접근 ===
-
-    def get_instance(self, target_type: type[T]) -> T:
-        """
-        인스턴스 조회
-
+        self._client = None
+        
+        yield
+        
+        # 테스트 후 정리
+        try:
+            await self.app.shutdown_async()
+        except Exception:
+            pass
+    
+    # =========================================================================
+    # Container 접근
+    # =========================================================================
+    
+    def get_instance(self, type_: type[T], raise_exception: bool = True) -> T:
+        """컨테이너에서 인스턴스 조회
+        
         Args:
-            target_type: 조회할 타입
-
+            type_: 조회할 타입
+            raise_exception: 없을 때 예외 발생 여부
+        
         Returns:
-            해당 타입의 인스턴스
+            인스턴스
         """
-        return self.manager.get_instance(target_type)
-
-    def get_instances(self, target_type: type[T]) -> list[T]:
-        """
-        타입의 모든 인스턴스 조회
-
-        Args:
-            target_type: 조회할 타입
-
-        Returns:
-            해당 타입의 인스턴스 리스트
-        """
-        return self.manager.get_instances(target_type)
-
-    def has_instance(self, target_type: type) -> bool:
+        return self.manager.get_instance(type_, raise_exception=raise_exception)
+    
+    def get_instances(self, type_: type[T]) -> list[T]:
+        """컨테이너에서 해당 타입의 모든 인스턴스 조회"""
+        return self.manager.get_instances(type_)
+    
+    def has_instance(self, type_: type) -> bool:
         """인스턴스 존재 여부 확인"""
-        return self.manager.get_instance(target_type, raise_exception=False) is not None
-
-    # === HTTP 테스트 (동기 래퍼) ===
-
-    def get(
-        self,
-        path: str,
-        *,
-        headers: dict[str, str] | None = None,
-        query_params: dict[str, Any] | None = None,
-    ) -> TestResponse:
-        """GET 요청"""
-        return self.run_async(
-            self.client.get(path, headers=headers, query_params=query_params)
-        )
-
-    def post(
-        self,
-        path: str,
-        *,
-        json: Any = None,
-        body: bytes | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> TestResponse:
-        """POST 요청"""
-        return self.run_async(
-            self.client.post(path, json_body=json, body=body, headers=headers)
-        )
-
-    def put(
-        self,
-        path: str,
-        *,
-        json: Any = None,
-        body: bytes | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> TestResponse:
-        """PUT 요청"""
-        return self.run_async(
-            self.client.put(path, json_body=json, body=body, headers=headers)
-        )
-
-    def delete(
-        self,
-        path: str,
-        *,
-        headers: dict[str, str] | None = None,
-    ) -> TestResponse:
-        """DELETE 요청"""
-        return self.run_async(self.client.delete(path, headers=headers))
-
-    def patch(
-        self,
-        path: str,
-        *,
-        json: Any = None,
-        body: bytes | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> TestResponse:
-        """PATCH 요청"""
-        return self.run_async(
-            self.client.patch(path, json_body=json, body=body, headers=headers)
-        )
-
-    # === Mock ===
-
+        return self.get_instance(type_, raise_exception=False) is not None
+    
+    # =========================================================================
+    # Mock / Override
+    # =========================================================================
+    
     @contextmanager
-    def override(self, target_type: type[T], instance: T) -> Iterator[T]:
-        """
-        의존성 오버라이드
-
+    def override(self, type_: type[T], instance: T) -> Iterator[T]:
+        """의존성 오버라이드
+        
         Usage:
-            with self.override(UserRepository, FakeRepository()) as fake:
-                # fake가 주입됨
-                pass
+            with self.override(UserService, FakeUserService()):
+                # 이 블록 내에서 UserService 대신 FakeUserService 사용
+                service = self.get_instance(UserService)
         """
-        self._mock_container.override(target_type, instance)
+        self._mock_container.override(type_, instance)
         with self._mock_container.apply(self.manager):
             yield instance
-        self._mock_container.remove(target_type)
-
+        self._mock_container.remove(type_)
+    
     @contextmanager
-    def override_factory(
-        self, target_type: type[T], factory: Callable[..., T]
-    ) -> Iterator[None]:
-        """
-        팩토리 오버라이드
-
+    def override_factory(self, type_: type[T], factory: Callable[[], T]) -> Iterator[None]:
+        """팩토리로 의존성 오버라이드
+        
         Usage:
-            with self.override_factory(UserRepository, lambda: FakeRepository()):
-                pass
+            with self.override_factory(UserService, lambda: FakeUserService()):
+                service = self.get_instance(UserService)
         """
-        self._mock_container.override_factory(target_type, factory)
+        self._mock_container.override_factory(type_, factory)
         with self._mock_container.apply(self.manager):
             yield
-        self._mock_container.remove(target_type)
-
-    # === 추가 Assertion 메서드 ===
-
-    def assert_instance_of(self, obj: Any, expected_type: type) -> None:
+        self._mock_container.remove(type_)
+    
+    # =========================================================================
+    # HTTP 테스트
+    # =========================================================================
+    
+    @property
+    def client(self) -> "BloomTestClient":
+        """HTTP 테스트 클라이언트 (lazy 초기화)"""
+        if self._client is None:
+            from .pytest_plugin import BloomTestClient
+            self._client = BloomTestClient(self.app)
+        return self._client
+    
+    async def get(self, path: str, **kwargs) -> "AssertableResponse":
+        """GET 요청"""
+        return await self.client.get(path, **kwargs)
+    
+    async def post(self, path: str, **kwargs) -> "AssertableResponse":
+        """POST 요청"""
+        return await self.client.post(path, **kwargs)
+    
+    async def put(self, path: str, **kwargs) -> "AssertableResponse":
+        """PUT 요청"""
+        return await self.client.put(path, **kwargs)
+    
+    async def patch(self, path: str, **kwargs) -> "AssertableResponse":
+        """PATCH 요청"""
+        return await self.client.patch(path, **kwargs)
+    
+    async def delete(self, path: str, **kwargs) -> "AssertableResponse":
+        """DELETE 요청"""
+        return await self.client.delete(path, **kwargs)
+    
+    async def request(self, method: str, path: str, **kwargs) -> "AssertableResponse":
+        """임의 HTTP 요청"""
+        return await self.client.request(method, path, **kwargs)
+    
+    # =========================================================================
+    # Assertion 헬퍼
+    # =========================================================================
+    
+    def assert_instance(self, obj: Any, type_: type[T], msg: str | None = None) -> T:
         """타입 검증"""
-        self.assertIsInstance(
-            obj,
-            expected_type,
-            f"Expected {expected_type.__name__}, got {type(obj).__name__}",
-        )
-
-    def assert_injected(
-        self, obj: Any, field_name: str, expected_type: type | None = None
-    ) -> Any:
-        """
-        필드 주입 검증
-
-        Returns:
-            주입된 필드 값
-        """
-        self.assertTrue(
-            hasattr(obj, field_name),
-            f"Field '{field_name}' not found in {type(obj).__name__}",
-        )
-        value = getattr(obj, field_name)
-        self.assertIsNotNone(value, f"Field '{field_name}' is None (not injected)")
-
-        if expected_type:
-            self.assertIsInstance(value, expected_type)
-
+        message = msg or f"Expected {type_.__name__}, got {type(obj).__name__}"
+        assert isinstance(obj, type_), message
+        return obj
+    
+    def assert_injected(self, obj: Any, field: str, type_: type[T] | None = None) -> T:
+        """필드 주입 검증"""
+        assert hasattr(obj, field), f"Field '{field}' not found in {type(obj).__name__}"
+        value = getattr(obj, field)
+        assert value is not None, f"Field '{field}' is None (not injected)"
+        
+        if type_ is not None:
+            assert isinstance(value, type_), (
+                f"Field '{field}': expected {type_.__name__}, got {type(value).__name__}"
+            )
         return value
-
-    def assert_status(self, response: TestResponse, expected_status: int) -> None:
-        """HTTP 상태 코드 검증"""
-        self.assertEqual(
-            response.status_code,
-            expected_status,
-            f"Expected status {expected_status}, got {response.status_code}",
-        )
-
-    def assert_json_equal(self, response: TestResponse, expected: Any) -> None:
-        """JSON 응답 검증"""
-        self.assertEqual(response.json(), expected)
-
-    def assert_success(self, response: TestResponse) -> None:
-        """2xx 상태 코드 검증"""
-        self.assertTrue(
-            response.is_success, f"Expected success (2xx), got {response.status_code}"
-        )
-
-    def assert_not_found(self, response: TestResponse) -> None:
-        """404 상태 코드 검증"""
-        self.assert_status(response, 404)
-
-    def assert_bad_request(self, response: TestResponse) -> None:
-        """400 상태 코드 검증"""
-        self.assert_status(response, 400)
-
-    def assert_unauthorized(self, response: TestResponse) -> None:
-        """401 상태 코드 검증"""
-        self.assert_status(response, 401)
-
-    def assert_forbidden(self, response: TestResponse) -> None:
-        """403 상태 코드 검증"""
-        self.assert_status(response, 403)
-
-    # === 유틸리티 ===
-
-    def print_container_tree(self) -> str:
-        """컨테이너 트리 출력 (디버깅용)"""
-        from .utils import print_container_tree
-
-        return print_container_tree(self.manager)
-
-    def get_container_info(self, target: type) -> dict[str, Any]:
-        """컨테이너 정보 조회 (디버깅용)"""
-        from .utils import get_container_info
-
-        return get_container_info(target)
+    
+    def assert_container_exists(self, type_: type) -> None:
+        """컨테이너 존재 검증"""
+        from bloom.core.container import Container
+        container = Container.get_container(type_)
+        assert container is not None, f"Container not found for {type_.__name__}"
 
 
-class AsyncTestCase(TestCase):
-    """
-    비동기 테스트 케이스
-
-    unittest.TestCase를 상속받아 async 테스트 메서드를 자동으로 실행합니다.
-    pytest-asyncio 없이도 async 테스트 메서드가 올바르게 실행됩니다.
-
-    Usage:
-        class TestMyService(AsyncTestCase):
-            components = [MyService]
-
-            async def test_async_method(self):
-                service = self.get_instance(MyService)
-                result = await service.async_method()
-                self.assertEqual(result, "expected")
-    """
-
-    def __init__(self, methodName: str = "runTest") -> None:
-        super().__init__(methodName)
-        # async 테스트 메서드를 동기 래퍼로 교체
-        test_method = getattr(self, methodName, None)
-        if test_method and asyncio.iscoroutinefunction(test_method):
-            # async 메서드를 run_async로 감싸서 교체
-            def sync_wrapper(async_method=test_method):
-                return self.run_async(async_method())
-
-            setattr(self, methodName, sync_wrapper)
-
-    async def async_get(
-        self,
-        path: str,
-        *,
-        headers: dict[str, str] | None = None,
-        query_params: dict[str, Any] | None = None,
-    ) -> TestResponse:
-        """비동기 GET 요청"""
-        return await self.client.get(path, headers=headers, query_params=query_params)
-
-    async def async_post(
-        self,
-        path: str,
-        *,
-        json: Any = None,
-        body: bytes | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> TestResponse:
-        """비동기 POST 요청"""
-        return await self.client.post(path, json_body=json, body=body, headers=headers)
-
-    async def async_put(
-        self,
-        path: str,
-        *,
-        json: Any = None,
-        body: bytes | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> TestResponse:
-        """비동기 PUT 요청"""
-        return await self.client.put(path, json_body=json, body=body, headers=headers)
-
-    async def async_delete(
-        self,
-        path: str,
-        *,
-        headers: dict[str, str] | None = None,
-    ) -> TestResponse:
-        """비동기 DELETE 요청"""
-        return await self.client.delete(path, headers=headers)
-
-    async def async_patch(
-        self,
-        path: str,
-        *,
-        json: Any = None,
-        body: bytes | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> TestResponse:
-        """비동기 PATCH 요청"""
-        return await self.client.patch(path, json_body=json, body=body, headers=headers)
+# Type alias for import convenience
+from .pytest_plugin import AssertableResponse, BloomTestClient
+from .mock import MockContainer
