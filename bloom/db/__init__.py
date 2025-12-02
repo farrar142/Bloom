@@ -18,6 +18,7 @@ from .columns import (
     Column,
     PrimaryKey,
     ForeignKey,
+    ManyToOne,
     IntegerColumn,
     StringColumn,
     BooleanColumn,
@@ -71,6 +72,7 @@ __all__ = [
     "Column",
     "PrimaryKey",
     "ForeignKey",
+    "ManyToOne",
     "IntegerColumn",
     "StringColumn",
     "BooleanColumn",
@@ -80,6 +82,7 @@ __all__ = [
     "JSONColumn",
     "OneToMany",
     "FetchType",
+    "TrackedList",
     # Tracking
     "DirtyTracker",
     # Entity

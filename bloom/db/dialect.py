@@ -43,10 +43,10 @@ class Dialect(ABC):
             col_db_name = column.db_name if hasattr(column, "db_name") else name
             columns_sql.append(f"{self.quote_identifier(col_db_name)} {col_def}")
 
-            # FK 제약조건 수집
-            from .columns import ForeignKey
+            # FK 제약조건 수집 (ForeignKey 및 ManyToOne)
+            from .columns import ForeignKey, ManyToOne
 
-            if isinstance(column, ForeignKey):
+            if isinstance(column, (ForeignKey, ManyToOne)):
                 constraints_sql.append(column.get_constraint_definition())
 
         all_parts = columns_sql + constraints_sql

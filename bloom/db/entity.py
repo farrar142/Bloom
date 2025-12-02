@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Callable, TypeVar, overload, TYPE_CHECKING, Self
 from dataclasses import dataclass, field
 
-from .columns import Column, PrimaryKey
+from .columns import Column, PrimaryKey, ManyToOne
 from .tracker import DirtyTracker, EntityState
 
 if TYPE_CHECKING:
@@ -33,8 +33,19 @@ class EntityMeta:
 
     @property
     def column_names(self) -> list[str]:
-        """모든 컬럼명 반환"""
-        return list(self.columns.keys())
+        """모든 컬럼의 DB 컬럼명 반환
+        
+        ManyToOne의 경우 db_name (예: user_id)을 반환합니다.
+        """
+        result = []
+        for name, column in self.columns.items():
+            if isinstance(column, ManyToOne):
+                result.append(column.db_name)
+            elif hasattr(column, "db_name"):
+                result.append(column.db_name)
+            else:
+                result.append(name)
+        return result
 
     @property
     def pk_column(self) -> Column[Any] | None:
@@ -197,24 +208,53 @@ def set_pk_value(entity: Any, value: Any) -> None:
 
 
 def entity_to_dict(entity: Any, include_none: bool = False) -> dict[str, Any]:
-    """엔티티를 딕셔너리로 변환"""
+    """엔티티를 딕셔너리로 변환
+    
+    ManyToOne 필드의 경우 FK 값을 가져옵니다.
+    """
     columns = get_entity_columns(type(entity))
     result = {}
-    for name in columns:
-        value = getattr(entity, name, None)
-        if include_none or value is not None:
-            result[name] = value
+    for name, column in columns.items():
+        # ManyToOne의 경우 FK 값 가져오기
+        if isinstance(column, ManyToOne):
+            value = column.get_fk_value(entity)
+            db_name = column.db_name
+            if include_none or value is not None:
+                result[db_name] = value
+        else:
+            value = getattr(entity, name, None)
+            if include_none or value is not None:
+                result[name] = value
     return result
 
 
 def dict_to_entity(entity_cls: type[T], data: dict[str, Any]) -> T:
-    """딕셔너리를 엔티티로 변환"""
+    """딕셔너리를 엔티티로 변환
+    
+    ManyToOne 필드의 경우 FK 값을 db_name으로 찾아서 설정합니다.
+    """
     entity = entity_cls()
     columns = get_entity_columns(entity_cls)
 
-    for name, value in data.items():
-        if name in columns:
-            setattr(entity, name, value)
+    # db_name -> (field_name, column) 매핑 생성
+    db_name_to_field: dict[str, tuple[str, Any]] = {}
+    for name, column in columns.items():
+        if isinstance(column, ManyToOne):
+            db_name_to_field[column.db_name] = (name, column)
+        elif hasattr(column, "db_name"):
+            db_name_to_field[column.db_name] = (name, column)
+        db_name_to_field[name] = (name, column)
+
+    for data_key, value in data.items():
+        if data_key in db_name_to_field:
+            field_name, column = db_name_to_field[data_key]
+            if isinstance(column, ManyToOne):
+                # ManyToOne: FK 값 직접 설정
+                column.set_fk_value(entity, value)
+            else:
+                setattr(entity, field_name, value)
+        elif data_key in columns:
+            setattr(entity, data_key, value)
 
     # 로드됨 마킹
     tracker: DirtyTracker | None = getattr(entity, "__bloom_tracker__", None)

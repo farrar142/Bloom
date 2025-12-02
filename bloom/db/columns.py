@@ -450,6 +450,344 @@ class ForeignKey[T](Column[T]):
 
 
 # =============================================================================
+# ManyToOne Relationship (FK + 관계 객체)
+# =============================================================================
+
+
+class ManyToOne[T]:
+    """ManyToOne 관계 디스크립터 (FK + 관계 객체 통합)
+
+    Spring JPA의 @ManyToOne처럼 FK 컬럼 생성과 관계 객체 접근을 동시에 제공합니다.
+    DB에 FK 컬럼을 생성하고, 관련 엔티티 객체를 get/set할 수 있습니다.
+
+    순환 임포트를 피하기 위해 문자열로 엔티티를 참조할 수 있습니다:
+    - "User": 같은 모듈 내 클래스
+    - "users.User": 다른 모듈의 클래스
+
+    로딩 전략:
+    - LAZY (기본): 접근 시점에 쿼리 실행하여 로드
+    - EAGER: 부모 엔티티 로드 시 함께 로드
+
+    FK 컬럼명 자동 추론:
+    - `{field_name}_{target_pk_db_name}` 형태로 자동 생성
+    - 예: user = ManyToOne[User]() → user_id 컬럼 생성
+
+    Examples:
+        @Entity
+        class Post:
+            id = PrimaryKey[int](auto_increment=True)
+            title = StringColumn()
+            user = ManyToOne["User"]()  # DB에 user_id 컬럼 생성
+
+        # 사용
+        post = Post()
+        post.user = user  # 자동으로:
+                          # 1. post.user_id = user.id
+                          # 2. session.add(post) (user가 세션에 바인딩된 경우)
+        
+        # Lazy 로딩
+        loaded_post = session.query(Post).first()
+        print(loaded_post.user.name)  # User 자동 로드
+    """
+
+    def __init__(
+        self,
+        target: type[T] | str | None = None,
+        *,
+        foreign_key: str | None = None,
+        fetch: FetchType = FetchType.LAZY,
+        nullable: bool = False,
+        on_delete: str = "CASCADE",
+        on_update: str = "CASCADE",
+    ):
+        """
+        Args:
+            target: 대상 엔티티 클래스 또는 문자열 (미지정 시 타입 힌트에서 추론)
+            foreign_key: FK 컬럼의 db_name (미지정 시 {field_name}_{target_pk} 형태로 자동 추론)
+            fetch: 로딩 전략 (LAZY 또는 EAGER, 기본값: LAZY)
+            nullable: NULL 허용 여부 (기본값: False)
+            on_delete: 삭제 시 동작 (기본값: CASCADE)
+            on_update: 업데이트 시 동작 (기본값: CASCADE)
+        """
+        self._target = target
+        self._foreign_key: str | None = foreign_key
+        self._fetch = fetch
+        self._nullable = nullable
+        self._on_delete = on_delete
+        self._on_update = on_update
+        
+        self._field_name: str = ""
+        self._owner: type | None = None
+        self._resolved_target: type[T] | None = None
+        
+        # 관계 객체 캐시 (Lazy 로딩 결과)
+        self._cache: WeakKeyDictionary[Any, T | None] = WeakKeyDictionary()
+        # FK 값 저장 (실제 DB 컬럼 값)
+        self._fk_values: WeakKeyDictionary[Any, Any] = WeakKeyDictionary()
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self._field_name = name
+        self._owner = owner
+
+        # __bloom_columns__에 등록 (FK 컬럼으로)
+        if not hasattr(owner, "__bloom_columns__"):
+            owner.__bloom_columns__ = {}
+        owner.__bloom_columns__[name] = self
+        
+        # __bloom_relations__에도 등록
+        if not hasattr(owner, "__bloom_relations__"):
+            owner.__bloom_relations__ = {}
+        owner.__bloom_relations__[name] = self
+
+    def _resolve_target(self) -> type[T]:
+        """문자열 타겟을 실제 클래스로 resolve"""
+        if self._resolved_target is not None:
+            return self._resolved_target
+
+        if isinstance(self._target, type):
+            self._resolved_target = self._target
+            return self._resolved_target
+
+        if self._target is None:
+            raise ValueError(
+                f"ManyToOne target not specified for {self._owner.__name__}.{self._field_name}"
+            )
+
+        # 문자열인 경우 resolve
+        target_str = self._target
+
+        # "module.ClassName" 형태
+        if "." in target_str:
+            module_path, class_name = target_str.rsplit(".", 1)
+            import importlib
+            module = importlib.import_module(module_path)
+            self._resolved_target = getattr(module, class_name)
+        else:
+            # 같은 모듈 내 클래스
+            if self._owner is not None:
+                import sys
+                module = sys.modules.get(self._owner.__module__)
+                if module and hasattr(module, target_str):
+                    self._resolved_target = getattr(module, target_str)
+
+        if self._resolved_target is None:
+            raise ValueError(f"Cannot resolve ManyToOne target: {target_str}")
+
+        return self._resolved_target
+
+    @property
+    def field_name(self) -> str:
+        return self._field_name
+
+    @property
+    def fetch(self) -> FetchType:
+        return self._fetch
+
+    @property
+    def is_lazy(self) -> bool:
+        return self._fetch == FetchType.LAZY
+
+    @property
+    def is_eager(self) -> bool:
+        return self._fetch == FetchType.EAGER
+
+    @property
+    def nullable(self) -> bool:
+        return self._nullable
+
+    @property
+    def on_delete(self) -> str:
+        return self._on_delete
+
+    @property
+    def on_update(self) -> str:
+        return self._on_update
+
+    @property
+    def db_name(self) -> str:
+        """FK 컬럼의 DB 이름"""
+        if self._foreign_key:
+            return self._foreign_key
+        
+        # 자동 추론: {field_name}_{target_pk_db_name}
+        target_cls = self._resolve_target()
+        pk_field = getattr(target_cls, "__bloom_pk__", "id")
+        columns = getattr(target_cls, "__bloom_columns__", {})
+        pk_column = columns.get(pk_field)
+        
+        if pk_column and hasattr(pk_column, "db_name"):
+            pk_db_name = pk_column.db_name
+        else:
+            pk_db_name = pk_field
+        
+        return f"{self._field_name}_{pk_db_name}"
+
+    @property
+    def references_table(self) -> str:
+        """참조 테이블명"""
+        target_cls = self._resolve_target()
+        return getattr(target_cls, "__tablename__", target_cls.__name__.lower())
+
+    @property
+    def references_column(self) -> str:
+        """참조 컬럼명"""
+        target_cls = self._resolve_target()
+        return getattr(target_cls, "__bloom_pk__", "id")
+
+    @property
+    def sql_type(self) -> str:
+        """FK 컬럼의 SQL 타입 (참조 대상 PK와 동일)"""
+        target_cls = self._resolve_target()
+        pk_field = getattr(target_cls, "__bloom_pk__", "id")
+        columns = getattr(target_cls, "__bloom_columns__", {})
+        pk_column = columns.get(pk_field)
+        
+        if pk_column and hasattr(pk_column, "sql_type"):
+            return pk_column.sql_type
+        return "INTEGER"
+
+    def get_sql_type(self) -> str:
+        """SQL 타입 반환"""
+        return self.sql_type
+
+    def get_constraint_definition(self) -> str:
+        """FK 제약조건 DDL"""
+        return (
+            f"FOREIGN KEY ({self.db_name}) "
+            f"REFERENCES {self.references_table}({self.references_column}) "
+            f"ON DELETE {self._on_delete} ON UPDATE {self._on_update}"
+        )
+
+    def __get__(self, obj: object | None, objtype: type) -> T | None | FieldExpression:
+        if obj is None:
+            # 클래스 레벨 접근 - FK 컬럼에 대한 FieldExpression 반환 (쿼리용)
+            return FieldExpression(self.db_name, self)
+
+        # 캐시에 있으면 반환
+        if obj in self._cache:
+            return self._cache[obj]
+
+        # FK 값이 없으면 None
+        fk_value = self._fk_values.get(obj)
+        if fk_value is None:
+            return None
+
+        # Session 가져오기
+        session: "Session | None" = getattr(obj, "__bloom_session__", None)
+
+        # Eager 모드: 아직 로드되지 않았으면 None (Session에서 채워짐)
+        if self._fetch == FetchType.EAGER:
+            return None
+
+        # Lazy 모드: 즉시 쿼리 실행
+        if session is None:
+            raise ValueError(
+                f"Cannot lazy load ManyToOne: {objtype.__name__} has no bound session. "
+                "Load the entity through a Session first."
+            )
+
+        target_cls = self._resolve_target()
+        pk_field = getattr(target_cls, "__bloom_pk__", "id")
+
+        from .query import Query
+        
+        # PK로 조회
+        pk_field_expr = getattr(target_cls, pk_field)
+        query = Query(target_cls).filter(pk_field_expr == fk_value).with_session(session)
+        result = query.first()
+
+        # 캐시에 저장
+        self._cache[obj] = result
+        return result
+
+    def __set__(self, obj: object, value: T | int | None) -> None:
+        # 이전 FK 값 저장 (dirty tracking용)
+        old_fk_value = self._fk_values.get(obj)
+        
+        if value is None:
+            # None 설정 - FK 값도 None으로
+            self._fk_values[obj] = None
+            self._cache[obj] = None
+            
+            # dirty tracking
+            if hasattr(obj, "__bloom_tracker__"):
+                obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, None)
+            return
+
+        # FK 값(int)을 직접 설정하는 경우 (TrackedList에서 사용)
+        if isinstance(value, int):
+            self._fk_values[obj] = value
+            # 캐시 무효화 (다음 접근 시 lazy load)
+            if obj in self._cache:
+                del self._cache[obj]
+            
+            # dirty tracking
+            if hasattr(obj, "__bloom_tracker__"):
+                obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, value)
+            return
+
+        # 관계 객체 설정
+        target_cls = self._resolve_target()
+        
+        if not isinstance(value, target_cls):
+            raise TypeError(
+                f"Expected {target_cls.__name__} or int (FK value), got {type(value).__name__}"
+            )
+
+        # FK 값 추출
+        pk_field = getattr(target_cls, "__bloom_pk__", "id")
+        fk_value = getattr(value, pk_field, None)
+        
+        # FK 값 저장
+        self._fk_values[obj] = fk_value
+        
+        # 캐시에 객체 저장
+        self._cache[obj] = value
+        
+        # dirty tracking
+        if hasattr(obj, "__bloom_tracker__"):
+            obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, fk_value)
+        
+        # value가 세션에 바인딩되어 있으면 obj도 세션에 추가
+        value_session: "Session | None" = getattr(value, "__bloom_session__", None)
+        if value_session is not None:
+            obj_session: "Session | None" = getattr(obj, "__bloom_session__", None)
+            if obj_session is None:
+                value_session.add(obj)
+
+    def get_fk_value(self, obj: object) -> Any:
+        """FK 값 직접 가져오기"""
+        return self._fk_values.get(obj)
+
+    def set_fk_value(self, obj: object, value: Any) -> None:
+        """FK 값 직접 설정 (DB에서 로드 시 사용)"""
+        self._fk_values[obj] = value
+        # 캐시 무효화
+        if obj in self._cache:
+            del self._cache[obj]
+
+    def set_loaded_data(self, obj: object, data: T | None) -> None:
+        """로딩된 데이터 설정 (Session에서 호출, Eager 로딩용)"""
+        self._cache[obj] = data
+        if data is not None:
+            target_cls = self._resolve_target()
+            pk_field = getattr(target_cls, "__bloom_pk__", "id")
+            self._fk_values[obj] = getattr(data, pk_field, None)
+
+    def clear_cache(self, obj: object) -> None:
+        """캐시 클리어"""
+        if obj in self._cache:
+            del self._cache[obj]
+
+    def __repr__(self) -> str:
+        target_name = (
+            self._target if isinstance(self._target, str) 
+            else self._target.__name__ if self._target else "?"
+        )
+        return f"ManyToOne({self._field_name!r} -> {target_name}, fetch={self._fetch.value})"
+
+
+# =============================================================================
 # Typed Columns (편의 클래스)
 # =============================================================================
 
