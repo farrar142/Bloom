@@ -445,29 +445,29 @@ class TestCaseBasicTest(TestCase):
     app_name = "testcase_test"
     components = [TestRepository, TestService]
 
-    async def test_get_instance(self):
+    def test_get_instance(self):
         """인스턴스 조회 테스트"""
         repo = self.get_instance(TestRepository)
         self.assertIsNotNone(repo)
         self.assert_instance_of(repo, TestRepository)
 
-    async def test_get_instances(self):
+    def test_get_instances(self):
         """인스턴스 목록 조회 테스트"""
         repos = self.get_instances(TestRepository)
         self.assertEqual(len(repos), 1)
 
-    async def test_has_instance(self):
+    def test_has_instance(self):
         """인스턴스 존재 여부 테스트"""
         self.assertTrue(self.has_instance(TestRepository))
         self.assertTrue(self.has_instance(TestService))
 
-    async def test_assert_injected(self):
+    def test_assert_injected(self):
         """필드 주입 검증 테스트"""
         service = self.get_instance(TestService)
         repo = self.assert_injected(service, "repository", TestRepository)
         self.assertIsNotNone(repo)
 
-    async def test_override(self):
+    def test_override(self):
         """Mock 오버라이드 테스트"""
 
         class FakeRepository:
@@ -479,7 +479,7 @@ class TestCaseBasicTest(TestCase):
             items = repo.get_items()
             self.assertEqual(items, ["fake1", "fake2"])
 
-    async def test_container_info(self):
+    def test_container_info(self):
         """컨테이너 정보 조회 테스트"""
         info = self.get_container_info(TestRepository)
         self.assertTrue(info["exists"])
@@ -491,25 +491,25 @@ class TestCaseHttpTest(TestCase):
 
     components = [TestRepository, TestService, TestController]
 
-    async def test_get_request(self):
+    def test_get_request(self):
         """GET 요청 테스트"""
         response = self.get("/items")
         self.assert_success(response)
         self.assert_json_equal(response, ["item1", "item2", "item3"])
 
-    async def test_post_request(self):
+    def test_post_request(self):
         """POST 요청 테스트"""
         response = self.post("/items", json={"name": "new_item"})
         self.assert_success(response)
         data = response.json()
         self.assertEqual(data["status"], "created")
 
-    async def test_not_found(self):
+    def test_not_found(self):
         """404 테스트"""
         response = self.get("/nonexistent")
         self.assert_not_found(response)
 
-    async def test_assert_status(self):
+    def test_assert_status(self):
         """상태 코드 검증 테스트"""
         response = self.get("/items")
         self.assert_status(response, 200)
@@ -521,7 +521,7 @@ class TestCaseWithConfig(TestCase):
     components = [TestRepository]
     config = {"app": {"name": "ConfiguredApp", "debug": True}}
 
-    async def test_config_loaded(self):
+    def test_config_loaded(self):
         """설정 로드 테스트"""
         config = self.app._config_manager.get_config()
         self.assertEqual(config["app"]["name"], "ConfiguredApp")
