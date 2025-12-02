@@ -98,7 +98,7 @@ class TestHttpMethodHandlerContainer:
             def say_hello(self) -> str:
                 return "hello"
 
-        app = Application("test_handler").ready()
+        app = await Application("test_handler").ready_async()
 
         handler = TestController.say_hello.__container__
         result = await handler()
@@ -114,7 +114,7 @@ class TestHttpMethodHandlerContainer:
             async def async_hello(self) -> str:
                 return "async hello"
 
-        app = Application("test_async_handler").ready()
+        app = await Application("test_async_handler").ready_async()
 
         handler = AsyncController.async_hello.__container__
         result = await handler()
@@ -137,7 +137,7 @@ class TestRouter:
             def create_user(self) -> dict:
                 return {"id": 1}
 
-        app = Application("test_router").ready()
+        app = await Application("test_router").ready_async()
 
         routes = app.router.get_routes()
         assert ("GET", "/api/users", "list_users") in routes
@@ -153,7 +153,7 @@ class TestRouter:
             def ping(self, **kwargs) -> str:
                 return "pong"
 
-        app = Application("test_dispatch").ready()
+        app = await Application("test_dispatch").ready_async()
 
         request = HttpRequest(method="GET", path="/ping")
         response = await app.router.dispatch(request)
@@ -175,7 +175,7 @@ class TestRouter:
             def delete_post(self, user_id: str, post_id: str, **kwargs) -> dict:
                 return {"user_id": user_id, "post_id": post_id}
 
-        app = Application("test_path_params").ready()
+        app = await Application("test_path_params").ready_async()
 
         # 단일 파라미터
         request = HttpRequest(method="GET", path="/users/123")
@@ -195,7 +195,7 @@ class TestRouter:
         class EmptyController:
             pass
 
-        app = Application("test_not_found").ready()
+        app = await Application("test_not_found").ready_async()
 
         request = HttpRequest(method="GET", path="/nonexistent")
         response = await app.router.dispatch(request)
@@ -212,7 +212,7 @@ class TestRouter:
             def create(self, **kwargs) -> HttpResponse:
                 return HttpResponse.created({"id": 1})
 
-        app = Application("test_response").ready()
+        app = await Application("test_response").ready_async()
 
         # @Post만 사용하면 path는 /함수명
         request = HttpRequest(method="POST", path="/create")
@@ -231,7 +231,7 @@ class TestRouter:
             async def get_async_data(self, **kwargs) -> dict:
                 return {"async": True}
 
-        app = Application("test_async_dispatch").ready()
+        app = await Application("test_async_dispatch").ready_async()
 
         request = HttpRequest(method="GET", path="/async-data")
         response = await app.router.dispatch(request)
@@ -286,7 +286,7 @@ class TestController:
             def get_user(self, id: str, **kwargs) -> dict:
                 return {"id": id}
 
-        app = Application("test_controller").ready()
+        app = await Application("test_controller").ready_async()
 
         routes = app.router.get_routes()
         # RequestMapping prefix가 적용됨
@@ -313,7 +313,7 @@ class TestController:
             def health(self, **kwargs) -> str:
                 return "ok"
 
-        app = Application("test_simple_controller").ready()
+        app = await Application("test_simple_controller").ready_async()
 
         request = HttpRequest(method="GET", path="/health")
         response = await app.router.dispatch(request)
@@ -334,7 +334,7 @@ class TestASGI:
                 return "pong"
 
         app = Application("test_asgi")
-        app.ready()
+        await app.ready_async()
 
         router = app.router
 
@@ -377,7 +377,7 @@ class TestASGI:
                 return {"received": request.json}
 
         app = Application("test_asgi_post")
-        app.ready()
+        await app.ready_async()
 
         router = app.router
 
@@ -425,7 +425,7 @@ class TestASGI:
                 return {"query": request.query_params.get("q", "")}
 
         app = Application("test_asgi_query")
-        app.ready()
+        await app.ready_async()
 
         router = app.router
 
@@ -465,7 +465,7 @@ class TestASGI:
                 return {"async": True, "data": "async result"}
 
         app = Application("test_asgi_async")
-        app.ready()
+        await app.ready_async()
 
         router = app.router
 
@@ -506,7 +506,7 @@ class TestASGI:
                 return "factory works"
 
         app = Application("test_factory")
-        app.ready()
+        await app.ready_async()
 
         # 팩토리로 생성
         asgi_app = create_asgi_app()
@@ -550,7 +550,7 @@ class TestResponseTypeConversion:
             def get_user(self) -> dict:
                 return {"id": 1, "name": "홍길동"}
 
-        app = Application("test_pydantic_response").ready()
+        app = await Application("test_pydantic_response").ready_async()
         request = HttpRequest(method="GET", path="/user")
         response = await app.router.dispatch(request)
 
@@ -576,7 +576,7 @@ class TestResponseTypeConversion:
             def create_product(self) -> dict:
                 return {"id": 1, "name": "상품", "price": 1000.0}
 
-        app = Application("test_dataclass_response").ready()
+        app = await Application("test_dataclass_response").ready_async()
         request = HttpRequest(method="POST", path="/product", body=b"{}")
         response = await app.router.dispatch(request)
 
@@ -600,7 +600,7 @@ class TestResponseTypeConversion:
             def get_item(self) -> ItemOutput:
                 return ItemOutput(id=42)
 
-        app = Application("test_already_correct_type").ready()
+        app = await Application("test_already_correct_type").ready_async()
         request = HttpRequest(method="GET", path="/item")
         response = await app.router.dispatch(request)
 
@@ -618,7 +618,7 @@ class TestResponseTypeConversion:
             def get_raw(self) -> dict:
                 return {"data": "raw"}
 
-        app = Application("test_no_response").ready()
+        app = await Application("test_no_response").ready_async()
         request = HttpRequest(method="GET", path="/raw")
         response = await app.router.dispatch(request)
 
@@ -798,7 +798,7 @@ class TestASGIStreaming:
 
                 return StreamingResponse(generate())
 
-        app = Application("test").scan(StreamController).ready()
+        app = await Application("test").scan(StreamController).ready_async()
 
         # ASGI 시뮬레이션
         scope = {
@@ -851,7 +851,7 @@ class TestASGIStreaming:
 
                 return StreamingResponse.sse(generate())
 
-        app = Application("test").scan(SSEController).ready()
+        app = await Application("test").scan(SSEController).ready_async()
 
         scope = {
             "type": "http",
@@ -895,7 +895,7 @@ class TestASGIStreaming:
                     content_type="text/csv",
                 )
 
-        app = Application("test").scan(FileController).ready()
+        app = await Application("test").scan(FileController).ready_async()
 
         scope = {
             "type": "http",
@@ -954,7 +954,7 @@ class TestASGIStreaming:
                     filename="large.bin",
                 )
 
-        app = Application("test").scan(LargeFileController).ready()
+        app = await Application("test").scan(LargeFileController).ready_async()
 
         scope = {
             "type": "http",
@@ -1138,7 +1138,7 @@ class TestFileResponseASGI:
                 buffer = BytesIO(b"id,name\n1,Alice\n2,Bob")
                 return FileResponse(buffer, filename="users.csv")
 
-        app = Application("test").scan(DownloadController).ready()
+        app = await Application("test").scan(DownloadController).ready_async()
 
         scope = {
             "type": "http",
@@ -1194,7 +1194,7 @@ class TestFileResponseASGI:
                 async def get_file(self) -> FileResponse:
                     return FileResponse(temp_path, filename="readme.txt")
 
-            app = Application("test").scan(FileController).ready()
+            app = await Application("test").scan(FileController).ready_async()
 
             scope = {
                 "type": "http",

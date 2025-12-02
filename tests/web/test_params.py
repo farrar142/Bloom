@@ -37,7 +37,7 @@ class TestRequestBodyResolver:
             async def create_user(self, data: RequestBody[UserData]) -> dict:
                 return {"name": data.name, "age": data.age}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="POST",
@@ -68,7 +68,7 @@ class TestRequestBodyResolver:
             async def create_user(self, body: RequestBody[CreateUserRequest]) -> dict:
                 return {"username": body.username, "email": body.email}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="POST",
@@ -100,7 +100,7 @@ class TestModelParamResolver:
             async def create_user(self, data: UserData) -> dict:
                 return {"name": data.name, "age": data.age}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # body["data"]에서 UserData 생성
         request = HttpRequest(
@@ -132,7 +132,7 @@ class TestModelParamResolver:
             async def update(self, profile: Profile) -> dict:
                 return {"nickname": profile.nickname, "bio": profile.bio}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # body["profile"]에서 Profile 생성
         request = HttpRequest(
@@ -164,7 +164,7 @@ class TestModelParamResolver:
             async def create(self, author: Author, book: Book) -> dict:
                 return {"author": author.name, "title": book.title}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # body["author"]와 body["book"]에서 각각 추출
         request = HttpRequest(
@@ -197,7 +197,7 @@ class TestListBodyResolver:
             async def bulk_create(self, addresses: list[Address]) -> dict:
                 return {"count": len(addresses), "cities": [a.city for a in addresses]}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="POST",
@@ -230,7 +230,7 @@ class TestListBodyResolver:
                 total = sum(i.price for i in items)
                 return {"count": len(items), "total": total}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="POST",
@@ -258,7 +258,7 @@ class TestPathParamResolver:
             async def get_user(self, id: str) -> dict:
                 return {"id": id}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/users/123")
         response = await app.router.dispatch(request)
@@ -276,7 +276,7 @@ class TestPathParamResolver:
             async def get_post(self, user_id: str, post_id: str) -> dict:
                 return {"user_id": user_id, "post_id": post_id}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/users/42/posts/99")
         response = await app.router.dispatch(request)
@@ -294,7 +294,7 @@ class TestPathParamResolver:
             async def get_user(self, id: int) -> dict:
                 return {"id": id, "id_type": type(id).__name__}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/users/123")
         response = await app.router.dispatch(request)
@@ -316,7 +316,7 @@ class TestQueryParamResolver:
             async def search(self, q: str, limit: int) -> dict:
                 return {"query": q, "limit": limit}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -338,7 +338,7 @@ class TestQueryParamResolver:
             async def create_user(self, name: str, age: int) -> dict:
                 return {"name": name, "age": age}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="POST",
@@ -361,7 +361,7 @@ class TestQueryParamResolver:
             async def create(self, name: str, quantity: int) -> dict:
                 return {"name": name, "quantity": quantity}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # name은 query에서, quantity는 body에서
         request = HttpRequest(
@@ -394,7 +394,7 @@ class TestHttpRequestResolver:
                     "headers": dict(request.headers),
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -426,7 +426,7 @@ class TestMixedParameters:
             async def update_user(self, id: str, data: RequestBody[UpdateData]) -> dict:
                 return {"id": id, "name": data.name}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="POST",
@@ -455,7 +455,7 @@ class TestMixedParameters:
                     "user_agent": request.headers.get("user-agent", "unknown"),
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -489,7 +489,7 @@ class TestHttpHeaderResolver:
                     "value": user_agent.value,
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -511,7 +511,7 @@ class TestHttpHeaderResolver:
             async def info(self, ua: HttpHeader["User-Agent"]) -> dict:
                 return {"key": ua.key, "value": ua.value}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -540,7 +540,7 @@ class TestHttpHeaderResolver:
                     "accept": accept.value,
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -569,7 +569,7 @@ class TestHttpCookieResolver:
             async def session(self, session_id: HttpCookie) -> dict:
                 return {"key": session_id.key, "value": session_id.value}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -591,7 +591,7 @@ class TestHttpCookieResolver:
             async def token(self, t: HttpCookie["auth_token"]) -> dict:
                 return {"key": t.key, "value": t.value}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -622,7 +622,7 @@ class TestHttpCookieResolver:
                     "token_value": token.value,
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -657,7 +657,7 @@ class TestUploadedFileResolver:
                     "size": file.size,
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         uploaded = UploadedFile(
             filename="test.txt",
@@ -688,7 +688,7 @@ class TestUploadedFileResolver:
             async def upload_avatar(self, image: UploadedFile["avatar"]) -> dict:
                 return {"filename": image.filename}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         uploaded = UploadedFile(
             filename="profile.png",
@@ -718,7 +718,7 @@ class TestUploadedFileResolver:
                     "filenames": [f.filename for f in files],
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         file1 = UploadedFile(
             filename="doc1.pdf",
@@ -753,7 +753,7 @@ class TestUploadedFileResolver:
             async def upload_images(self, photos: list[UploadedFile["images"]]) -> dict:
                 return {"count": len(photos)}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         img1 = UploadedFile(
             filename="photo1.jpg",
@@ -785,7 +785,7 @@ class TestUploadedFileResolver:
             async def read_file(self, file: UploadedFile) -> dict:
                 return {"content": file.content.decode("utf-8")}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         uploaded = UploadedFile(
             filename="message.txt",
@@ -816,7 +816,7 @@ class TestOptionalParameters:
             async def search(self, q: str, limit: int | None = None) -> dict:
                 return {"q": q, "limit": limit}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # limit 없이 요청
         request = HttpRequest(
@@ -852,7 +852,7 @@ class TestOptionalParameters:
                     return {"auth": None}
                 return {"auth": authorization.value}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 헤더 없이
         request = HttpRequest(method="GET", path="/info")
@@ -884,7 +884,7 @@ class TestOptionalParameters:
                     return {"session": None}
                 return {"session": session_id.value}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 쿠키 없이
         request = HttpRequest(method="GET", path="/session")
@@ -915,7 +915,7 @@ class TestOptionalParameters:
                     return {"data": data.value, "metadata": None}
                 return {"data": data.value, "metadata": metadata.key}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # metadata 없이
         request = HttpRequest(
@@ -941,7 +941,7 @@ class TestOptionalParameters:
                     return {"uploaded": False}
                 return {"uploaded": True, "filename": file.filename}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 파일 없이
         request = HttpRequest(method="POST", path="/upload")
@@ -968,7 +968,7 @@ class TestAuthenticationResolver:
                     "authenticated": auth.authenticated,
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # auth가 설정된 request
         auth = Authentication(user_id="user123", authenticated=True)
@@ -992,7 +992,7 @@ class TestAuthenticationResolver:
                     return {"authenticated": False}
                 return {"authenticated": auth.authenticated}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # auth 없이
         request = HttpRequest(method="GET", path="/me")
@@ -1014,7 +1014,7 @@ class TestAuthenticationResolver:
                     return {"guest": True}
                 return {"user_id": auth.user_id}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # auth 없이
         request = HttpRequest(method="GET", path="/me")
@@ -1046,7 +1046,7 @@ class TestAuthenticationResolver:
                     "authorities": auth.authorities,
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         auth = Authentication(
             user_id="admin1",
@@ -1080,7 +1080,7 @@ class TestAuthenticationResolver:
                     "method": request.method,
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         auth = Authentication(user_id="viewer1", authenticated=True)
         request = HttpRequest(method="GET", path="/posts/123", auth=auth)
@@ -1114,7 +1114,7 @@ class TestValidationError:
             async def create_user(self, body: RequestBody[CreateUserRequest]) -> dict:
                 return {"username": body.username}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 잘못된 데이터: username 너무 짧음, age가 문자열
         request = HttpRequest(
@@ -1163,7 +1163,7 @@ class TestValidationError:
             async def create_user(self, body: RequestBody[CreateUserRequest]) -> dict:
                 return {"username": body.username}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 중첩 필드에 잘못된 데이터
         request = HttpRequest(
@@ -1208,7 +1208,7 @@ class TestValidationError:
             async def create_order(self, body: RequestBody[OrderRequest]) -> dict:
                 return {"count": len(body.items)}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 리스트 내 아이템 중 일부가 잘못됨
         request = HttpRequest(
@@ -1243,7 +1243,7 @@ class TestValidationError:
             async def create_user(self, body: RequestBody[UserData]) -> dict:
                 return {"name": body.name}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 필수 필드 누락
         request = HttpRequest(
@@ -1275,7 +1275,7 @@ class TestValidationError:
             async def test_age(self, body: RequestBody[AgeRequest]) -> dict:
                 return {"age": body.age}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="POST",
@@ -1330,7 +1330,7 @@ class TestEnumPathParameter:
             async def get_items_by_status(self, status: Status) -> dict:
                 return {"status": status.value, "name": status.name}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/items/active")
         response = await app.router.dispatch(request)
@@ -1348,7 +1348,7 @@ class TestEnumPathParameter:
             async def get_items_by_status(self, status: Status) -> dict:
                 return {"status": status.value, "name": status.name}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # Enum name으로 접근 (value 실패 시 name으로 시도)
         request = HttpRequest(method="GET", path="/items/PENDING")
@@ -1367,7 +1367,7 @@ class TestEnumPathParameter:
             async def get_by_priority(self, priority: Priority) -> dict:
                 return {"priority": priority.value, "name": priority.name}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/tasks/priority/2")
         response = await app.router.dispatch(request)
@@ -1385,7 +1385,7 @@ class TestEnumPathParameter:
             async def get_items_by_status(self, status: Status) -> dict:
                 return {"status": status.value}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 존재하지 않는 Enum 값
         request = HttpRequest(method="GET", path="/items/unknown")
@@ -1409,7 +1409,7 @@ class TestEnumQueryParameter:
             async def list_items(self, status: Status) -> dict:
                 return {"status": status.value}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET",
@@ -1433,7 +1433,7 @@ class TestEnumQueryParameter:
                     return {"status": "all"}
                 return {"status": status.value}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # status 없이 요청
         request = HttpRequest(method="GET", path="/items")
@@ -1463,7 +1463,7 @@ class TestEnumQueryParameter:
             async def create_item(self, status: Status) -> dict:
                 return {"status": status.value}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="POST",

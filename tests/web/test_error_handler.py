@@ -26,7 +26,7 @@ class TestErrorHandlerBasic:
             async def raise_error(self) -> str:
                 raise RuntimeError("Something went wrong")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -50,7 +50,7 @@ class TestErrorHandlerBasic:
             async def raise_error(self) -> str:
                 raise ValueError("value error")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -82,7 +82,7 @@ class TestErrorHandlerBasic:
             async def raise_value(self) -> str:
                 raise ValueError("value error")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # RuntimeError는 RuntimeError 핸들러가 처리
         request1 = HttpRequest(method="GET", path="/runtime")
@@ -106,7 +106,7 @@ class TestErrorHandlerBasic:
             async def raise_error(self) -> str:
                 raise RuntimeError("unhandled error")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -136,7 +136,7 @@ class TestErrorHandlerBasic:
             async def raise_child(self) -> str:
                 raise CustomChildError("child error")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # CustomChildError는 CustomBaseError 핸들러가 처리 (상속 관계)
         request = HttpRequest(method="GET", path="/child")
@@ -161,7 +161,7 @@ class TestErrorHandlerBasic:
             async def raise_error(self) -> str:
                 raise RuntimeError("async test")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -185,7 +185,7 @@ class TestErrorHandlerBasic:
             async def raise_error(self) -> str:
                 raise RuntimeError("dict response")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/error")
         response = await app.router.dispatch(request)
@@ -239,7 +239,7 @@ class TestCustomExceptionCases:
             async def raise_level3(self) -> str:
                 raise Level3Error("level3")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 각 레벨에 맞는 핸들러가 선택되어야 함
         r1 = await app.router.dispatch(HttpRequest(method="GET", path="/level1"))
@@ -295,7 +295,7 @@ class TestCustomExceptionCases:
             async def raise_forbidden(self) -> str:
                 raise ForbiddenError("Access denied")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         r1 = await app.router.dispatch(HttpRequest(method="GET", path="/not-found"))
         assert r1.status_code == 404
@@ -334,7 +334,7 @@ class TestCustomExceptionCases:
             async def validate(self) -> str:
                 raise ValidationError("email", "Invalid email format")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         response = await app.router.dispatch(
             HttpRequest(method="GET", path="/validate")
@@ -371,7 +371,7 @@ class TestCustomExceptionCases:
             async def api_test(self) -> str:
                 raise ApiError("API failed")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         response = await app.router.dispatch(
             HttpRequest(method="GET", path="/api/test")
@@ -413,7 +413,7 @@ class TestCustomExceptionCases:
             async def raise_key_error(self) -> str:
                 raise KeyError("missing_key")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         r1 = await app.router.dispatch(HttpRequest(method="GET", path="/value-error"))
         assert r1.status_code == 400
@@ -447,7 +447,7 @@ class TestCustomExceptionCases:
             async def raise_error(self) -> str:
                 raise CustomError("original error")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         response = await app.router.dispatch(HttpRequest(method="GET", path="/error"))
         # 핸들러 실패 시 기본 500 에러
@@ -482,7 +482,7 @@ class TestCustomExceptionCases:
             async def raise_network_timeout(self) -> str:
                 raise NetworkTimeoutError("connection timed out")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         response = await app.router.dispatch(
             HttpRequest(method="GET", path="/network-timeout")
@@ -509,7 +509,7 @@ class TestCustomExceptionCases:
             async def raise_error(self) -> str:
                 raise SimpleError("simple message")
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         response = await app.router.dispatch(HttpRequest(method="GET", path="/error"))
         assert response.status_code == 200
@@ -536,7 +536,7 @@ class TestCustomExceptionCases:
             async def raise_error(self) -> str:
                 raise MultiError(["error1", "error2", "error3"])
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         response = await app.router.dispatch(HttpRequest(method="GET", path="/error"))
         assert response.status_code == 200

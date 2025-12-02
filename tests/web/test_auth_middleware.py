@@ -62,7 +62,7 @@ class TestAuthMiddleware:
             async def test_endpoint(self) -> str:
                 return "success"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 인증 실패 케이스
         request = HttpRequest(method="GET", path="/test")
@@ -111,7 +111,7 @@ class TestAuthMiddleware:
                 captured_auth.append(request.auth)
                 return {"user": request.auth.user_id if request.auth else None}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 인증 성공
         request = HttpRequest(
@@ -160,7 +160,7 @@ class TestAuthMiddleware:
             async def test_endpoint(self) -> str:
                 return "success"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/test")
         response = await app.router.dispatch(request)
@@ -208,7 +208,7 @@ class TestAuthMiddleware:
             async def private_endpoint(self) -> str:
                 return "private"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 제외 경로 - 인증 없이 통과
         request1 = HttpRequest(method="GET", path="/public/data")
@@ -266,7 +266,7 @@ class TestAuthMiddleware:
                 captured_auth.append(request.auth)
                 return "success"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # X-Custom-Auth 없음 - DefaultAuthenticator만 실행
         request = HttpRequest(method="GET", path="/test")
@@ -321,7 +321,7 @@ class TestAuthMiddleware:
                 captured_auth.append(request.auth)
                 return "success"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/test")
         await app.router.dispatch(request)
@@ -365,7 +365,7 @@ class TestAuthMiddleware:
                 captured_auth.append(request.auth)
                 return "success"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/test")
         response = await app.router.dispatch(request)
@@ -437,7 +437,7 @@ class TestAuthMiddlewareGroups:
                 captured_auth.append(request.auth)
                 return "admin"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # API 그룹 - API 키로 인증
         request1 = HttpRequest(
@@ -504,7 +504,7 @@ class TestAuthMiddlewareGroups:
             async def optional_endpoint(self) -> str:
                 return "optional"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # strict 그룹 - 401
         request1 = HttpRequest(method="GET", path="/strict/data")
@@ -562,7 +562,7 @@ class TestAuthMiddlewareGroups:
             async def health_endpoint(self) -> str:
                 return "healthy"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 제외되지 않은 경로 - 401
         request1 = HttpRequest(method="GET", path="/api/private")
@@ -613,7 +613,7 @@ class TestAuthMiddlewareGroups:
                 captured_auth.append(request.auth)
                 return "success"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(method="GET", path="/any/path")
         response = await app.router.dispatch(request)
@@ -678,7 +678,7 @@ class TestAuthMiddlewareGroups:
                 captured_auth.append(request.auth)
                 return "other"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # /api/ 경로 - api 그룹 사용
         request1 = HttpRequest(method="GET", path="/api/data")
@@ -732,7 +732,7 @@ class TestAuthMiddlewareGroups:
             async def public_endpoint(self) -> str:
                 return "public"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # /public/ 경로 - 어떤 그룹에도 매칭되지 않음
         request = HttpRequest(method="GET", path="/public/data")
@@ -792,7 +792,7 @@ class TestAuthMiddlewareGroups:
                 captured_auth.append(request.auth)
                 return "success"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # Primary 인증 성공 - Fallback은 실행 안됨
         request1 = HttpRequest(
@@ -909,7 +909,7 @@ class TestAuthMiddlewareGroups:
                 captured_auth.append(request.auth)
                 return {"user": request.auth.user_id if request.auth else None}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # API 인증 - API Key
         request1 = HttpRequest(
@@ -1004,7 +1004,7 @@ class TestAuthMiddlewareGroups:
             async def admin_endpoint(self) -> str:
                 return "admin"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # API 경로에 JWT 토큰 사용 - 401 (ApiKeyAuthenticator가 supports=False)
         request1 = HttpRequest(
@@ -1079,7 +1079,7 @@ class TestAuthMiddlewareGroups:
                 captured_auth.append(request.auth)
                 return "general"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # /api/v2/ - specific 그룹 매칭 (먼저 등록됨)
         request1 = HttpRequest(method="GET", path="/api/v2/data")
@@ -1144,7 +1144,7 @@ class TestAuthenticationResolver:
                     "authorities": auth.authorities,
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 인증 성공
         request = HttpRequest(
@@ -1196,7 +1196,7 @@ class TestAuthenticationResolver:
                     return {"guest": True}
                 return {"user_id": auth.user_id, "guest": False}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 인증 없이 요청
         request1 = HttpRequest(method="GET", path="/profile")
@@ -1254,7 +1254,7 @@ class TestAuthenticationResolver:
                     "is_admin": "admin" in auth.authorities,
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         request = HttpRequest(
             method="GET", path="/resources/42", headers={"X-API-Key": "secret"}
@@ -1311,7 +1311,7 @@ class TestAuthenticationResolver:
                     return {"error": "Forbidden", "status": 403}
                 return {"action": "performed", "by": auth.user_id}
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # Admin 권한
         request1 = HttpRequest(
@@ -1399,7 +1399,7 @@ class TestAuthenticationResolver:
                     "type": "web" if auth.has_authority("web") else "unknown",
                 }
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # API 인증
         request1 = HttpRequest(
@@ -1454,7 +1454,7 @@ class TestAuthorizeDecorator:
             async def protected(self) -> str:
                 return "protected content"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 인증된 사용자 - 접근 성공
         request = HttpRequest(
@@ -1497,7 +1497,7 @@ class TestAuthorizeDecorator:
             async def protected(self) -> str:
                 return "protected content"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 인증되지 않은 사용자 - 403 Forbidden
         request = HttpRequest(method="GET", path="/protected")
@@ -1545,7 +1545,7 @@ class TestAuthorizeDecorator:
             async def admin_only(self) -> str:
                 return "admin area"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # ADMIN 권한 있는 사용자 - 접근 성공
         admin_request = HttpRequest(
@@ -1607,7 +1607,7 @@ class TestAuthorizeDecorator:
             async def premium_content(self) -> str:
                 return "premium content"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # Premium 사용자 - 접근 성공
         premium_request = HttpRequest(
@@ -1674,7 +1674,7 @@ class TestAuthorizeDecorator:
             async def user_api(self) -> str:
                 return "user api"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # 인증 없이 접근 - 401 Unauthorized (require() 때문)
         no_auth_request = HttpRequest(method="GET", path="/api/admin")
@@ -1751,7 +1751,7 @@ class TestAuthorizeDecorator:
             async def super_only(self) -> str:
                 return "super area"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
 
         # ADMIN + MANAGER 권한 있는 사용자 - 접근 성공
         super_request = HttpRequest(

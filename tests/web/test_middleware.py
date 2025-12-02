@@ -102,7 +102,7 @@ class TestMiddleware:
             async def test_handler(self):
                 return "Test Response"
 
-        app = Application("test").ready()
+        app = await Application("test").ready_async()
         request = HttpRequest(method="GET", path="/api/test")
         response = await app.router.dispatch(request)
         assert response.status_code == 200

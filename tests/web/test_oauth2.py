@@ -442,7 +442,7 @@ class TestOAuth2Integration:
                 return self.flow.get_authorization_url(config, state)
 
         # OAuth2FlowComponent가 있는 모듈도 스캔
-        app = Application("test").scan(oauth2_module).ready()
+        app = await Application("test").scan(oauth2_module).ready_async()
 
         service = app.manager.get_instance(AuthService)
         assert service.flow is not None
@@ -484,7 +484,7 @@ class TestOAuth2Integration:
             ) -> OAuth2Token:
                 return await self.flow.exchange_code(config, code)
 
-        app = Application("test").scan(__name__).ready()
+        app = await Application("test").scan(__name__).ready_async()
 
         service = app.manager.get_instance(AuthService)
         config = MockOAuthConfig()

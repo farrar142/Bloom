@@ -320,7 +320,7 @@ class TestStaticFilesContainer:
                     .add("/assets", assets_dir, html=True)
                 )
 
-        app = Application("test").scan(__import__(__name__)).ready()
+        app = await Application("test").scan(__import__(__name__)).ready_async()
 
         manager = StaticFilesManager()
         manager.collect_from_container(app.manager)
@@ -349,7 +349,7 @@ class TestStaticFilesContainer:
             def second_container(self) -> StaticFilesContainer:
                 return StaticFilesContainer().add("/assets", assets_dir)
 
-        app = Application("test").scan(__import__(__name__)).ready()
+        app = await Application("test").scan(__import__(__name__)).ready_async()
 
         manager = StaticFilesManager()
         with pytest.raises(RuntimeError, match="Multiple StaticFilesContainer"):
@@ -362,7 +362,7 @@ class TestStaticFilesContainer:
         class EmptyConfig:
             pass
 
-        app = Application("test").scan(__import__(__name__)).ready()
+        app = await Application("test").scan(__import__(__name__)).ready_async()
 
         manager = StaticFilesManager()
         manager.collect_from_container(app.manager)
@@ -387,7 +387,7 @@ class TestASGIStaticFiles:
             def health(self):
                 return {"status": "ok"}
 
-        app = Application("test").scan(__import__(__name__)).ready()
+        app = await Application("test").scan(__import__(__name__)).ready_async()
         app.asgi.mount_static("/static", str(static_dir))
 
         # 정적 파일 매니저가 설정되었는지 확인
@@ -409,7 +409,7 @@ class TestASGIStaticFiles:
             def data(self):
                 return {"source": "api"}
 
-        app = Application("test").scan(__import__(__name__)).ready()
+        app = await Application("test").scan(__import__(__name__)).ready_async()
         app.asgi.mount_static("/static", str(static_dir))
 
         # 정적 파일이 우선순위를 가지므로 static 파일이 서빙되어야 함
@@ -432,7 +432,7 @@ class TestASGIStaticFiles:
         class DummyController:
             pass
 
-        app = Application("test").scan(__import__(__name__)).ready()
+        app = await Application("test").scan(__import__(__name__)).ready_async()
 
         result = app.asgi.mount_static("/static", str(dir1)).mount_static(
             "/assets", str(dir2)
