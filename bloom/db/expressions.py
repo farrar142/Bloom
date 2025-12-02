@@ -593,9 +593,11 @@ class SubqueryInCondition:
     ) -> ConditionGroup:
         return ConditionGroup("OR", [self, other])  # type: ignore
 
-    def to_sql(self, param_prefix: str = "sq") -> tuple[str, dict[str, Any]]:
+    def to_sql(
+        self, param_prefix: str = "sq", depth: int = 0
+    ) -> tuple[str, dict[str, Any]]:
         """SQL 생성"""
-        subquery_sql, params = self.subquery.to_sql(param_prefix)
+        subquery_sql, params = self.subquery.to_sql(f"{param_prefix}_{depth}")
         op = "NOT IN" if self.negate else "IN"
         return f'"{self.field}" {op} {subquery_sql}', params
 
@@ -622,9 +624,11 @@ class SubqueryCondition:
     ) -> ConditionGroup:
         return ConditionGroup("OR", [self, other])  # type: ignore
 
-    def to_sql(self, param_prefix: str = "sq") -> tuple[str, dict[str, Any]]:
+    def to_sql(
+        self, param_prefix: str = "sq", depth: int = 0
+    ) -> tuple[str, dict[str, Any]]:
         """SQL 생성"""
-        subquery_sql, params = self.subquery.to_sql(param_prefix)
+        subquery_sql, params = self.subquery.to_sql(f"{param_prefix}_{depth}")
         return f"{self.operator} {subquery_sql}", params
 
 
