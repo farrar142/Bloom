@@ -694,3 +694,153 @@ class TestCascadeAddAsync:
             assert list(session._new).count(p) == 1
 
             await session.commit()
+
+
+# =============================================================================
+# NOT NULL FK 테스트 - FK가 nullable=False일 때도 정상 동작
+# =============================================================================
+
+
+@Entity
+class Author:
+    id = PrimaryKey[int](auto_increment=True)
+    name = StringColumn()
+    books = OneToMany["Book"]("Book", foreign_key="author_id")
+
+
+@Entity
+class Book:
+    id = PrimaryKey[int](auto_increment=True)
+    title = StringColumn()
+    author_id = IntegerColumn(nullable=False)  # NOT NULL FK
+
+
+class TestNotNullForeignKey:
+    """NOT NULL FK 제약 조건 테스트"""
+
+    @pytest.fixture
+    def factory(self):
+        backend = SQLiteBackend(":memory:")
+        return SessionFactory(backend)
+
+    @pytest.fixture
+    def setup_tables(self, factory):
+        with factory.session() as session:
+            session._connection.execute(
+                "CREATE TABLE author (id INTEGER PRIMARY KEY, name TEXT)"
+            )
+            session._connection.execute(
+                """CREATE TABLE book (
+                    id INTEGER PRIMARY KEY,
+                    title TEXT,
+                    author_id INTEGER NOT NULL REFERENCES author(id)
+                )"""
+            )
+            session.commit()
+        return factory
+
+    def test_append_before_add_with_not_null_fk(self, setup_tables):
+        """NOT NULL FK: append 먼저 → session.add(parent) → 정상 저장"""
+        factory = setup_tables
+
+        with factory.session() as session:
+            author = Author()
+            author.name = "Test Author"
+
+            book = Book()
+            book.title = "Test Book"
+
+            # append 먼저 (아직 세션에 없음)
+            author.books.append(book)
+
+            # session.add → book도 cascade
+            session.add(author)
+
+            # flush 시 부모 먼저 INSERT → FK 동기화 → 자식 INSERT
+            session.flush()
+
+            # 검증
+            assert author.id is not None
+            assert book.id is not None
+            assert book.author_id == author.id
+
+        # DB 확인
+        with factory.session() as session:
+            result = session._connection.execute(
+                "SELECT * FROM book WHERE id = 1"
+            ).fetchone()
+            assert result is not None
+            assert result["author_id"] == 1
+
+    def test_multiple_books_with_not_null_fk(self, setup_tables):
+        """NOT NULL FK: 여러 자식도 정상 저장"""
+        factory = setup_tables
+
+        with factory.session() as session:
+            author = Author()
+            author.name = "Prolific Author"
+
+            for i in range(3):
+                book = Book()
+                book.title = f"Book {i+1}"
+                author.books.append(book)
+
+            session.add(author)
+            session.commit()
+
+        with factory.session() as session:
+            result = session._connection.execute(
+                "SELECT COUNT(*) as cnt FROM book WHERE author_id = 1"
+            ).fetchone()
+            assert result["cnt"] == 3
+
+
+class TestNotNullForeignKeyAsync:
+    """비동기 NOT NULL FK 테스트"""
+
+    @pytest.fixture
+    async def setup_tables(self):
+        backend = SQLiteBackend(":memory:")
+        factory = SessionFactory(backend)
+        async with factory.session_async() as session:
+            await session._connection.execute(
+                "CREATE TABLE author (id INTEGER PRIMARY KEY, name TEXT)"
+            )
+            await session._connection.execute(
+                """CREATE TABLE book (
+                    id INTEGER PRIMARY KEY,
+                    title TEXT,
+                    author_id INTEGER NOT NULL REFERENCES author(id)
+                )"""
+            )
+            await session.commit()
+        yield factory
+        pool = backend._pool
+        if pool:
+            await pool.close_all_async()
+
+    async def test_append_before_add_with_not_null_fk_async(self, setup_tables):
+        """비동기 NOT NULL FK: append 먼저 → session.add → 정상 저장"""
+        factory = setup_tables
+
+        async with factory.session_async() as session:
+            author = Author()
+            author.name = "Async Author"
+
+            book = Book()
+            book.title = "Async Book"
+
+            author.books.append(book)
+            session.add(author)
+            await session.flush()
+
+            assert author.id is not None
+            assert book.id is not None
+            assert book.author_id == author.id
+
+        async with factory.session_async() as session:
+            result = await session._connection.execute(
+                "SELECT author_id FROM book WHERE id = 1"
+            )
+            row = await result.fetchone()
+            assert row["author_id"] == 1

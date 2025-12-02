@@ -279,16 +279,24 @@ class Session:
         """변경 사항을 DB에 반영 (커밋 없이)"""
         self._check_closed()
 
-        # INSERT - 먼저 모든 엔티티를 insert하여 PK 할당
+        # INSERT - 부모 먼저, 자식 나중에 (FK 의존성 순서)
         insert_list = list(self._new)
-        for entity in insert_list:
-            self._do_insert(entity)
         self._new.clear()
 
-        # TrackedList의 FK 동기화 후 자식 UPDATE
-        # (이미 insert된 자식의 FK가 None이면 UPDATE로 설정)
-        for entity in insert_list:
-            self._sync_and_update_tracked_list_fk(entity)
+        # 1단계: 부모-자식 관계 파악하여 정렬
+        parents, children = self._sort_by_dependency(insert_list)
+
+        # 2단계: 부모 먼저 INSERT (PK 할당)
+        for entity in parents:
+            self._do_insert(entity)
+
+        # 3단계: 부모 INSERT 후 자식의 FK 동기화
+        for entity in parents:
+            self._sync_tracked_list_fk_before_insert(entity)
+
+        # 4단계: 자식 INSERT (이제 FK가 설정됨)
+        for entity in children:
+            self._do_insert(entity)
 
         # UPDATE (dirty tracking)
         for entity in list(self._dirty):
@@ -299,6 +307,68 @@ class Session:
         for entity in list(self._deleted):
             self._do_delete(entity)
         self._deleted.clear()
+
+    def _sort_by_dependency(
+        self, entities: list[Any]
+    ) -> tuple[list[Any], list[Any]]:
+        """엔티티를 부모/자식으로 분류
+
+        TrackedList에 포함된 엔티티는 자식으로 분류됩니다.
+        """
+        from .columns import OneToMany, TrackedList
+
+        children_set: set[int] = set()  # id()로 추적
+
+        # TrackedList에 있는 엔티티들을 자식으로 표시
+        for entity in entities:
+            relations = getattr(type(entity), "__bloom_relations__", {})
+            for name, relation in relations.items():
+                if isinstance(relation, OneToMany):
+                    if entity in relation._cache:
+                        tracked_list = relation._cache[entity]
+                        if isinstance(tracked_list, TrackedList):
+                            for child in tracked_list:
+                                children_set.add(id(child))
+
+        parents = []
+        children = []
+        for entity in entities:
+            if id(entity) in children_set:
+                children.append(entity)
+            else:
+                parents.append(entity)
+
+        return parents, children
+
+    def _sync_tracked_list_fk_before_insert(self, entity: Any) -> None:
+        """부모 INSERT 후, 자식 INSERT 전에 FK 동기화
+
+        부모의 PK가 할당된 후 호출되어, TrackedList의 자식들에게 FK를 설정합니다.
+        """
+        from .columns import OneToMany, TrackedList
+
+        relations = getattr(type(entity), "__bloom_relations__", {})
+        pk_value = get_pk_value(entity)
+
+        if pk_value is None:
+            return
+
+        for name, relation in relations.items():
+            if isinstance(relation, OneToMany):
+                if entity not in relation._cache:
+                    continue
+
+                tracked_list = relation._cache[entity]
+                if not isinstance(tracked_list, TrackedList):
+                    continue
+
+                fk_field_name = tracked_list._fk_field_name
+                if not fk_field_name:
+                    continue
+
+                # 자식들의 FK 설정
+                for child in tracked_list:
+                    setattr(child, fk_field_name, pk_value)
 
     def _sync_and_update_tracked_list_fk(self, entity: Any) -> None:
         """엔티티의 TrackedList에 있는 자식들의 FK 값 동기화 및 UPDATE
@@ -754,10 +824,24 @@ class AsyncSession:
         """변경 사항을 DB에 반영 (커밋 없이)"""
         self._check_closed()
 
-        # INSERT
-        for entity in list(self._new):
-            await self._do_insert(entity)
+        # INSERT - 부모 먼저, 자식 나중에 (FK 의존성 순서)
+        insert_list = list(self._new)
         self._new.clear()
+
+        # 1단계: 부모-자식 관계 파악하여 정렬
+        parents, children = self._sort_by_dependency(insert_list)
+
+        # 2단계: 부모 먼저 INSERT (PK 할당)
+        for entity in parents:
+            await self._do_insert(entity)
+
+        # 3단계: 부모 INSERT 후 자식의 FK 동기화
+        for entity in parents:
+            self._sync_tracked_list_fk_before_insert(entity)
+
+        # 4단계: 자식 INSERT (이제 FK가 설정됨)
+        for entity in children:
+            await self._do_insert(entity)
 
         # UPDATE
         for entity in list(self._dirty):
@@ -768,6 +852,68 @@ class AsyncSession:
         for entity in list(self._deleted):
             await self._do_delete(entity)
         self._deleted.clear()
+
+    def _sort_by_dependency(
+        self, entities: list[Any]
+    ) -> tuple[list[Any], list[Any]]:
+        """엔티티를 부모/자식으로 분류
+
+        TrackedList에 포함된 엔티티는 자식으로 분류됩니다.
+        """
+        from .columns import OneToMany, TrackedList
+
+        children_set: set[int] = set()  # id()로 추적
+
+        # TrackedList에 있는 엔티티들을 자식으로 표시
+        for entity in entities:
+            relations = getattr(type(entity), "__bloom_relations__", {})
+            for name, relation in relations.items():
+                if isinstance(relation, OneToMany):
+                    if entity in relation._cache:
+                        tracked_list = relation._cache[entity]
+                        if isinstance(tracked_list, TrackedList):
+                            for child in tracked_list:
+                                children_set.add(id(child))
+
+        parents = []
+        children = []
+        for entity in entities:
+            if id(entity) in children_set:
+                children.append(entity)
+            else:
+                parents.append(entity)
+
+        return parents, children
+
+    def _sync_tracked_list_fk_before_insert(self, entity: Any) -> None:
+        """부모 INSERT 후, 자식 INSERT 전에 FK 동기화
+
+        부모의 PK가 할당된 후 호출되어, TrackedList의 자식들에게 FK를 설정합니다.
+        """
+        from .columns import OneToMany, TrackedList
+
+        relations = getattr(type(entity), "__bloom_relations__", {})
+        pk_value = get_pk_value(entity)
+
+        if pk_value is None:
+            return
+
+        for name, relation in relations.items():
+            if isinstance(relation, OneToMany):
+                if entity not in relation._cache:
+                    continue
+
+                tracked_list = relation._cache[entity]
+                if not isinstance(tracked_list, TrackedList):
+                    continue
+
+                fk_field_name = tracked_list._fk_field_name
+                if not fk_field_name:
+                    continue
+
+                # 자식들의 FK 설정
+                for child in tracked_list:
+                    setattr(child, fk_field_name, pk_value)
 
     async def commit(self) -> None:
         """변경 사항 커밋"""
