@@ -57,26 +57,31 @@ class Repository(ABC, Generic[T, ID]):
     Spring Data JPA의 CrudRepository와 유사합니다.
     Repository를 상속하면 자동으로 @Component로 등록됩니다.
 
+    Session은 @Factory + @Scope(PROTOTYPE, CALL_SCOPED)로 주입받아야 합니다.
+    이렇게 하면 같은 요청 내에서는 같은 Session을 공유하고,
+    요청이 끝나면 자동으로 close됩니다.
+
     사용법:
+        # 1. Session Factory 정의 (settings/database.py 등)
+        @Component
+        class DatabaseConfig:
+            session_factory: SessionFactory
+            
+            @Factory
+            @Scope(Scope.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            def session(self) -> Session:
+                return self.session_factory.create()
+
+        # 2. Repository 정의
         class UserRepository(CrudRepository[User, int]):
             # session은 자동 주입됨
             
             def find_by_email(self, email: str) -> User | None:
                 return self.find_one_by(email=email)
-
-    Examples:
-        @Entity
-        class User:
-            id = PrimaryKey[int](auto_increment=True)
-            name = Column[str](nullable=False)
-
-        class UserRepository(CrudRepository[User, int]):
-            def find_by_email(self, email: str) -> User | None:
-                return self.find_one_by(email=email)
     """
 
-    # 필드 주입용
-    session: "Session | None" = None
+    # 필드 주입용 - Session은 Factory로 주입됨
+    session: "Session"
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Repository를 상속하면 자동으로 @Component로 등록"""
@@ -116,12 +121,7 @@ class Repository(ABC, Generic[T, ID]):
         return repo
 
     def _get_session(self) -> Session:
-        """Session 반환"""
-        if self.session is None:
-            raise ValueError(
-                f"{type(self).__name__}: Session is required. "
-                "Configure DI with session: Session field."
-            )
+        """Session 반환 (DI로 주입됨)"""
         return self.session
 
     def _get_entity_class(self) -> type[T]:

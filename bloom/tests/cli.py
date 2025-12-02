@@ -9,46 +9,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
-
-
-def _get_default_test_paths() -> list[str]:
-    """기본 테스트 경로 목록 반환
-    
-    검색 경로:
-      - tests/          (프로젝트 루트 테스트)
-      - */tests.py      (앱별 테스트)
-      - */tests/        (앱별 테스트 디렉토리)
-    """
-    cwd = Path.cwd()
-    paths: list[str] = []
-    
-    # 1. tests/ 디렉토리
-    if (cwd / "tests").exists():
-        paths.append("tests/")
-    
-    # 2. */tests.py 및 */tests/ 패턴 (앱별 테스트)
-    for subdir in cwd.iterdir():
-        if not subdir.is_dir():
-            continue
-        # 숨김/특수 디렉토리 제외
-        if subdir.name.startswith((".", "_")):
-            continue
-        if subdir.name in ("venv", "env", "node_modules", "tests", "docs", "migrations"):
-            continue
-        
-        # */tests.py
-        if (subdir / "tests.py").exists():
-            paths.append(str(subdir / "tests.py"))
-        
-        # */tests/ 디렉토리
-        if (subdir / "tests").is_dir():
-            paths.append(str(subdir / "tests"))
-    
-    # 아무것도 없으면 기본값
-    return paths if paths else ["tests/"]
 
 
 @click.command("tests")
@@ -95,13 +56,12 @@ def tests(
 
     \b
     Runs pytest with common options.
-    Default: runs all tests in tests/ and */tests.py
+    Default: runs all tests in tests/ directory.
 
     \b
     Examples:
         bloom tests
         bloom tests tests/test_api.py
-        bloom tests users/tests.py
         bloom tests -v -x
         bloom tests -q -x
         bloom tests -k "test_user"
@@ -116,7 +76,7 @@ def tests(
         )
 
     # pytest 인자 구성
-    args = list(paths) if paths else _get_default_test_paths()
+    args = list(paths) if paths else ["tests/"]
 
     if verbose:
         args.append("-v")

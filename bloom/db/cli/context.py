@@ -64,10 +64,7 @@ class DBContext:
                     if cls not in entities:
                         entities.append(cls)
 
-        # 3. */entities.py 패턴으로 앱별 엔티티 찾기
-        entities.extend(self._discover_app_entities())
-
-        # 4. entities_module에서 직접 로드
+        # 3. entities_module에서 직접 로드
         if self.entities_module:
             try:
                 module = importlib.import_module(self.entities_module)
@@ -81,51 +78,6 @@ class DBContext:
 
             except ImportError as e:
                 click.echo(f"Warning: Could not import {self.entities_module}: {e}")
-
-        return entities
-
-    def _discover_app_entities(self) -> list[type]:
-        """앱 디렉토리의 entities.py에서 엔티티 찾기
-        
-        스캔 경로:
-          - */entities.py    (앱별 엔티티)
-          - */models.py      (레거시 호환)
-        """
-        import sys
-        from bloom.db.entity import get_entity_meta
-
-        entities: list[type] = []
-        cwd = Path.cwd()
-        
-        # cwd를 sys.path에 추가
-        cwd_str = str(cwd)
-        if cwd_str not in sys.path:
-            sys.path.insert(0, cwd_str)
-
-        for subdir in cwd.iterdir():
-            if not subdir.is_dir():
-                continue
-            # 숨김/특수 디렉토리 제외
-            if subdir.name.startswith((".", "_")):
-                continue
-            if subdir.name in ("venv", "env", "node_modules", "tests", "docs", "migrations", "settings"):
-                continue
-
-            # entities.py 또는 models.py 확인
-            for filename in ("entities.py", "models.py"):
-                entity_file = subdir / filename
-                if entity_file.exists():
-                    module_name = f"{subdir.name}.{filename[:-3]}"
-                    try:
-                        module = importlib.import_module(module_name)
-                        for name in dir(module):
-                            obj = getattr(module, name)
-                            if isinstance(obj, type) and get_entity_meta(obj):
-                                if obj not in entities:
-                                    entities.append(obj)
-                    except ImportError as e:
-                        # 임포트 실패 시 조용히 무시
-                        pass
 
         return entities
 

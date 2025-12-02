@@ -4,7 +4,7 @@ from contextvars import ContextVar
 from typing import Any, Literal, overload, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .container import Container
+    from .container import Container, FactoryContainer
     from .lifecycle import LifecycleManager
     from .events import SystemEventBus
 
@@ -163,6 +163,35 @@ class ContainerManager:
                 # issubclass에 유효하지 않은 타입이 들어온 경우
                 continue
         return None
+
+    def get_factory_container(self, target: type) -> "FactoryContainer | None":
+        """특정 타입을 반환하는 FactoryContainer 조회"""
+        from .container import FactoryContainer
+        
+        for containers in self.container_registry.values():
+            for container in containers:
+                if isinstance(container, FactoryContainer):
+                    try:
+                        if container.target == target:
+                            return container
+                    except Exception:
+                        continue
+        return None
+
+    def get_container_scope(self, container: "Container") -> tuple:
+        """컨테이너의 스코프와 프로토타입 모드 반환
+        
+        Container는 Element를 담기만 하고, 해석은 Manager에서 합니다.
+        
+        Returns:
+            (Scope, PrototypeMode) 튜플. 기본값: (SINGLETON, DEFAULT)
+        """
+        from .container.element import Scope, ScopeElement, PrototypeMode
+        
+        for elem in container.elements:
+            if isinstance(elem, ScopeElement):
+                return (elem.scope, elem.prototype_mode)
+        return (Scope.SINGLETON, PrototypeMode.DEFAULT)
 
     def get_containers(
         self, target: type, include_subclasses: bool = True

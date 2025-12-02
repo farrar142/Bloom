@@ -39,6 +39,22 @@ class CallableContainer[**P, R](Container[Callable[P, R]]):
         """
         return cls._apply_override_rules(method, lambda: cls(method))
 
+    def get_scope(self) -> Scope:
+        """컨테이너의 스코프 반환 (기본값: SINGLETON)"""
+        for elem in self.elements:
+            if isinstance(elem, ScopeElement):
+                return elem.scope
+        return Scope.SINGLETON
+
+    def get_prototype_mode(self) -> "PrototypeMode":
+        """컨테이너의 프로토타입 모드 반환 (기본값: DEFAULT)"""
+        from .element import PrototypeMode
+        
+        for elem in self.elements:
+            if isinstance(elem, ScopeElement):
+                return elem.prototype_mode
+        return PrototypeMode.DEFAULT
+
     def is_singleton_only(self) -> bool:
         """SINGLETON 스코프에서만 사용 가능한 핸들러인지 확인"""
         return self.has_element(SingletonOnlyElement)

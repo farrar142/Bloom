@@ -173,16 +173,12 @@ class ContainerOrchestrator:
         """컨테이너가 PROTOTYPE 또는 REQUEST 스코프인지 확인
 
         이 스코프들은 ready() 시점에 초기화되지 않고, 필드 접근 시점에 초기화됩니다.
+        Container는 Element를 담기만 하고, 해석은 Manager에서 합니다.
         """
-        from .container.element import ScopeElement, Scope
+        from .container.element import Scope
 
-        for elem in container.elements:
-            if isinstance(elem, ScopeElement) and elem.scope in (
-                Scope.PROTOTYPE,
-                Scope.REQUEST,
-            ):
-                return True
-        return False
+        scope, _ = self.manager.get_container_scope(container)
+        return scope in (Scope.PROTOTYPE, Scope.REQUEST)
 
     def _register_initialized_container(
         self, container: "Container", instance: Any

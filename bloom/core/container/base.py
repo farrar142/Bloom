@@ -282,12 +282,40 @@ class Container[T]:
                     prototype_mode,
                 )
             else:
-                # 컨테이너가 없으면 기존 인스턴스 확인
-                existing_instance = manager.get_instance(
-                    dep_type, raise_exception=False
-                )
-                if existing_instance is not None:
-                    kwargs[name] = existing_instance
+                # 컨테이너가 없으면 Factory 확인
+                factory_container = manager.get_factory_container(dep_type)
+                if factory_container:
+                    from .element import Scope as ScopeEnum
+                    
+                    scope, prototype_mode = manager.get_container_scope(factory_container)
+                    
+                    # SINGLETON Factory인 경우 기존 인스턴스 사용
+                    if scope == ScopeEnum.SINGLETON:
+                        existing_instance = manager.get_instance(dep_type, raise_exception=False)
+                        if existing_instance is not None:
+                            kwargs[name] = existing_instance
+                            continue
+                    
+                    # PROTOTYPE Factory - LazyFieldProxy로 주입
+                    def make_factory_resolver(fc: "FactoryContainer", m: "ContainerManager"):
+                        def resolver():
+                            return fc.initialize_instance()
+                        return resolver
+                    
+                    kwargs[name] = LazyFieldProxy(
+                        make_factory_resolver(factory_container, manager),
+                        dep_type,
+                        scope,
+                        factory_container,  # lifecycle container
+                        prototype_mode,
+                    )
+                else:
+                    # Factory도 없으면 기존 인스턴스 확인
+                    existing_instance = manager.get_instance(
+                        dep_type, raise_exception=False
+                    )
+                    if existing_instance is not None:
+                        kwargs[name] = existing_instance
         return kwargs
 
     def _create_instance(self) -> T:
