@@ -26,7 +26,7 @@ from __future__ import annotations
 import functools
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Callable, TypeVar, TYPE_CHECKING
+from typing import Any, Callable, TypeVar, TYPE_CHECKING, overload
 
 import click
 
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
 F = TypeVar("F", bound=Callable[..., Any])
 T = TypeVar("T")
+BS = TypeVar("BS", bound="BaseScript")
 
 # 등록된 스크립트들을 저장하는 레지스트리
 _script_registry: dict[str, click.Command] = {}
@@ -99,9 +100,32 @@ def _to_kebab_case(name: str) -> str:
     return name
 
 
+# === @script 데코레이터 오버로드 ===
+
+
+@overload
+def script(func_or_class: F, *, name: str | None = None) -> F:
+    """함수에 직접 적용: @script def my_func(): ..."""
+    ...
+
+
+@overload
+def script(func_or_class: type[BS], *, name: str | None = None) -> type[BS]:
+    """클래스에 직접 적용: @script class MyScript(BaseScript): ..."""
+    ...
+
+
+@overload
 def script(
-    func_or_class: F | type[BaseScript] | None = None, *, name: str | None = None
-) -> F | type[BaseScript] | Callable[[F | type[BaseScript]], F | type[BaseScript]]:
+    func_or_class: None = None, *, name: str | None = None
+) -> Callable[[F], F] | Callable[[type[BS]], type[BS]]:
+    """옵션과 함께 사용: @script(name="custom-name")"""
+    ...
+
+
+def script(  # type: ignore[misc]
+    func_or_class: F | type[BS] | None = None, *, name: str | None = None
+) -> F | type[BS] | Callable[[F], F] | Callable[[type[BS]], type[BS]]:
     """스크립트 데코레이터 (함수/클래스 모두 지원)
 
     함수나 BaseScript 클래스를 등록하고 Click Command로 변환합니다.
@@ -129,11 +153,11 @@ def script(
                 # ...
     """
 
-    def decorator(target: F | type[BaseScript]) -> F | type[BaseScript]:
+    def decorator(target: F | type[BS]) -> F | type[BS]:
         if isinstance(target, type) and issubclass(target, BaseScript):
-            return _register_class_script(target, name)
+            return _register_class_script(target, name)  # type: ignore[return-value]
         elif callable(target):
-            return _register_function_script(target, name)  # type: ignore
+            return _register_function_script(target, name)  # type: ignore[return-value]
         else:
             raise TypeError(
                 f"@script decorator expects a function or BaseScript subclass, "
@@ -142,7 +166,7 @@ def script(
 
     if func_or_class is not None:
         return decorator(func_or_class)
-    return decorator  # type: ignore
+    return decorator  # type: ignore[return-value]
 
 
 def _register_function_script(fn: F, custom_name: str | None) -> F:

@@ -86,7 +86,7 @@ def _inject_dependencies(instance: Any, app: "Application | None") -> None:
         return
 
     import typing
-    from bloom.core.lazy import LazyFieldProxy
+    from bloom.core.lazy import is_lazy_wrapper_type, get_lazy_inner_type
 
     # 타입 힌트에서 필드 추출
     hints = (
@@ -111,10 +111,18 @@ def _inject_dependencies(instance: Any, app: "Application | None") -> None:
         if field_type in (str, int, float, bool, None, type(None)):
             continue
 
+        # Lazy[T] 타입 처리
+        actual_type = field_type
+        if is_lazy_wrapper_type(field_type):
+            inner = get_lazy_inner_type(field_type)
+            if inner is not None:
+                actual_type = inner
+
         try:
-            # 컨테이너에서 의존성 획득
-            dependency = app.container.get(field_type)
-            setattr(instance, field_name, dependency)
+            # DI 컨테이너에서 의존성 획득
+            dependency = app.manager.get_instance(actual_type)
+            if dependency is not None:
+                setattr(instance, field_name, dependency)
         except Exception:
             # 의존성을 찾을 수 없으면 스킵
             pass
