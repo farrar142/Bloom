@@ -2,6 +2,10 @@
 
 프로젝트의 scripts/ 디렉토리에서 @script 데코레이터가 붙은
 함수들을 자동으로 발견하여 CLI에 등록합니다.
+
+스캔 경로:
+  - scripts/          (프로젝트 루트)
+  - */scripts/        (앱별 스크립트)
 """
 
 from __future__ import annotations
@@ -23,51 +27,101 @@ if TYPE_CHECKING:
 class ScriptRegistry:
     """스크립트 자동 발견 및 관리 클래스"""
 
-    def __init__(self, scripts_dir: Path | None = None):
+    def __init__(self, base_dir: Path | None = None):
         """
         Args:
-            scripts_dir: 스크립트 디렉토리 경로 (기본값: cwd/scripts)
+            base_dir: 기본 디렉토리 (기본값: cwd)
         """
-        self._scripts_dir = scripts_dir or Path.cwd() / "scripts"
+        self._base_dir = base_dir or Path.cwd()
         self._discovered = False
 
     @property
-    def scripts_dir(self) -> Path:
-        return self._scripts_dir
+    def base_dir(self) -> Path:
+        return self._base_dir
+
+    def _get_script_dirs(self) -> list[Path]:
+        """스크립트 디렉토리 목록 반환
+        
+        Returns:
+            스캔할 디렉토리 목록:
+              - scripts/       (루트)
+              - */scripts/     (앱별)
+        """
+        script_dirs: list[Path] = []
+        
+        # 1. 루트 scripts/ 디렉토리
+        root_scripts = self._base_dir / "scripts"
+        if root_scripts.exists() and root_scripts.is_dir():
+            script_dirs.append(root_scripts)
+        
+        # 2. */scripts/ 패턴 (앱별 스크립트)
+        for subdir in self._base_dir.iterdir():
+            if not subdir.is_dir():
+                continue
+            # 숨김 디렉토리, __pycache__ 등 제외
+            if subdir.name.startswith((".", "_")):
+                continue
+            # 특수 디렉토리 제외
+            if subdir.name in ("venv", "env", "node_modules", ".git"):
+                continue
+            
+            app_scripts = subdir / "scripts"
+            if app_scripts.exists() and app_scripts.is_dir():
+                script_dirs.append(app_scripts)
+        
+        return script_dirs
 
     def discover(self) -> dict[str, click.Command]:
-        """scripts/ 디렉토리에서 스크립트 자동 발견
+        """scripts/ 디렉토리들에서 스크립트 자동 발견
 
         Returns:
             발견된 스크립트들의 딕셔너리 {name: Command}
         """
-        if not self._scripts_dir.exists():
-            return {}
-
-        if not self._scripts_dir.is_dir():
+        script_dirs = self._get_script_dirs()
+        
+        if not script_dirs:
             return {}
 
         # 레지스트리 초기화 (중복 방지)
         clear_registry()
 
-        # scripts 디렉토리를 sys.path에 추가
-        scripts_parent = str(self._scripts_dir.parent)
-        if scripts_parent not in sys.path:
-            sys.path.insert(0, scripts_parent)
+        # base_dir을 sys.path에 추가
+        base_dir_str = str(self._base_dir)
+        if base_dir_str not in sys.path:
+            sys.path.insert(0, base_dir_str)
 
-        # 모든 .py 파일 스캔
-        for script_file in self._scripts_dir.glob("*.py"):
-            if script_file.name.startswith("_"):
-                continue
-
-            self._import_script_module(script_file)
+        # 각 scripts 디렉토리 스캔
+        for scripts_dir in script_dirs:
+            self._scan_scripts_dir(scripts_dir)
 
         self._discovered = True
         return get_registered_scripts()
 
-    def _import_script_module(self, script_file: Path) -> None:
-        """스크립트 파일을 모듈로 임포트"""
-        module_name = f"scripts.{script_file.stem}"
+    def _scan_scripts_dir(self, scripts_dir: Path) -> None:
+        """하나의 scripts 디렉토리 스캔"""
+        # 모듈 경로 계산 (base_dir 기준 상대 경로)
+        try:
+            rel_path = scripts_dir.relative_to(self._base_dir)
+            # users/scripts -> users.scripts
+            module_prefix = ".".join(rel_path.parts)
+        except ValueError:
+            module_prefix = "scripts"
+
+        # 모든 .py 파일 스캔
+        for script_file in scripts_dir.glob("*.py"):
+            if script_file.name.startswith("_"):
+                continue
+
+            self._import_script_module(script_file, module_prefix)
+
+    def _import_script_module(self, script_file: Path, module_prefix: str) -> None:
+        """스크립트 파일을 모듈로 임포트
+        
+        Args:
+            script_file: 스크립트 파일 경로
+            module_prefix: 모듈 경로 접두사 (예: "scripts", "users.scripts")
+        """
+        module_name = f"{module_prefix}.{script_file.stem}"
 
         try:
             # 이미 임포트된 경우 리로드

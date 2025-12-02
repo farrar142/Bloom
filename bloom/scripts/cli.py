@@ -180,6 +180,8 @@ class ScriptGroup(click.Group):
     """동적으로 스크립트를 로드하는 Click Group"""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # 서브커맨드 없이도 실행 가능하도록 설정
+        kwargs.setdefault("invoke_without_command", True)
         super().__init__(*args, **kwargs)
         self._scripts_loaded = False
         self._app: "Application | None" = None
@@ -250,6 +252,11 @@ def run(ctx: click.Context, application: str | None) -> None:
             click.secho(f"✓ Created {count} users", fg="green")
 
     \b
+    스캔 경로:
+        - scripts/           # 프로젝트 루트
+        - */scripts/         # 앱별 스크립트 (users/scripts/, orders/scripts/ 등)
+
+    \b
     Examples:
         bloom run                                    # 스크립트 목록
         bloom run seed_data --count 100
@@ -258,24 +265,15 @@ def run(ctx: click.Context, application: str | None) -> None:
     """
     if ctx.invoked_subcommand is None:
         # 서브커맨드 없이 호출된 경우
-        scripts_dir = Path.cwd() / "scripts"
-
-        if not scripts_dir.exists():
-            click.echo("No scripts/ directory found.")
-            click.echo()
-            click.echo("Create scripts/ directory and add script files:")
-            click.echo()
-            click.echo("  mkdir scripts")
-            click.echo("  touch scripts/__init__.py")
-            click.echo()
-            _show_example_script()
-            return
-
         # 스크립트 로드
         scripts = _discover_scripts()
 
         if not scripts:
-            click.echo("No scripts found in scripts/ directory.")
+            click.echo("No scripts found.")
+            click.echo()
+            click.echo("Script directories scanned:")
+            click.echo("  - scripts/        (project root)")
+            click.echo("  - */scripts/      (app-specific)")
             click.echo()
             _show_example_script()
         else:
