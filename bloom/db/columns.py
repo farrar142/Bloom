@@ -1,7 +1,16 @@
 """Column descriptors - Column, PrimaryKey, ForeignKey, and typed columns"""
 
 from __future__ import annotations
-from typing import Any, overload, TYPE_CHECKING, Callable, Self, Literal, Generic, TypeVar
+from typing import (
+    Any,
+    overload,
+    TYPE_CHECKING,
+    Callable,
+    Self,
+    Literal,
+    Generic,
+    TypeVar,
+)
 from weakref import WeakKeyDictionary
 from datetime import datetime
 from decimal import Decimal
@@ -25,17 +34,17 @@ _T = TypeVar("_T")
 
 class TrackedList(list[_T], Generic[_T]):
     """세션과 FK를 추적하는 리스트
-    
+
     OneToMany 관계에서 append/extend 시 자동으로:
     1. 자식 엔티티에 FK 값 설정
     2. 세션에 자식 엔티티 추가
-    
+
     Example:
         user.posts.append(post)  # 자동으로:
         # post.user_id = user.id
         # session.add(post)
     """
-    
+
     def __init__(
         self,
         items: list[_T] | None = None,
@@ -50,53 +59,53 @@ class TrackedList(list[_T], Generic[_T]):
         self._owner_pk_field = owner_pk_field
         self._fk_field_name = fk_field_name
         self._session = session
-    
+
     def _get_owner_pk_value(self) -> Any:
         """owner의 현재 PK 값 가져오기"""
         if self._owner is not None:
             return getattr(self._owner, self._owner_pk_field, None)
         return None
-    
+
     def _setup_child(self, item: _T) -> None:
         """자식 엔티티에 FK 설정 및 세션 추가"""
         # FK 설정 (owner의 현재 PK 값 사용)
         pk_value = self._get_owner_pk_value()
         if self._fk_field_name and pk_value is not None:
             setattr(item, self._fk_field_name, pk_value)
-        
+
         # 세션에 추가
         if self._session is not None:
             self._session.add(item)
-    
+
     def append(self, item: _T) -> None:
         """항목 추가 시 FK 설정 및 세션 추가"""
         self._setup_child(item)
         super().append(item)
-    
+
     def extend(self, items: list[_T]) -> None:
         """여러 항목 추가 시 각각 FK 설정 및 세션 추가"""
         for item in items:
             self._setup_child(item)
         super().extend(items)
-    
+
     def insert(self, index: int, item: _T) -> None:
         """항목 삽입 시 FK 설정 및 세션 추가"""
         self._setup_child(item)
         super().insert(index, item)
-    
+
     def __setitem__(self, index: int, item: _T) -> None:
         """인덱스로 항목 설정 시 FK 설정 및 세션 추가"""
         self._setup_child(item)
         super().__setitem__(index, item)
-    
+
     def __iadd__(self, items: list[_T]) -> "TrackedList[_T]":
         """+= 연산자"""
         self.extend(items)
         return self
-    
+
     def sync_fk_values(self) -> None:
         """모든 자식 엔티티의 FK 값을 owner의 현재 PK로 동기화
-        
+
         owner가 save()되어 PK가 할당된 후 호출하면 유용합니다.
         """
         pk_value = self._get_owner_pk_value()
@@ -484,7 +493,7 @@ class ManyToOne[T]:
         post.user = user  # 자동으로:
                           # 1. post.user_id = user.id
                           # 2. session.add(post) (user가 세션에 바인딩된 경우)
-        
+
         # Lazy 로딩
         loaded_post = session.query(Post).first()
         print(loaded_post.user.name)  # User 자동 로드
@@ -515,11 +524,11 @@ class ManyToOne[T]:
         self._nullable = nullable
         self._on_delete = on_delete
         self._on_update = on_update
-        
+
         self._field_name: str = ""
         self._owner: type | None = None
         self._resolved_target: type[T] | None = None
-        
+
         # 관계 객체 캐시 (Lazy 로딩 결과)
         self._cache: WeakKeyDictionary[Any, T | None] = WeakKeyDictionary()
         # FK 값 저장 (실제 DB 컬럼 값)
@@ -533,7 +542,7 @@ class ManyToOne[T]:
         if not hasattr(owner, "__bloom_columns__"):
             owner.__bloom_columns__ = {}
         owner.__bloom_columns__[name] = self
-        
+
         # __bloom_relations__에도 등록
         if not hasattr(owner, "__bloom_relations__"):
             owner.__bloom_relations__ = {}
@@ -560,12 +569,14 @@ class ManyToOne[T]:
         if "." in target_str:
             module_path, class_name = target_str.rsplit(".", 1)
             import importlib
+
             module = importlib.import_module(module_path)
             self._resolved_target = getattr(module, class_name)
         else:
             # 같은 모듈 내 클래스
             if self._owner is not None:
                 import sys
+
                 module = sys.modules.get(self._owner.__module__)
                 if module and hasattr(module, target_str):
                     self._resolved_target = getattr(module, target_str)
@@ -608,18 +619,18 @@ class ManyToOne[T]:
         """FK 컬럼의 DB 이름"""
         if self._foreign_key:
             return self._foreign_key
-        
+
         # 자동 추론: {field_name}_{target_pk_db_name}
         target_cls = self._resolve_target()
         pk_field = getattr(target_cls, "__bloom_pk__", "id")
         columns = getattr(target_cls, "__bloom_columns__", {})
         pk_column = columns.get(pk_field)
-        
+
         if pk_column and hasattr(pk_column, "db_name"):
             pk_db_name = pk_column.db_name
         else:
             pk_db_name = pk_field
-        
+
         return f"{self._field_name}_{pk_db_name}"
 
     @property
@@ -641,7 +652,7 @@ class ManyToOne[T]:
         pk_field = getattr(target_cls, "__bloom_pk__", "id")
         columns = getattr(target_cls, "__bloom_columns__", {})
         pk_column = columns.get(pk_field)
-        
+
         if pk_column and hasattr(pk_column, "sql_type"):
             return pk_column.sql_type
         return "INTEGER"
@@ -690,10 +701,12 @@ class ManyToOne[T]:
         pk_field = getattr(target_cls, "__bloom_pk__", "id")
 
         from .query import Query
-        
+
         # PK로 조회
         pk_field_expr = getattr(target_cls, pk_field)
-        query = Query(target_cls).filter(pk_field_expr == fk_value).with_session(session)
+        query = (
+            Query(target_cls).filter(pk_field_expr == fk_value).with_session(session)
+        )
         result = query.first()
 
         # 캐시에 저장
@@ -703,12 +716,12 @@ class ManyToOne[T]:
     def __set__(self, obj: object, value: T | int | None) -> None:
         # 이전 FK 값 저장 (dirty tracking용)
         old_fk_value = self._fk_values.get(obj)
-        
+
         if value is None:
             # None 설정 - FK 값도 None으로
             self._fk_values[obj] = None
             self._cache[obj] = None
-            
+
             # dirty tracking
             if hasattr(obj, "__bloom_tracker__"):
                 obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, None)
@@ -720,7 +733,7 @@ class ManyToOne[T]:
             # 캐시 무효화 (다음 접근 시 lazy load)
             if obj in self._cache:
                 del self._cache[obj]
-            
+
             # dirty tracking
             if hasattr(obj, "__bloom_tracker__"):
                 obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, value)
@@ -728,7 +741,7 @@ class ManyToOne[T]:
 
         # 관계 객체 설정
         target_cls = self._resolve_target()
-        
+
         if not isinstance(value, target_cls):
             raise TypeError(
                 f"Expected {target_cls.__name__} or int (FK value), got {type(value).__name__}"
@@ -737,17 +750,17 @@ class ManyToOne[T]:
         # FK 값 추출
         pk_field = getattr(target_cls, "__bloom_pk__", "id")
         fk_value = getattr(value, pk_field, None)
-        
+
         # FK 값 저장
         self._fk_values[obj] = fk_value
-        
+
         # 캐시에 객체 저장
         self._cache[obj] = value
-        
+
         # dirty tracking
         if hasattr(obj, "__bloom_tracker__"):
             obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, fk_value)
-        
+
         # value가 세션에 바인딩되어 있으면 obj도 세션에 추가
         value_session: "Session | None" = getattr(value, "__bloom_session__", None)
         if value_session is not None:
@@ -781,7 +794,8 @@ class ManyToOne[T]:
 
     def __repr__(self) -> str:
         target_name = (
-            self._target if isinstance(self._target, str) 
+            self._target
+            if isinstance(self._target, str)
             else self._target.__name__ if self._target else "?"
         )
         return f"ManyToOne({self._field_name!r} -> {target_name}, fetch={self._fetch.value})"
@@ -1122,12 +1136,12 @@ class OneToMany[T]:
 
     def set_loaded_data(self, obj: object, data: list[T]) -> None:
         """로딩된 데이터 설정 (Session에서 호출)
-        
+
         TrackedList로 감싸서 저장합니다.
         """
         owner_pk = getattr(type(obj), "__bloom_pk__", "id")
         session: "Session | None" = getattr(obj, "__bloom_session__", None)
-        
+
         # FK 필드명 가져오기
         target_cls = self._resolve_target()
         fk_db_name = self.foreign_key
@@ -1137,7 +1151,7 @@ class OneToMany[T]:
             if hasattr(col, "db_name") and col.db_name == fk_db_name:
                 fk_field_name = col.field_name
                 break
-        
+
         tracked = TrackedList(
             data,
             owner=obj,

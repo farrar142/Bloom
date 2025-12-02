@@ -51,11 +51,11 @@ class TestManyToOneDescriptor:
     def test_class_level_access_returns_field_expression(self):
         """클래스 레벨 접근 시 FieldExpression 반환 (쿼리용)"""
         from bloom.db.columns import FieldExpression
-        
+
         # 클래스 레벨 접근은 FieldExpression 반환 (쿼리에 사용)
         assert isinstance(Post.user, FieldExpression)
         assert Post.user.name == "user_id"  # FK 컬럼명
-        
+
         # 디스크립터 자체에 접근하려면 __dict__ 사용
         assert isinstance(Post.__dict__["user"], ManyToOne)
 

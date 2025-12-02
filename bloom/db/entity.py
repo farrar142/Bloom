@@ -34,7 +34,7 @@ class EntityMeta:
     @property
     def column_names(self) -> list[str]:
         """모든 컬럼의 DB 컬럼명 반환
-        
+
         ManyToOne의 경우 db_name (예: user_id)을 반환합니다.
         """
         result = []
@@ -209,7 +209,7 @@ def set_pk_value(entity: Any, value: Any) -> None:
 
 def entity_to_dict(entity: Any, include_none: bool = False) -> dict[str, Any]:
     """엔티티를 딕셔너리로 변환
-    
+
     ManyToOne 필드의 경우 FK 값을 가져옵니다.
     """
     columns = get_entity_columns(type(entity))
@@ -230,7 +230,7 @@ def entity_to_dict(entity: Any, include_none: bool = False) -> dict[str, Any]:
 
 def dict_to_entity(entity_cls: type[T], data: dict[str, Any]) -> T:
     """딕셔너리를 엔티티로 변환
-    
+
     ManyToOne 필드의 경우 FK 값을 db_name으로 찾아서 설정합니다.
     """
     entity = entity_cls()

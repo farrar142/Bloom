@@ -105,8 +105,24 @@ class Session:
         # 세션 바인딩 (OneToMany lazy loading에 필요)
         object.__setattr__(entity, "__bloom_session__", self)
 
+        # OneToMany의 캐시된 TrackedList에도 세션 바인딩
+        self._bind_session_to_tracked_lists(entity)
+
         self._new.add(entity)
         return entity
+
+    def _bind_session_to_tracked_lists(self, entity: Any) -> None:
+        """엔티티의 OneToMany TrackedList에 세션 바인딩"""
+        from .columns import OneToMany, TrackedList
+
+        relations = getattr(type(entity), "__bloom_relations__", {})
+        for name, relation in relations.items():
+            if isinstance(relation, OneToMany):
+                # 캐시에서 TrackedList 가져오기 (이미 생성된 경우)
+                if entity in relation._cache:
+                    tracked_list = relation._cache[entity]
+                    if isinstance(tracked_list, TrackedList):
+                        tracked_list._session = self
 
     def add_all(self, entities: list[T]) -> list[T]:
         """여러 엔티티 추가"""
@@ -248,10 +264,16 @@ class Session:
         """변경 사항을 DB에 반영 (커밋 없이)"""
         self._check_closed()
 
-        # INSERT
-        for entity in list(self._new):
+        # INSERT - 먼저 모든 엔티티를 insert하여 PK 할당
+        insert_list = list(self._new)
+        for entity in insert_list:
             self._do_insert(entity)
         self._new.clear()
+
+        # TrackedList의 FK 동기화 후 자식 UPDATE
+        # (이미 insert된 자식의 FK가 None이면 UPDATE로 설정)
+        for entity in insert_list:
+            self._sync_and_update_tracked_list_fk(entity)
 
         # UPDATE (dirty tracking)
         for entity in list(self._dirty):
@@ -262,6 +284,71 @@ class Session:
         for entity in list(self._deleted):
             self._do_delete(entity)
         self._deleted.clear()
+
+    def _sync_and_update_tracked_list_fk(self, entity: Any) -> None:
+        """엔티티의 TrackedList에 있는 자식들의 FK 값 동기화 및 UPDATE
+        
+        entity가 insert되어 PK가 할당된 후 호출됩니다.
+        TrackedList에 append된 자식 엔티티들의 FK를 entity의 PK로 업데이트하고,
+        이미 insert된 자식은 UPDATE 쿼리로 FK를 설정합니다.
+        """
+        from .columns import OneToMany, TrackedList
+
+        relations = getattr(type(entity), "__bloom_relations__", {})
+        pk_value = get_pk_value(entity)
+        
+        if pk_value is None:
+            return  # PK가 없으면 skip
+
+        for name, relation in relations.items():
+            if isinstance(relation, OneToMany):
+                # 캐시에서 TrackedList 가져오기
+                if entity not in relation._cache:
+                    continue
+                    
+                tracked_list = relation._cache[entity]
+                if not isinstance(tracked_list, TrackedList):
+                    continue
+
+                # FK 필드명 가져오기
+                fk_field_name = tracked_list._fk_field_name
+                if not fk_field_name:
+                    continue
+
+                # 각 자식의 FK 동기화
+                for child in tracked_list:
+                    current_fk = getattr(child, fk_field_name, None)
+                    if current_fk is None:
+                        # FK가 None인 경우 설정
+                        setattr(child, fk_field_name, pk_value)
+                        
+                        # 이미 insert된 자식이면 UPDATE
+                        child_pk = get_pk_value(child)
+                        if child_pk is not None:
+                            self._do_fk_update(child, fk_field_name, pk_value)
+
+    def _do_fk_update(self, entity: Any, fk_field: str, fk_value: Any) -> None:
+        """자식 엔티티의 FK만 UPDATE"""
+        entity_cls = type(entity)
+        meta = get_entity_meta(entity_cls)
+        if meta is None:
+            return
+
+        pk_col = meta.primary_key
+        pk_value = get_pk_value(entity)
+        
+        if pk_col is None or pk_value is None:
+            return
+
+        # FK 필드의 db_name 찾기
+        fk_column = meta.columns.get(fk_field)
+        if fk_column is None:
+            return
+        
+        fk_db_name = getattr(fk_column, "db_name", fk_field)
+
+        sql = f'UPDATE "{meta.table_name}" SET "{fk_db_name}" = :fk_value WHERE "{pk_col}" = :pk_value'
+        self._connection.execute(sql, {"fk_value": fk_value, "pk_value": pk_value})
 
     def commit(self) -> None:
         """변경 사항 커밋"""
@@ -471,8 +558,24 @@ class AsyncSession:
         # 세션 바인딩 (OneToMany lazy loading에 필요)
         object.__setattr__(entity, "__bloom_session__", self)
 
+        # OneToMany의 캐시된 TrackedList에도 세션 바인딩
+        self._bind_session_to_tracked_lists(entity)
+
         self._new.add(entity)
         return entity
+
+    def _bind_session_to_tracked_lists(self, entity: Any) -> None:
+        """엔티티의 OneToMany TrackedList에 세션 바인딩"""
+        from .columns import OneToMany, TrackedList
+
+        relations = getattr(type(entity), "__bloom_relations__", {})
+        for name, relation in relations.items():
+            if isinstance(relation, OneToMany):
+                # 캐시에서 TrackedList 가져오기 (이미 생성된 경우)
+                if entity in relation._cache:
+                    tracked_list = relation._cache[entity]
+                    if isinstance(tracked_list, TrackedList):
+                        tracked_list._session = self
 
     def add_all(self, entities: list[T]) -> list[T]:
         """여러 엔티티 추가"""
