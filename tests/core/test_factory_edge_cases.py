@@ -353,7 +353,7 @@ class TestFactoryLifecycleEdgeCases:
         await app.scan(Config).ready_async()
 
         _ = app.manager.get_instance(DestroyableValue)
-        app.shutdown()
+        await app.shutdown_async()
 
         assert 123 in pre_destroy_called
 

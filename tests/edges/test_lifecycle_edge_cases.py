@@ -104,7 +104,7 @@ class TestPreDestroyEdgeCases:
 
         app = await Application("cleanup_test").scan(CleanupService).ready_async()
         app.manager.get_instance(CleanupService)
-        app.shutdown()
+        await app.shutdown_async()
 
         assert "cleanup" in destroy_order
 
@@ -125,7 +125,7 @@ class TestPreDestroyEdgeCases:
 
         app = await Application("multi_destroy").scan(MultiDestroy).ready_async()
         app.manager.get_instance(MultiDestroy)
-        app.shutdown()
+        await app.shutdown_async()
 
         assert len(destroy_order) == 2
         assert "cleanup1" in destroy_order
@@ -162,7 +162,7 @@ class TestPreDestroyEdgeCases:
             await Application("reverse_order").scan(First, Second, Third).ready_async()
         )
         app.manager.get_instance(Third)
-        app.shutdown()
+        await app.shutdown_async()
 
         # 의존성 역순: Third -> Second -> First
         assert destroy_order == ["third", "second", "first"]
@@ -239,7 +239,7 @@ class TestFactoryLifecycle:
 
         app = await Application("factory_destroy").scan(Config).ready_async()
         app.manager.get_instance(ExternalService)
-        app.shutdown()
+        await app.shutdown_async()
 
         assert destroyed[0] is True
 

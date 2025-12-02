@@ -35,7 +35,7 @@ class TestLifecycleHooks:
         app = await Application("test").ready_async()
         assert "cleanup" not in call_log
 
-        app.shutdown()
+        await app.shutdown_async()
         assert "cleanup" in call_log
 
     async def test_multiple_post_construct_methods(self, reset_container_manager):
@@ -73,7 +73,7 @@ class TestLifecycleHooks:
                 call_log.append("cleanup2")
 
         app = await Application("test").ready_async()
-        app.shutdown()
+        await app.shutdown_async()
 
         assert "cleanup1" in call_log
         assert "cleanup2" in call_log
@@ -122,7 +122,7 @@ class TestLifecycleHooks:
                 call_log.append("service")
 
         app = await Application("test").ready_async()
-        app.shutdown()
+        await app.shutdown_async()
 
         # Service가 나중에 초기화되므로 먼저 정리됨
         assert call_log.index("service") < call_log.index("repository")
@@ -146,7 +146,7 @@ class TestLifecycleHooks:
         app = await Application("test").ready_async()
         assert call_log == ["connected"]
 
-        app.shutdown()
+        await app.shutdown_async()
         assert call_log == ["connected", "disconnected"]
 
     async def test_shutdown_without_ready_does_nothing(self, reset_container_manager):
@@ -160,7 +160,7 @@ class TestLifecycleHooks:
                 call_log.append("cleanup")
 
         app = Application("test")
-        app.shutdown()  # ready() 호출 안 함
+        await app.shutdown_async()  # ready() 호출 안 함
 
         assert call_log == []
 
@@ -409,7 +409,7 @@ class TestPrototypePostConstruct:
         ), "SINGLETON PreDestroy should not be called until shutdown"
 
         # shutdown 시에만 SINGLETON cleanup 호출
-        app.shutdown()
+        await app.shutdown_async()
         assert "singleton_cleanup" in call_log
         # PROTOTYPE cleanup은 호출되지 않음
         assert "prototype_cleanup" not in call_log

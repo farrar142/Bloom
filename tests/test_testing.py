@@ -143,7 +143,7 @@ class TestMockContainer:
 
         with mock.apply(app.manager):
             # ready() 호출 시 mock이 주입됨
-            app.ready()
+            await app.ready_async()
             service = app.manager.get_instance(TestService)
             items = service.get_all_items()
             assert items == ["fake1", "fake2"]
@@ -243,7 +243,7 @@ class TestOverrideDependency:
         app.scan(TestRepository)
 
         with override_dependency(TestRepository, FakeRepo(), app.manager) as fake:
-            app.ready()
+            await app.ready_async()
             repo = app.manager.get_instance(TestRepository)
             items = repo.get_items()
 
@@ -295,7 +295,7 @@ class TestCreateTestApp:
         # ready() 호출 전이므로 인스턴스가 없어야 함
         assert len(app.manager.instance_registry) == 0
 
-        app.ready()
+        await app.ready_async()
         repo = app.manager.get_instance(TestRepository)
         assert repo is not None
 
