@@ -445,40 +445,75 @@ def _copy_app_template(
 
 
 # =============================================================================
-# db command group (from bloom.db.cli)
+# Lazy Command Loading (서브 커맨드는 실행 시에만 로드)
 # =============================================================================
 
-# DB CLI 그룹을 메인 CLI에 추가
-from bloom.db.cli import db as db_cli
 
-cli.add_command(db_cli)
+class LazyCommand(click.Command):
+    """Lazy 로드되는 커맨드의 플레이스홀더"""
+
+    def __init__(self, name: str, import_path: str, short_help: str):
+        super().__init__(name, callback=None)
+        self._import_path = import_path
+        self.short_help = short_help
+        self._real_command: click.Command | None = None
+
+    def _load(self) -> click.Command:
+        if self._real_command is None:
+            module_path, attr_name = self._import_path.rsplit(":", 1)
+            module = importlib.import_module(module_path)
+            self._real_command = getattr(module, attr_name)
+        return self._real_command
+
+    def invoke(self, ctx: click.Context):
+        return self._load().invoke(ctx)
+
+    def get_help(self, ctx: click.Context) -> str:
+        return self._load().get_help(ctx)
+
+    def get_params(self, ctx: click.Context) -> list:
+        return self._load().get_params(ctx)
 
 
-# =============================================================================
-# task command (from bloom.task.cli)
-# =============================================================================
+class LazyGroup(click.Group):
+    """서브 커맨드를 lazy하게 로드하는 Group"""
 
-from bloom.task.cli import task as task_cli
+    def __init__(
+        self,
+        *args,
+        lazy_subcommands: dict[str, tuple[str, str]] | None = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        # lazy_subcommands: {name: (import_path, short_help)}
+        self._lazy_subcommands = lazy_subcommands or {}
+        
+        # LazyCommand 플레이스홀더 등록
+        for cmd_name, (import_path, short_help) in self._lazy_subcommands.items():
+            lazy_cmd = LazyCommand(cmd_name, import_path, short_help)
+            self.add_command(lazy_cmd, cmd_name)
 
-cli.add_command(task_cli)
 
+# 기존 cli 그룹을 LazyGroup으로 교체
+# 무거운 서브커맨드는 lazy로 로드 (short_help 포함)
+_lazy_subcommands = {
+    "db": ("bloom.db.cli:db", "Database management commands"),
+    "task": ("bloom.task.cli:task", "Task management commands"),
+    "tests": ("bloom.tests.cli:tests", "Run tests with pytest"),
+    "run": ("bloom.scripts.cli:run", "Run custom scripts"),
+}
 
-# =============================================================================
-# tests command (from bloom.tests.cli)
-# =============================================================================
+# cli 그룹 재정의 (LazyGroup 사용)
+_original_cli = cli
+cli = LazyGroup(
+    name=_original_cli.name,
+    help=_original_cli.help,
+    lazy_subcommands=_lazy_subcommands,
+)
 
-from bloom.tests.cli import tests as tests_cli
-
-cli.add_command(tests_cli)
-
-
-# =============================================================================
-# run command (from bloom.scripts.cli)
-# =============================================================================
-
-from bloom.scripts.cli import run as run_cli
-
-cli.add_command(run_cli)
+# 기존 명령어들을 새 그룹에 복사
+for cmd_name, cmd in _original_cli.commands.items():
+    cli.add_command(cmd, cmd_name)
 
 
 # =============================================================================

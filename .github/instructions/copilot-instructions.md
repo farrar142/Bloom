@@ -330,6 +330,67 @@ uv run uvicorn main:app.asgi --reload  # app = Application("name").scan(...).rea
 
 ## 코드 패턴 및 컨벤션
 
+### Lazy Import 패턴 (Django 스타일)
+
+**패키지 `__init__.py`는 Django처럼 lazy import를 사용합니다.**
+
+모든 주요 패키지(`bloom/`, `bloom/core/`, `bloom/web/`, `bloom/task/`)는 `__getattr__`를 사용하여 실제 접근 시에만 서브 모듈을 로드합니다.
+
+#### 패키지 `__init__.py` 작성 규칙
+
+```python
+"""bloom.mypackage - Lazy import"""
+
+__all__ = [
+    "MyClass",
+    "my_function",
+]
+
+def __getattr__(name: str):
+    """Lazy import: 속성 접근 시에만 해당 모듈 로드"""
+    if name == "MyClass":
+        from .mymodule import MyClass
+        return MyClass
+    
+    if name == "my_function":
+        from .utils import my_function
+        return my_function
+    
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+```
+
+#### 효과
+
+| 패키지 | Before (즉시 로드) | After (lazy) |
+|--------|-------------------|--------------|
+| `import bloom` | 1.85s | 0.008s |
+| `import bloom.core` | 2.6s | 0.01s |
+| `import bloom.task` | 2.3s | 0.02s |
+
+**실제 사용 시에는 필요한 모듈만 로드됩니다.**
+
+#### 새 패키지 추가 시
+
+1. `__init__.py`에 직접 `from .module import X` 하지 말 것
+2. `__all__`에 export할 이름 나열
+3. `__getattr__`에서 lazy import 구현
+4. IDE 자동완성을 위해 `TYPE_CHECKING` 블록 추가 가능:
+
+```python
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .mymodule import MyClass  # IDE 자동완성용
+
+__all__ = ["MyClass"]
+
+def __getattr__(name: str):
+    if name == "MyClass":
+        from .mymodule import MyClass
+        return MyClass
+    raise AttributeError(...)
+```
+
 ### Manager-Registry-Entry 패턴
 
 웹 레이어에서 핸들러/라우트 등을 체계적으로 관리하기 위한 3계층 패턴입니다.

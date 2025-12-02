@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     vim \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # uv 설치 (빠른 Python 패키지 매니저)
