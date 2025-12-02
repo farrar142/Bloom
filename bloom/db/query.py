@@ -29,6 +29,12 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
+# Filter 조건으로 사용 가능한 타입들
+FilterCondition = Condition | ConditionGroup | SubqueryCondition | SubqueryInCondition
+
+# JOIN ON 조건으로 사용 가능한 타입들
+JoinOnCondition = Condition | ConditionGroup | JoinCondition
+
 
 # =============================================================================
 # Query Result
@@ -214,7 +220,7 @@ class Query(Generic[T]):
     """
 
     entity_cls: type[T]
-    _conditions: list[Condition | ConditionGroup] = field(default_factory=list)
+    _conditions: list[FilterCondition] = field(default_factory=list)
     _order_by: list[OrderBy] = field(default_factory=list)
     _limit: int | None = None
     _offset: int | None = None
@@ -245,12 +251,22 @@ class Query(Generic[T]):
             new_query._async_session = None
         return new_query
 
-    def filter(self, *conditions: Condition | ConditionGroup) -> Self:
+    def filter(self, *conditions: FilterCondition) -> Self:
         """WHERE 조건 추가 (AND)
 
+        일반 조건, 조건 그룹, 서브쿼리 조건을 모두 지원합니다.
+
         Examples:
+            # 일반 조건
             query.filter(User.name == "alice")
             query.filter(User.age > 18, User.status == "active")
+
+            # 서브쿼리 IN 조건
+            subquery = Query(Order).filter(Order.amount >= 100).select(Order.user_id).subquery()
+            query.filter(User.id.in_(subquery))
+
+            # EXISTS 서브쿼리
+            query.filter(subquery.exists())
         """
         new_query = copy(self)
         new_query._conditions = [*self._conditions, *conditions]
@@ -387,7 +403,7 @@ class Query(Generic[T]):
     def join(
         self,
         target: type[Any],
-        condition: Condition | ConditionGroup | JoinCondition,
+        condition: JoinOnCondition,
         alias: str | None = None,
     ) -> Self:
         """INNER JOIN 추가
@@ -412,7 +428,7 @@ class Query(Generic[T]):
     def left_join(
         self,
         target: type[Any],
-        condition: Condition | ConditionGroup | JoinCondition,
+        condition: JoinOnCondition,
         alias: str | None = None,
     ) -> Self:
         """LEFT JOIN 추가
@@ -428,7 +444,7 @@ class Query(Generic[T]):
     def right_join(
         self,
         target: type[Any],
-        condition: Condition | ConditionGroup | JoinCondition,
+        condition: JoinOnCondition,
         alias: str | None = None,
     ) -> Self:
         """RIGHT JOIN 추가
@@ -444,7 +460,7 @@ class Query(Generic[T]):
     def full_join(
         self,
         target: type[Any],
-        condition: Condition | ConditionGroup | JoinCondition,
+        condition: JoinOnCondition,
         alias: str | None = None,
     ) -> Self:
         """FULL OUTER JOIN 추가
@@ -468,7 +484,7 @@ class Query(Generic[T]):
     def _add_join(
         self,
         target: type[Any],
-        condition: Condition | ConditionGroup | JoinCondition | None,
+        condition: JoinOnCondition | None,
         join_type: str,
         alias: str | None,
     ) -> Self:
