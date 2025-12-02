@@ -244,7 +244,6 @@ def startproject(path: str, name: str | None):
         bloom startproject . --name myapp
         bloom startproject /path/to/project
     """
-    import shutil
     from importlib import resources
 
     target_path = Path(path).resolve()
@@ -397,12 +396,14 @@ def startapp(name: str, directory: str | None):
     click.echo(f"[Bloom] App '{name}' created successfully!")
     click.echo()
     click.echo("Next steps:")
-    click.echo(f"  1. Add to application.py:")
-    click.echo(f"     from {name} import {app_name_pascal}Controller, {app_name_pascal}Service")
+    click.echo("  1. Add to application.py:")
+    click.echo(
+        f"     from {name} import {app_name_pascal}Controller, {app_name_pascal}Service"
+    )
     click.echo(f"     application.scan({name})")
     click.echo()
-    click.echo(f"  2. Or use auto_import():")
-    click.echo(f"     application.auto_import()  # scans all modules automatically")
+    click.echo("  2. Or use auto_import():")
+    click.echo("     application.auto_import()  # scans all modules automatically")
 
 
 def _copy_app_template(
@@ -487,7 +488,7 @@ class LazyGroup(click.Group):
         super().__init__(*args, **kwargs)
         # lazy_subcommands: {name: (import_path, short_help)}
         self._lazy_subcommands = lazy_subcommands or {}
-        
+
         # LazyCommand 플레이스홀더 등록
         for cmd_name, (import_path, short_help) in self._lazy_subcommands.items():
             lazy_cmd = LazyCommand(cmd_name, import_path, short_help)
@@ -895,7 +896,9 @@ def check(application: str | None, fix: bool):
         if full_path.exists():
             click.echo(f"  {click.style('✓', fg='green')} {file_path}")
         else:
-            issues.append(("error", "structure", f"Missing {file_path} ({description})"))
+            issues.append(
+                ("error", "structure", f"Missing {file_path} ({description})")
+            )
             click.echo(f"  {click.style('✗', fg='red')} {file_path} - Missing")
 
     # 2. 선택적 파일 확인
@@ -915,7 +918,9 @@ def check(application: str | None, fix: bool):
         if full_path.exists():
             click.echo(f"  {click.style('✓', fg='green')} {file_path}")
         else:
-            issues.append(("warning", "structure", f"Missing {file_path} ({description})"))
+            issues.append(
+                ("warning", "structure", f"Missing {file_path} ({description})")
+            )
             click.echo(f"  {click.style('○', fg='yellow')} {file_path} - Optional")
 
     # 3. Application 로드 테스트
@@ -925,19 +930,25 @@ def check(application: str | None, fix: bool):
     try:
         app = _load_application_for_cli(application)
         if app is not None:
-            click.echo(f"  {click.style('✓', fg='green')} Application loaded: {app.name}")
+            click.echo(
+                f"  {click.style('✓', fg='green')} Application loaded: {app.name}"
+            )
 
             # 컴포넌트 수 확인
             component_count = sum(
                 len(containers)
                 for containers in app.manager.container_registry.values()
             )
-            click.echo(f"  {click.style('✓', fg='green')} {component_count} component(s) registered")
+            click.echo(
+                f"  {click.style('✓', fg='green')} {component_count} component(s) registered"
+            )
 
             # 라우트 수 확인
             try:
                 route_count = len(app.router.route_manager.get_routes())
-                click.echo(f"  {click.style('✓', fg='green')} {route_count} route(s) registered")
+                click.echo(
+                    f"  {click.style('✓', fg='green')} {route_count} route(s) registered"
+                )
             except Exception:
                 click.echo(f"  {click.style('○', fg='yellow')} Could not count routes")
         else:
@@ -967,7 +978,9 @@ def check(application: str | None, fix: bool):
                 click.echo(f"  {click.style('✓', fg='green')} bloom in dependencies")
             else:
                 issues.append(("warning", "config", "bloom not in dependencies"))
-                click.echo(f"  {click.style('○', fg='yellow')} bloom not in dependencies")
+                click.echo(
+                    f"  {click.style('○', fg='yellow')} bloom not in dependencies"
+                )
         except Exception as e:
             issues.append(("warning", "config", f"Could not parse pyproject.toml: {e}"))
     else:
@@ -1021,7 +1034,8 @@ def version(verbose: bool):
         bloom version
         bloom version -v
     """
-    from importlib.metadata import version as get_version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as get_version
 
     click.echo()
 

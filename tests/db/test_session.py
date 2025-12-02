@@ -1,20 +1,18 @@
 """Session 상세 기능 테스트"""
 
 import pytest
-from typing import Optional
 
 from bloom.db import (
     Entity,
+    IntegerColumn,
     PrimaryKey,
     StringColumn,
-    IntegerColumn,
     create,
 )
-from bloom.db.session import Session, SessionFactory
-from bloom.db.tracker import DirtyTracker, EntityState
 from bloom.db.backends.sqlite import SQLiteBackend
 from bloom.db.expressions import OrderBy
-
+from bloom.db.session import SessionFactory
+from bloom.db.tracker import DirtyTracker, EntityState
 
 # =============================================================================
 # Test Entities
@@ -43,10 +41,13 @@ class Post:
 
 
 @pytest.fixture
-def backend(tmp_path):
-    """임시 파일 SQLite 백엔드"""
-    db_path = tmp_path / "session_test.db"
-    return SQLiteBackend(str(db_path))
+def backend():
+    """인메모리 SQLite 백엔드 (각 테스트마다 고유한 DB로 격리)"""
+    import uuid
+
+    # 각 테스트마다 고유한 DB 이름 생성
+    db_name = f"test_{uuid.uuid4().hex[:8]}"
+    return SQLiteBackend(f"file:{db_name}?mode=memory&cache=shared")
 
 
 @pytest.fixture

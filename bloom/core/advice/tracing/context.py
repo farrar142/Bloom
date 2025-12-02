@@ -133,9 +133,12 @@ def push_frame(
 
 def pop_frame() -> CallFrame | None:
     """
-    마지막 프레임을 콜스택에서 제거
+    마지막 프레임을 콜스택에서 제거 (동기 버전)
 
     해당 프레임에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy를 호출합니다.
+    동기 컨텍스트 매니저(__exit__)만 처리합니다.
+
+    Note: 비동기 __aexit__ 처리가 필요하면 pop_frame_async() 사용
 
     Returns:
         제거된 CallFrame 또는 None
@@ -156,6 +159,32 @@ def pop_frame() -> CallFrame | None:
     return frame
 
 
+async def pop_frame_async() -> CallFrame | None:
+    """
+    마지막 프레임을 콜스택에서 제거 (비동기 버전)
+
+    해당 프레임에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy를 호출합니다.
+    비동기 컨텍스트 매니저(__aexit__)도 처리합니다.
+
+    Returns:
+        제거된 CallFrame 또는 None
+    """
+    current_stack = _call_stack.get()
+    if not current_stack:
+        return None
+
+    frame = current_stack[-1]
+    depth = frame.depth
+
+    # PROTOTYPE 인스턴스 정리 (비동기 버전)
+    await cleanup_prototypes_at_depth_async(depth)
+
+    # 새 튜플 생성 (불변성 유지)
+    _call_stack.set(current_stack[:-1])
+
+    return frame
+
+
 def clear_stack() -> None:
     """콜스택 초기화 (요청 종료 시 사용)"""
     _call_stack.set(())
@@ -165,10 +194,13 @@ def clear_stack() -> None:
 
 
 class call_scope:
-    """콜스택 컨텍스트 매니저
+    """콜스택 컨텍스트 매니저 (동기 버전)
     
     with 문을 사용해 핸들러 호출 컨텍스트를 시뮬레이션합니다.
     CALL_SCOPED 프로토타입 인스턴스가 같은 컨텍스트 내에서 공유됩니다.
+    
+    Note: 비동기 컨텍스트 매니저(__aenter__/__aexit__)가 필요하면
+          async_call_scope를 사용하세요.
     
     사용법:
         with call_scope(instance, "method_name"):
@@ -208,6 +240,54 @@ class call_scope:
     
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         pop_frame()
+        return None  # 예외 전파
+
+
+class async_call_scope:
+    """콜스택 컨텍스트 매니저 (비동기 버전)
+    
+    async with 문을 사용해 핸들러 호출 컨텍스트를 시뮬레이션합니다.
+    CALL_SCOPED 프로토타입 인스턴스가 같은 컨텍스트 내에서 공유됩니다.
+    비동기 컨텍스트 매니저(__aenter__/__aexit__)도 올바르게 처리됩니다.
+    
+    사용법:
+        async with async_call_scope(instance, "method_name"):
+            # 이 블록 내에서 CALL_SCOPED 인스턴스가 공유됨
+            result = await instance.method_name()
+        
+        # 또는 trace_id 지정
+        async with async_call_scope(instance, "method_name", trace_id="test-123"):
+            ...
+            
+        # 테스트에서 간단히 사용
+        async with async_call_scope():
+            # 익명 컨텍스트 - CALL_SCOPED 공유만 필요할 때
+            await repo1.get()
+            await repo2.get()  # 같은 AsyncSession 공유
+    """
+    
+    def __init__(
+        self,
+        instance: Any = None,
+        method_name: str = "anonymous",
+        trace_id: str | None = None,
+    ):
+        self.instance = instance or object()
+        self.method_name = method_name
+        self.trace_id = trace_id
+        self._frame: CallFrame | None = None
+    
+    async def __aenter__(self) -> "async_call_scope":
+        if self.trace_id:
+            set_trace_id(self.trace_id)
+        elif not get_trace_id():
+            set_trace_id()  # 자동 생성
+        
+        self._frame = push_frame(self.instance, self.method_name)
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await pop_frame_async()
         return None  # 예외 전파
 
 
@@ -253,8 +333,41 @@ def cleanup_prototypes_at_depth(depth: int) -> None:
     instances = _prototype_instances.get()
     prototypes = instances.pop(depth, None)
 
-    # 캐시 정리 (depth=0일 때만)
+    # 캐시 정리 (depth=0일 때만) - 동기 버전
     _cleanup_scoped_cache_at_depth(depth)
+
+    if not prototypes:
+        return
+
+    # 라이프사이클 매니저를 통해 PreDestroy 호출
+    from ...manager import try_get_current_manager
+
+    manager = try_get_current_manager()
+    if manager is None:
+        return
+
+    for instance, container in prototypes:
+        try:
+            manager.lifecycle.invoke_prototype_pre_destroy(instance, container)
+        except Exception:
+            pass  # PreDestroy 에러는 무시
+
+
+async def cleanup_prototypes_at_depth_async(depth: int) -> None:
+    """
+    특정 콜스택 깊이에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy 호출 (비동기 버전)
+
+    pop_frame_async 시 자동으로 호출됩니다.
+    비동기 컨텍스트 매니저(__aexit__)도 처리합니다.
+
+    Args:
+        depth: 콜스택 깊이
+    """
+    instances = _prototype_instances.get()
+    prototypes = instances.pop(depth, None)
+
+    # 캐시 정리 (depth=0일 때만) - 비동기 버전
+    await _cleanup_scoped_cache_at_depth_async(depth)
 
     if not prototypes:
         return
@@ -363,7 +476,13 @@ def get_scoped_prototype(component_type: type) -> Any | None:
 
 def set_scoped_prototype(component_type: type, instance: Any) -> None:
     """
-    현재 핸들러 호출에 PROTOTYPE 인스턴스 캐싱
+    현재 핸들러 호출에 PROTOTYPE 인스턴스 캐싱 (동기 버전)
+
+    인스턴스가 컨텍스트 매니저 프로토콜(__enter__/__exit__)을 구현하면
+    캐싱 시점에 __enter__를 호출합니다. __exit__은 call_scope 종료 시 호출됩니다.
+
+    Note: 비동기 컨텍스트 매니저(__aenter__/__aexit__)는 
+          set_scoped_prototype_async()를 사용하세요.
 
     Args:
         component_type: 컴포넌트 타입
@@ -380,12 +499,57 @@ def set_scoped_prototype(component_type: type, instance: Any) -> None:
 
     cache[frame_id][component_type] = instance
 
+    # 동기 컨텍스트 매니저 프로토콜 지원: __enter__ 호출
+    if hasattr(instance, "__enter__"):
+        try:
+            instance.__enter__()
+        except Exception:
+            pass  # __enter__ 에러는 무시
+
+
+async def set_scoped_prototype_async(component_type: type, instance: Any) -> None:
+    """
+    현재 핸들러 호출에 PROTOTYPE 인스턴스 캐싱 (비동기 버전)
+
+    인스턴스가 비동기 컨텍스트 매니저 프로토콜(__aenter__/__aexit__)을 구현하면
+    캐싱 시점에 __aenter__를 호출합니다. __aexit__은 call_scope 종료 시 호출됩니다.
+    동기 컨텍스트 매니저(__enter__/__exit__)도 지원합니다.
+
+    Args:
+        component_type: 컴포넌트 타입
+        instance: 캐시할 인스턴스
+    """
+    frame_id = get_current_frame_id()
+    if frame_id is None:
+        return
+
+    cache = _scoped_prototype_cache.get()
+    if frame_id not in cache:
+        cache[frame_id] = {}
+
+    cache[frame_id][component_type] = instance
+
+    # 비동기 컨텍스트 매니저 우선, 없으면 동기 버전 시도
+    if hasattr(instance, "__aenter__"):
+        try:
+            await instance.__aenter__()
+        except Exception:
+            pass
+    elif hasattr(instance, "__enter__"):
+        try:
+            instance.__enter__()
+        except Exception:
+            pass
+
 
 def _cleanup_scoped_cache_at_depth(depth: int) -> None:
     """
-    특정 depth의 scoped PROTOTYPE 캐시 정리
+    특정 depth의 scoped PROTOTYPE 캐시 정리 (동기 버전)
 
     depth=0일 때만 캐시 정리 (핸들러 호출 종료 시)
+    캐시된 인스턴스가 컨텍스트 매니저 프로토콜을 구현하면 __exit__ 호출
+
+    Note: 비동기 __aexit__ 처리가 필요하면 _cleanup_scoped_cache_at_depth_async 사용
     """
     if depth != 0:
         return
@@ -395,4 +559,46 @@ def _cleanup_scoped_cache_at_depth(depth: int) -> None:
         return
 
     cache = _scoped_prototype_cache.get()
-    cache.pop(frame_id, None)
+    frame_cache = cache.pop(frame_id, None)
+
+    # 동기 컨텍스트 매니저 프로토콜 지원: __exit__ 호출
+    if frame_cache:
+        for instance in frame_cache.values():
+            if hasattr(instance, "__exit__"):
+                try:
+                    instance.__exit__(None, None, None)
+                except Exception:
+                    pass
+
+
+async def _cleanup_scoped_cache_at_depth_async(depth: int) -> None:
+    """
+    특정 depth의 scoped PROTOTYPE 캐시 정리 (비동기 버전)
+
+    depth=0일 때만 캐시 정리 (핸들러 호출 종료 시)
+    캐시된 인스턴스가 비동기 컨텍스트 매니저(__aexit__)를 구현하면 await 호출
+    동기 __exit__도 지원
+    """
+    if depth != 0:
+        return
+
+    frame_id = get_current_frame_id()
+    if frame_id is None:
+        return
+
+    cache = _scoped_prototype_cache.get()
+    frame_cache = cache.pop(frame_id, None)
+
+    if frame_cache:
+        for instance in frame_cache.values():
+            # 비동기 우선, 없으면 동기 버전 시도
+            if hasattr(instance, "__aexit__"):
+                try:
+                    await instance.__aexit__(None, None, None)
+                except Exception:
+                    pass
+            elif hasattr(instance, "__exit__"):
+                try:
+                    instance.__exit__(None, None, None)
+                except Exception:
+                    pass
