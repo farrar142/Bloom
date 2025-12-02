@@ -57,8 +57,10 @@ def _check_schema_drift(ctx: DBContext, session_factory) -> bool:
         return False
 
     try:
-        with session_factory.session() as session:
-            introspector = SchemaIntrospector(session._connection)
+        # 새로운 연결을 생성하여 최신 DB 상태를 읽음
+        connection = session_factory.backend.connect()
+        try:
+            introspector = SchemaIntrospector(connection)
 
             metas = []
             for cls in entities:
@@ -122,6 +124,8 @@ def _check_schema_drift(ctx: DBContext, session_factory) -> bool:
             click.echo()
 
             return True
+        finally:
+            connection.close()
 
     except Exception as e:
         # 스키마 검사 실패는 무시 (테이블이 아직 없을 수 있음)
