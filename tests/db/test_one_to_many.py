@@ -44,7 +44,8 @@ class EagerAuthor:
 class Book:
     id = PrimaryKey[int](auto_increment=True)
     title = StringColumn(max_length=200)
-    author_id = ForeignKey[int]("authors.id")
+    # db_name="author_id" 명시적 지정 (OneToMany foreign_key와 일치)
+    author_id = ForeignKey[int]("authors.id", db_name="author_id")
     published = BooleanColumn(default=False)
     year = IntegerColumn(default=2024)
 

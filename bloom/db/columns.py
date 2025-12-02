@@ -223,9 +223,24 @@ class PrimaryKey[T](Column[T]):
 class ForeignKey[T](Column[T]):
     """외래 키 디스크립터
 
+    db_name/name을 지정하지 않으면 참조 테이블과 PK를 기반으로 자동 추론합니다:
+    - `{references_table}_{references_pk_db_name}` 형태로 자동 생성
+
     Examples:
+        # 명시적 필드명 지정
         class Post:
-            user_id = ForeignKey[int](User, on_delete="CASCADE")
+            user_id = ForeignKey[int]("users.id", on_delete="CASCADE")
+
+        # 자동 추론 (users_id 생성)
+        class Post:
+            user = ForeignKey[int](User)  # db_name="users_id" 자동 추론
+
+        # PK에 name 지정된 경우
+        class Account:
+            id = PrimaryKey[int](name="account_pk")
+
+        class Order:
+            account = ForeignKey[int](Account)  # db_name="accounts_account_pk" 자동 추론
     """
 
     sql_type = "INTEGER"
@@ -248,6 +263,49 @@ class ForeignKey[T](Column[T]):
         self._references = references  # 타입 또는 문자열 (forward reference)
         self.on_delete = on_delete
         self.on_update = on_update
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.field_name = name
+
+        # db_name이 지정되지 않았으면 자동 추론
+        if self._db_name is None:
+            self._db_name = self._infer_db_name()
+
+        # 엔티티 클래스에 컬럼 메타데이터 등록
+        if not hasattr(owner, "__bloom_columns__"):
+            owner.__bloom_columns__ = dict[str, Column[Any]]()
+        owner.__bloom_columns__[name] = self
+
+    def _infer_db_name(self) -> str:
+        """참조 엔티티 정보로 db_name 자동 추론"""
+        # 참조 테이블명
+        ref_table = self.references_table
+
+        # 참조 PK의 db_name 가져오기
+        ref_pk_db_name = self._get_references_pk_db_name()
+
+        return f"{ref_table}_{ref_pk_db_name}"
+
+    def _get_references_pk_db_name(self) -> str:
+        """참조 엔티티의 PK db_name 가져오기"""
+        if isinstance(self._references, str):
+            # "table.column" 형식
+            if "." in self._references:
+                return self._references.split(".")[1]
+            return "id"
+
+        if isinstance(self._references, type):
+            # 클래스인 경우 PK 컬럼의 db_name 가져오기
+            pk_field_name = getattr(self._references, "__bloom_pk__", "id")
+            columns = getattr(self._references, "__bloom_columns__", {})
+            pk_column = columns.get(pk_field_name)
+
+            if pk_column is not None and hasattr(pk_column, "db_name"):
+                return pk_column.db_name
+
+            return pk_field_name
+
+        return "id"
 
     @property
     def references(self) -> type | str:
@@ -570,11 +628,19 @@ class OneToMany[T]:
         # Lazy 모드: 즉시 쿼리 실행
         from .query import Query
 
-        fk_name = self.foreign_key
-        fk_column = getattr(target_cls, fk_name, None)
+        fk_db_name = self.foreign_key  # db_name (예: users_id)
+
+        # target_cls의 __bloom_columns__에서 db_name이 일치하는 컬럼 찾기
+        target_columns = getattr(target_cls, "__bloom_columns__", {})
+        fk_column = None
+        for col in target_columns.values():
+            if hasattr(col, "db_name") and col.db_name == fk_db_name:
+                fk_column = col
+                break
+
         if fk_column is None:
             raise ValueError(
-                f"Foreign key '{fk_name}' not found in {target_cls.__name__}"
+                f"Foreign key with db_name='{fk_db_name}' not found in {target_cls.__name__}"
             )
 
         # Session 가져오기 (엔티티에 바인딩된 세션)
@@ -585,8 +651,11 @@ class OneToMany[T]:
                 "Load the entity through a Session first."
             )
 
-        # 쿼리 실행
-        query = Query(target_cls).filter(fk_column == pk_value).with_session(session)
+        # 쿼리 실행 - 클래스 레벨에서 필드 접근해야 FieldExpression 반환
+        fk_field_expr = getattr(target_cls, fk_column.field_name)
+        query = (
+            Query(target_cls).filter(fk_field_expr == pk_value).with_session(session)
+        )
         result = query.all()
 
         # 캐시에 저장

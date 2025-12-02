@@ -101,6 +101,10 @@ class Session:
             object.__setattr__(entity, "__bloom_tracker__", tracker)
 
         tracker.state = EntityState.MANAGED
+
+        # 세션 바인딩 (OneToMany lazy loading에 필요)
+        object.__setattr__(entity, "__bloom_session__", self)
+
         self._new.add(entity)
         return entity
 
@@ -461,6 +465,10 @@ class AsyncSession:
             object.__setattr__(entity, "__bloom_tracker__", tracker)
 
         tracker.state = EntityState.MANAGED
+
+        # 세션 바인딩 (OneToMany lazy loading에 필요)
+        object.__setattr__(entity, "__bloom_session__", self)
+
         self._new.add(entity)
         return entity
 

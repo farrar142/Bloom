@@ -39,7 +39,9 @@ class Dialect(ABC):
 
         for name, column in meta.columns.items():
             col_def = self._get_column_definition(column)
-            columns_sql.append(f"{self.quote_identifier(name)} {col_def}")
+            # 컬럼의 db_name 사용 (필드명이 아닌 실제 DB 컬럼명)
+            col_db_name = column.db_name if hasattr(column, "db_name") else name
+            columns_sql.append(f"{self.quote_identifier(col_db_name)} {col_def}")
 
             # FK 제약조건 수집
             from .columns import ForeignKey

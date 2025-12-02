@@ -172,6 +172,66 @@ user_id: int = ForeignKey(
 )
 ```
 
+#### ForeignKey db_name 자동 추론
+
+`ForeignKey`도 `db_name`/`name`을 지정하지 않으면 `{references_table}_{references_pk_db_name}` 형태로 자동 추론됩니다:
+
+```python
+# 클래스 참조 + 기본 PK → users_id
+@Entity(table_name="users")
+class User:
+    id = PrimaryKey[int](auto_increment=True)
+
+@Entity(table_name="posts")
+class Post:
+    id = PrimaryKey[int](auto_increment=True)
+    # db_name="users_id" 자동 추론 (users 테이블 + id PK)
+    user = ForeignKey[int](User)
+```
+
+참조 엔티티의 PK에 `name` 또는 `db_name`이 지정된 경우 해당 값을 사용합니다:
+
+```python
+# PK에 name 지정 → accounts_account_pk
+@Entity(table_name="accounts")
+class Account:
+    id = PrimaryKey[int](name="account_pk")
+
+@Entity(table_name="orders")
+class Order:
+    id = PrimaryKey[int](auto_increment=True)
+    # db_name="accounts_account_pk" 자동 추론
+    account = ForeignKey[int](Account)
+```
+
+문자열 참조도 지원합니다:
+
+```python
+@Entity(table_name="comments")
+class Comment:
+    id = PrimaryKey[int](auto_increment=True)
+    # "users.id" → db_name="users_id" 자동 추론
+    author = ForeignKey[int]("users.id")
+    # "posts" (테이블명만) → db_name="posts_id" 자동 추론
+    post = ForeignKey[int]("posts")
+```
+
+이 자동 추론은 `OneToMany`의 `foreign_key` 자동 추론과 동일한 패턴을 사용하므로, 양쪽을 명시하지 않아도 자동으로 일치합니다:
+
+```python
+@Entity(table_name="users")
+class User:
+    id = PrimaryKey[int](auto_increment=True)
+    # foreign_key="users_id" 자동 추론
+    posts: "OneToMany[Post]" = OneToMany("Post")
+
+@Entity(table_name="posts")
+class Post:
+    id = PrimaryKey[int](auto_increment=True)
+    # db_name="users_id" 자동 추론 → OneToMany와 자동 매칭!
+    user = ForeignKey[int](User)
+```
+
 ### OneToMany 역참조 관계
 
 `OneToMany`는 DB에 컬럼을 생성하지 않고 역참조 관계를 제공합니다. 순환 임포트 방지를 위해 문자열로 타겟 클래스를 지정할 수 있습니다.
