@@ -1,4 +1,4 @@
-"""Query expressions - Condition, ConditionGroup, OrderBy, FieldExpression"""
+"""Query expressions - Condition, ConditionGroup, OrderBy, FieldExpression, Aggregates"""
 
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -6,6 +6,221 @@ from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .columns import Column
+
+
+# =============================================================================
+# Aggregate Functions
+# =============================================================================
+
+
+@dataclass(eq=False)
+class AggregateFunction:
+    """집계 함수 기본 클래스
+
+    Examples:
+        Count(User.id)            →  COUNT(id)
+        Sum(Order.amount)         →  SUM(amount)
+        Avg(Product.price)        →  AVG(price)
+        Count(User.id).as_("cnt") →  COUNT(id) AS cnt
+    """
+
+    field: str | FieldExpression[Any]
+    alias: str | None = None
+    _func_name: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        # FieldExpression에서 field name 추출
+        if hasattr(self.field, "name"):
+            self.field = self.field.name  # type: ignore[assignment]
+
+    def as_(self, alias: str) -> AggregateFunction:
+        """별칭 지정 (SQL AS)"""
+        self.alias = alias
+        return self
+
+    def to_sql(self) -> str:
+        """SQL 표현식 생성"""
+        sql = f"{self._func_name}({self.field})"
+        if self.alias:
+            sql = f"{sql} AS {self.alias}"
+        return sql
+
+    @property
+    def output_name(self) -> str:
+        """결과 컬럼 이름 (alias 또는 자동 생성)"""
+        if self.alias:
+            return self.alias
+        return f"{self._func_name.lower()}_{self.field}"
+
+    # -------------------------------------------------------------------------
+    # 비교 연산자 (HAVING 절용)
+    # -------------------------------------------------------------------------
+
+    def __eq__(self, other: Any) -> HavingCondition:  # type: ignore[override]
+        return HavingCondition(self, "=", other)
+
+    def __ne__(self, other: Any) -> HavingCondition:  # type: ignore[override]
+        return HavingCondition(self, "!=", other)
+
+    def __gt__(self, other: Any) -> HavingCondition:
+        return HavingCondition(self, ">", other)
+
+    def __ge__(self, other: Any) -> HavingCondition:
+        return HavingCondition(self, ">=", other)
+
+    def __lt__(self, other: Any) -> HavingCondition:
+        return HavingCondition(self, "<", other)
+
+    def __le__(self, other: Any) -> HavingCondition:
+        return HavingCondition(self, "<=", other)
+
+
+@dataclass(eq=False)
+class Count(AggregateFunction):
+    """COUNT 집계 함수
+
+    Examples:
+        Count(User.id)           →  COUNT(id)
+        Count("*")               →  COUNT(*)
+        Count(User.id).as_("n")  →  COUNT(id) AS n
+    """
+
+    def __post_init__(self) -> None:
+        self._func_name = "COUNT"
+        super().__post_init__()
+
+
+@dataclass(eq=False)
+class Sum(AggregateFunction):
+    """SUM 집계 함수
+
+    Examples:
+        Sum(Order.amount)              →  SUM(amount)
+        Sum(Order.amount).as_("total") →  SUM(amount) AS total
+    """
+
+    def __post_init__(self) -> None:
+        self._func_name = "SUM"
+        super().__post_init__()
+
+
+@dataclass(eq=False)
+class Avg(AggregateFunction):
+    """AVG 집계 함수
+
+    Examples:
+        Avg(Product.price)               →  AVG(price)
+        Avg(Product.price).as_("avg_p")  →  AVG(price) AS avg_p
+    """
+
+    def __post_init__(self) -> None:
+        self._func_name = "AVG"
+        super().__post_init__()
+
+
+@dataclass(eq=False)
+class Min(AggregateFunction):
+    """MIN 집계 함수
+
+    Examples:
+        Min(Product.price)              →  MIN(price)
+        Min(Product.price).as_("min_p") →  MIN(price) AS min_p
+    """
+
+    def __post_init__(self) -> None:
+        self._func_name = "MIN"
+        super().__post_init__()
+
+
+@dataclass(eq=False)
+class Max(AggregateFunction):
+    """MAX 집계 함수
+
+    Examples:
+        Max(Product.price)              →  MAX(price)
+        Max(Product.price).as_("max_p") →  MAX(price) AS max_p
+    """
+
+    def __post_init__(self) -> None:
+        self._func_name = "MAX"
+        super().__post_init__()
+
+
+@dataclass
+class HavingCondition:
+    """HAVING 절 조건 - 집계 함수 결과 필터링
+
+    Examples:
+        Count(User.id) > 5  →  HavingCondition(Count(User.id), ">", 5)
+    """
+
+    aggregate: AggregateFunction
+    operator: str
+    value: Any
+
+    def __and__(
+        self, other: HavingCondition | HavingConditionGroup
+    ) -> HavingConditionGroup:
+        return HavingConditionGroup("AND", [self, other])
+
+    def __or__(
+        self, other: HavingCondition | HavingConditionGroup
+    ) -> HavingConditionGroup:
+        return HavingConditionGroup("OR", [self, other])
+
+    def to_sql(self, param_prefix: str = "h") -> tuple[str, dict[str, Any]]:
+        """SQL HAVING 조건절과 파라미터 생성"""
+        param_name = f"{param_prefix}_{self.aggregate.output_name}"
+        agg_sql = self.aggregate.to_sql().split(" AS ")[0]  # alias 제거
+        return f"{agg_sql} {self.operator} :{param_name}", {param_name: self.value}
+
+
+@dataclass
+class HavingConditionGroup:
+    """HAVING 조건 그룹 (AND/OR)"""
+
+    operator: str  # "AND" or "OR"
+    conditions: list[HavingCondition | HavingConditionGroup] = field(
+        default_factory=list
+    )
+
+    def __and__(
+        self, other: HavingCondition | HavingConditionGroup
+    ) -> HavingConditionGroup:
+        if self.operator == "AND":
+            return HavingConditionGroup("AND", [*self.conditions, other])
+        return HavingConditionGroup("AND", [self, other])
+
+    def __or__(
+        self, other: HavingCondition | HavingConditionGroup
+    ) -> HavingConditionGroup:
+        if self.operator == "OR":
+            return HavingConditionGroup("OR", [*self.conditions, other])
+        return HavingConditionGroup("OR", [self, other])
+
+    def to_sql(
+        self, param_prefix: str = "h", depth: int = 0
+    ) -> tuple[str, dict[str, Any]]:
+        """SQL HAVING 조건절과 파라미터 생성"""
+        if not self.conditions:
+            return "1=1", {}
+
+        parts: list[str] = []
+        params: dict[str, Any] = {}
+
+        for i, cond in enumerate(self.conditions):
+            sub_prefix = f"{param_prefix}_{depth}_{i}"
+            if isinstance(cond, HavingCondition):
+                sql, sub_params = cond.to_sql(sub_prefix)
+            else:
+                sql, sub_params = cond.to_sql(sub_prefix, depth + 1)
+            parts.append(sql)
+            params.update(sub_params)
+
+        joined = f" {self.operator} ".join(parts)
+        if len(self.conditions) > 1:
+            joined = f"({joined})"
+        return joined, params
 
 
 # =============================================================================

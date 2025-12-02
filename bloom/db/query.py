@@ -5,7 +5,15 @@ from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar, Self, TYPE_CHECKING, Callable, Iterator
 from copy import copy
 
-from .expressions import Condition, ConditionGroup, OrderBy, FieldExpression
+from .expressions import (
+    Condition,
+    ConditionGroup,
+    OrderBy,
+    FieldExpression,
+    AggregateFunction,
+    HavingCondition,
+    HavingConditionGroup,
+)
 from .entity import EntityMeta, get_entity_meta, dict_to_entity
 
 if TYPE_CHECKING:
@@ -181,6 +189,19 @@ class Query(Generic[T]):
             .limit(10)
         )
 
+        # 집계 쿼리 (Django-style annotate)
+        from bloom.db import Count, Sum, Avg
+
+        query = (
+            Query(Order)
+            .annotate(
+                order_count=Count(Order.id),
+                total_amount=Sum(Order.amount),
+            )
+            .group_by(Order.user_id)
+            .having(Count(Order.id) > 5)
+        )
+
         # 실행
         users = query.with_session(session).all()
     """
@@ -193,6 +214,9 @@ class Query(Generic[T]):
     _select_columns: list[str] | None = None
     _session: Session | None = None
     _async_session: AsyncSession | None = None
+    _aggregates: dict[str, AggregateFunction] = field(default_factory=dict)
+    _group_by: list[str] = field(default_factory=list)
+    _having: list[HavingCondition | HavingConditionGroup] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self._meta = get_entity_meta(self.entity_cls)
@@ -278,6 +302,75 @@ class Query(Generic[T]):
         new_query._select_columns = col_names
         return new_query
 
+    def annotate(self, **aggregates: AggregateFunction) -> Self:
+        """집계 함수 추가 (Django-style)
+
+        집계 함수를 이름과 함께 추가합니다. GROUP BY와 함께 사용됩니다.
+
+        Examples:
+            from bloom.db import Count, Sum, Avg
+
+            # 집계 함수 사용
+            query = (
+                Query(Order)
+                .annotate(
+                    order_count=Count(Order.id),
+                    total_amount=Sum(Order.amount),
+                )
+                .group_by(Order.user_id)
+            )
+
+            # 결과: [{"user_id": 1, "order_count": 10, "total_amount": 500}, ...]
+        """
+        new_query = copy(self)
+        new_query._aggregates = {**self._aggregates}
+        for name, agg in aggregates.items():
+            # alias가 없으면 keyword 인자 이름을 alias로 설정
+            if agg.alias is None:
+                agg.alias = name
+            new_query._aggregates[name] = agg
+        return new_query
+
+    def group_by(self, *columns: str | FieldExpression[Any]) -> Self:
+        """GROUP BY 추가
+
+        집계 쿼리에서 그룹화할 컬럼을 지정합니다.
+
+        Examples:
+            query.group_by(Order.user_id)
+            query.group_by(Order.user_id, Order.status)
+            query.group_by("user_id", "status")
+        """
+        new_query = copy(self)
+        col_names: list[str] = []
+        for c in columns:
+            if isinstance(c, str):
+                col_names.append(c)
+            elif isinstance(c, FieldExpression):
+                col_names.append(c.name)
+        new_query._group_by = [*self._group_by, *col_names]
+        return new_query
+
+    def having(self, *conditions: HavingCondition | HavingConditionGroup) -> Self:
+        """HAVING 조건 추가
+
+        집계 결과에 대한 필터링 조건을 추가합니다.
+        GROUP BY와 함께 사용되어야 합니다.
+
+        Examples:
+            from bloom.db import Count, Sum
+
+            query = (
+                Query(Order)
+                .annotate(order_count=Count(Order.id))
+                .group_by(Order.user_id)
+                .having(Count(Order.id) > 5)
+            )
+        """
+        new_query = copy(self)
+        new_query._having = [*self._having, *conditions]
+        return new_query
+
     def _build_where(self) -> tuple[str | None, dict[str, Any]]:
         """WHERE 절 생성"""
         if not self._conditions:
@@ -295,6 +388,23 @@ class Query(Generic[T]):
         """ORDER BY 절 생성"""
         return [o.to_sql() for o in self._order_by]
 
+    def _build_group_by(self) -> list[str]:
+        """GROUP BY 절 생성"""
+        return [f'"{col}"' for col in self._group_by]
+
+    def _build_having(self) -> tuple[str | None, dict[str, Any]]:
+        """HAVING 절 생성"""
+        if not self._having:
+            return None, {}
+
+        if len(self._having) == 1:
+            cond = self._having[0]
+            return cond.to_sql("h")
+
+        # 여러 조건은 AND로 결합
+        group = HavingConditionGroup("AND", list(self._having))
+        return group.to_sql("h")
+
     def build(self) -> tuple[str, dict[str, Any]]:
         """SQL 쿼리 생성
 
@@ -306,14 +416,32 @@ class Query(Generic[T]):
 
         where_sql, params = self._build_where()
         order_by = self._build_order_by()
+        group_by = self._build_group_by()
+        having_sql, having_params = self._build_having()
+        params.update(having_params)
 
-        columns = self._select_columns or self._meta.column_names
-        cols_str = ", ".join(f'"{c}"' for c in columns)
+        # SELECT 컬럼 결정
+        if self._aggregates:
+            # 집계 쿼리: GROUP BY 컬럼 + 집계 함수
+            select_parts: list[str] = []
+            if self._group_by:
+                select_parts.extend(f'"{col}"' for col in self._group_by)
+            for agg in self._aggregates.values():
+                select_parts.append(agg.to_sql())
+            cols_str = ", ".join(select_parts) if select_parts else "*"
+        else:
+            # 일반 쿼리
+            columns = self._select_columns or self._meta.column_names
+            cols_str = ", ".join(f'"{c}"' for c in columns)
 
         sql = f'SELECT {cols_str} FROM "{self._meta.table_name}"'
 
         if where_sql:
             sql += f" WHERE {where_sql}"
+        if group_by:
+            sql += f" GROUP BY {', '.join(group_by)}"
+        if having_sql:
+            sql += f" HAVING {having_sql}"
         if order_by:
             sql += f" ORDER BY {', '.join(order_by)}"
         if self._limit is not None:
@@ -342,7 +470,10 @@ class Query(Generic[T]):
     # -------------------------------------------------------------------------
 
     def all(self) -> list[T]:
-        """모든 결과 반환"""
+        """모든 결과 반환
+
+        집계 쿼리인 경우 aggregate_all()을 사용하세요.
+        """
         session = self._ensure_session()
         sql, params = self.build()
         rows = session.execute(sql, params)
@@ -353,6 +484,34 @@ class Query(Generic[T]):
         # Eager 로딩 처리
         self._load_eager_relations(results, session)
         return results
+
+    def aggregate_all(self) -> list[dict[str, Any]]:
+        """집계 쿼리 결과 반환
+
+        annotate()와 group_by()를 사용한 집계 쿼리의 결과를
+        딕셔너리 리스트로 반환합니다.
+
+        Examples:
+            from bloom.db import Count, Sum
+
+            results = (
+                Query(Order)
+                .annotate(count=Count(Order.id), total=Sum(Order.amount))
+                .group_by(Order.user_id)
+                .with_session(session)
+                .aggregate_all()
+            )
+            # [{"user_id": 1, "count": 10, "total": 500}, ...]
+        """
+        session = self._ensure_session()
+        sql, params = self.build()
+        rows = session.execute(sql, params)
+        return [dict(row) for row in rows]
+
+    def aggregate_first(self) -> dict[str, Any] | None:
+        """집계 쿼리 첫 번째 결과 반환"""
+        results = self.limit(1).aggregate_all()
+        return results[0] if results else None
 
     def _bind_session(self, entity: T, session: Session) -> T:
         """엔티티에 Session 바인딩"""
@@ -510,7 +669,10 @@ class Query(Generic[T]):
     # -------------------------------------------------------------------------
 
     async def async_all(self) -> list[T]:
-        """[Async] 모든 결과 반환"""
+        """[Async] 모든 결과 반환
+
+        집계 쿼리인 경우 async_aggregate_all()을 사용하세요.
+        """
         session = self._ensure_async_session()
         sql, params = self.build()
         rows = [row async for row in session.execute(sql, params)]
@@ -523,6 +685,34 @@ class Query(Generic[T]):
         # Eager 로딩 처리
         await self._async_load_eager_relations(results, session)
         return results
+
+    async def async_aggregate_all(self) -> list[dict[str, Any]]:
+        """[Async] 집계 쿼리 결과 반환
+
+        annotate()와 group_by()를 사용한 집계 쿼리의 결과를
+        딕셔너리 리스트로 반환합니다.
+
+        Examples:
+            from bloom.db import Count, Sum
+
+            results = await (
+                Query(Order)
+                .annotate(count=Count(Order.id), total=Sum(Order.amount))
+                .group_by(Order.user_id)
+                .with_session(session)
+                .async_aggregate_all()
+            )
+            # [{"user_id": 1, "count": 10, "total": 500}, ...]
+        """
+        session = self._ensure_async_session()
+        sql, params = self.build()
+        rows = [row async for row in session.execute(sql, params)]
+        return [dict(row) for row in rows]
+
+    async def async_aggregate_first(self) -> dict[str, Any] | None:
+        """[Async] 집계 쿼리 첫 번째 결과 반환"""
+        results = await self.limit(1).async_aggregate_all()
+        return results[0] if results else None
 
     def _bind_async_session(self, entity: T, session: AsyncSession) -> T:
         """엔티티에 AsyncSession 바인딩"""

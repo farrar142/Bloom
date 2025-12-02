@@ -6,6 +6,7 @@ Features:
 - QueryDSL-style type-safe queries
 - Dirty tracking for optimized updates
 - Django-style migrations
+- Django-style annotate/aggregate with GROUP BY
 """
 
 from .expressions import (
@@ -13,6 +14,15 @@ from .expressions import (
     Condition,
     ConditionGroup,
     OrderBy,
+    # Aggregate functions
+    AggregateFunction,
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
+    HavingCondition,
+    HavingConditionGroup,
 )
 from .columns import (
     Column,
@@ -68,6 +78,15 @@ __all__ = [
     "Condition",
     "ConditionGroup",
     "OrderBy",
+    # Aggregate functions
+    "AggregateFunction",
+    "Count",
+    "Sum",
+    "Avg",
+    "Min",
+    "Max",
+    "HavingCondition",
+    "HavingConditionGroup",
     # Columns
     "Column",
     "PrimaryKey",
