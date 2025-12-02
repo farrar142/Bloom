@@ -1,0 +1,30 @@
+"""{{app_name}} Schemas
+
+요청/응답 스키마를 정의합니다.
+"""
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class {{app_name_pascal}}Create:
+    """생성 요청 스키마"""
+    name: str
+
+
+@dataclass
+class {{app_name_pascal}}Update:
+    """수정 요청 스키마"""
+    name: str | None = None
+
+
+@dataclass
+class {{app_name_pascal}}Response:
+    """응답 스키마"""
+    id: int
+    name: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "{{app_name_pascal}}Response":
+        return cls(id=data["id"], name=data["name"])
