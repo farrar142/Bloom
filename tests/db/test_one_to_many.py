@@ -63,13 +63,17 @@ class TestOneToManyDescriptor:
         # OneToMany 인스턴스 자체가 반환됨
         assert isinstance(Author.books, OneToMany)
 
-    def test_instance_without_pk_raises_error(self):
-        """PK 없이 접근하면 에러"""
+    def test_instance_without_pk_returns_tracked_list(self):
+        """PK 없어도 빈 TrackedList 반환 (새 엔티티에서 append 가능하도록)"""
+        from bloom.db import TrackedList
+
         author = create(Author, name="Test Author")
         # id=None 상태
 
-        with pytest.raises(ValueError, match="Cannot access OneToMany relation"):
-            _ = author.books
+        # 빈 TrackedList 반환
+        books = author.books
+        assert isinstance(books, TrackedList)
+        assert len(books) == 0
 
     def test_instance_without_session_raises_error(self):
         """Session 없이 lazy 접근하면 에러"""
@@ -468,3 +472,212 @@ class TestOneToManyWithSession:
 
         # 같은 리스트 객체여야 함
         assert books1 is books2
+
+
+class TestTrackedList:
+    """TrackedList 테스트 - OneToMany에서 반환되는 추적 가능한 리스트"""
+
+    @pytest.fixture
+    def session(self):
+        """인메모리 SQLite 세션"""
+        from bloom.db import SessionFactory
+        from bloom.db.backends import SQLiteBackend
+
+        backend = SQLiteBackend(":memory:")
+        factory = SessionFactory(backend)
+
+        with factory.session() as session:
+            # 테이블 생성
+            session._connection.execute(
+                """
+                CREATE TABLE authors (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(100)
+                )
+            """
+            )
+            session._connection.execute(
+                """
+                CREATE TABLE books (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title VARCHAR(200),
+                    author_id INTEGER,
+                    published BOOLEAN DEFAULT 0,
+                    year INTEGER DEFAULT 2024
+                )
+            """
+            )
+            yield session
+
+    def test_append_sets_fk_and_adds_to_session(self, session):
+        """append 시 FK 설정 및 세션에 추가"""
+        from bloom.db import TrackedList
+
+        # 먼저 Author 저장
+        session._connection.execute(
+            "INSERT INTO authors (name) VALUES (:name)", {"name": "Test Author"}
+        )
+        session.commit()
+
+        author = session.query(Author).filter(Author.id == 1).first()
+        assert author is not None
+
+        # TrackedList 접근
+        books = author.books
+        assert isinstance(books, TrackedList)
+
+        # 새 Book 생성 및 append
+        new_book = create(Book, title="New Book")
+        books.append(new_book)
+
+        # FK가 설정되어야 함
+        assert new_book.author_id == 1
+
+        # 세션에 추가되어야 함
+        assert new_book in session._new
+
+    def test_extend_sets_fk_and_adds_to_session(self, session):
+        """extend 시 모든 항목에 FK 설정 및 세션에 추가"""
+        from bloom.db import TrackedList
+
+        session._connection.execute(
+            "INSERT INTO authors (name) VALUES (:name)", {"name": "Test Author"}
+        )
+        session.commit()
+
+        author = session.query(Author).filter(Author.id == 1).first()
+        books = author.books
+        assert isinstance(books, TrackedList)
+
+        # 여러 Book 생성 및 extend
+        book1 = create(Book, title="Book 1")
+        book2 = create(Book, title="Book 2")
+        books.extend([book1, book2])
+
+        # 모든 항목에 FK 설정
+        assert book1.author_id == 1
+        assert book2.author_id == 1
+
+        # 모든 항목이 세션에 추가
+        assert book1 in session._new
+        assert book2 in session._new
+
+    def test_insert_sets_fk_and_adds_to_session(self, session):
+        """insert 시 FK 설정 및 세션에 추가"""
+        from bloom.db import TrackedList
+
+        session._connection.execute(
+            "INSERT INTO authors (name) VALUES (:name)", {"name": "Test Author"}
+        )
+        session.commit()
+
+        author = session.query(Author).filter(Author.id == 1).first()
+        books = author.books
+
+        new_book = create(Book, title="Inserted Book")
+        books.insert(0, new_book)
+
+        assert new_book.author_id == 1
+        assert new_book in session._new
+
+    def test_setitem_sets_fk_and_adds_to_session(self, session):
+        """setitem으로 교체 시 FK 설정 및 세션에 추가"""
+        from bloom.db import TrackedList
+
+        session._connection.execute(
+            "INSERT INTO authors (name) VALUES (:name)", {"name": "Test Author"}
+        )
+        session._connection.execute(
+            "INSERT INTO books (title, author_id) VALUES (:title, :author_id)",
+            {"title": "Old Book", "author_id": 1},
+        )
+        session.commit()
+
+        author = session.query(Author).filter(Author.id == 1).first()
+        books = author.books
+        assert len(books) == 1
+
+        # 교체할 새 Book
+        new_book = create(Book, title="Replacement Book")
+        books[0] = new_book
+
+        assert new_book.author_id == 1
+        assert new_book in session._new
+
+    def test_append_on_new_entity_before_save(self):
+        """새 엔티티(save 전)에서 append - FK는 None이지만 리스트에 추가됨"""
+        from bloom.db import TrackedList
+
+        # 저장하지 않은 새 Author
+        author = create(Author, name="New Author")
+        assert author.id is None
+
+        # TrackedList 접근 가능
+        books = author.books
+        assert isinstance(books, TrackedList)
+        assert len(books) == 0
+
+        # append 가능 (FK는 아직 None)
+        new_book = create(Book, title="New Book")
+        books.append(new_book)
+
+        assert len(books) == 1
+        assert books[0] is new_book
+        # FK는 owner의 PK가 None이므로 설정되지 않음
+        assert new_book.author_id is None
+
+    def test_append_after_save_sets_fk(self, session):
+        """저장 후 append하면 FK가 설정됨"""
+        from bloom.db import TrackedList
+
+        # Author 저장
+        author = create(Author, name="Saved Author")
+        session.add(author)
+        session.flush()
+
+        assert author.id is not None
+
+        # append
+        books = author.books
+        new_book = create(Book, title="Book After Save")
+        books.append(new_book)
+
+        # FK가 설정됨
+        assert new_book.author_id == author.id
+
+    def test_tracked_list_preserves_list_behavior(self, session):
+        """TrackedList는 일반 리스트처럼 동작해야 함"""
+        from bloom.db import TrackedList
+
+        session._connection.execute(
+            "INSERT INTO authors (name) VALUES (:name)", {"name": "Test Author"}
+        )
+        session.commit()
+
+        author = session.query(Author).filter(Author.id == 1).first()
+        books = author.books
+
+        # 빈 리스트 동작
+        assert len(books) == 0
+        assert not books  # bool(empty_list) is False
+
+        # append 후 동작
+        book1 = create(Book, title="Book 1")
+        books.append(book1)
+        assert len(books) == 1
+        assert books[0] is book1
+        assert book1 in books  # __contains__
+
+        # extend 후 동작
+        book2 = create(Book, title="Book 2")
+        book3 = create(Book, title="Book 3")
+        books.extend([book2, book3])
+        assert len(books) == 3
+
+        # iteration
+        titles = [b.title for b in books]
+        assert titles == ["Book 1", "Book 2", "Book 3"]
+
+        # slicing
+        first_two = books[:2]
+        assert len(first_two) == 2

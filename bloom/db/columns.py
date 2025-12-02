@@ -1,7 +1,7 @@
 """Column descriptors - Column, PrimaryKey, ForeignKey, and typed columns"""
 
 from __future__ import annotations
-from typing import Any, overload, TYPE_CHECKING, Callable, Self, Literal
+from typing import Any, overload, TYPE_CHECKING, Callable, Self, Literal, Generic, TypeVar
 from weakref import WeakKeyDictionary
 from datetime import datetime
 from decimal import Decimal
@@ -9,6 +9,102 @@ from enum import Enum
 import json
 
 from .expressions import FieldExpression
+
+
+if TYPE_CHECKING:
+    from .session import Session
+
+
+_T = TypeVar("_T")
+
+
+# =============================================================================
+# TrackedList - OneToMany 관계를 위한 추적 리스트
+# =============================================================================
+
+
+class TrackedList(list[_T], Generic[_T]):
+    """세션과 FK를 추적하는 리스트
+    
+    OneToMany 관계에서 append/extend 시 자동으로:
+    1. 자식 엔티티에 FK 값 설정
+    2. 세션에 자식 엔티티 추가
+    
+    Example:
+        user.posts.append(post)  # 자동으로:
+        # post.user_id = user.id
+        # session.add(post)
+    """
+    
+    def __init__(
+        self,
+        items: list[_T] | None = None,
+        *,
+        owner: Any = None,
+        owner_pk_field: str = "id",
+        fk_field_name: str | None = None,
+        session: "Session | None" = None,
+    ):
+        super().__init__(items or [])
+        self._owner = owner
+        self._owner_pk_field = owner_pk_field
+        self._fk_field_name = fk_field_name
+        self._session = session
+    
+    def _get_owner_pk_value(self) -> Any:
+        """owner의 현재 PK 값 가져오기"""
+        if self._owner is not None:
+            return getattr(self._owner, self._owner_pk_field, None)
+        return None
+    
+    def _setup_child(self, item: _T) -> None:
+        """자식 엔티티에 FK 설정 및 세션 추가"""
+        # FK 설정 (owner의 현재 PK 값 사용)
+        pk_value = self._get_owner_pk_value()
+        if self._fk_field_name and pk_value is not None:
+            setattr(item, self._fk_field_name, pk_value)
+        
+        # 세션에 추가
+        if self._session is not None:
+            self._session.add(item)
+    
+    def append(self, item: _T) -> None:
+        """항목 추가 시 FK 설정 및 세션 추가"""
+        self._setup_child(item)
+        super().append(item)
+    
+    def extend(self, items: list[_T]) -> None:
+        """여러 항목 추가 시 각각 FK 설정 및 세션 추가"""
+        for item in items:
+            self._setup_child(item)
+        super().extend(items)
+    
+    def insert(self, index: int, item: _T) -> None:
+        """항목 삽입 시 FK 설정 및 세션 추가"""
+        self._setup_child(item)
+        super().insert(index, item)
+    
+    def __setitem__(self, index: int, item: _T) -> None:
+        """인덱스로 항목 설정 시 FK 설정 및 세션 추가"""
+        self._setup_child(item)
+        super().__setitem__(index, item)
+    
+    def __iadd__(self, items: list[_T]) -> "TrackedList[_T]":
+        """+= 연산자"""
+        self.extend(items)
+        return self
+    
+    def sync_fk_values(self) -> None:
+        """모든 자식 엔티티의 FK 값을 owner의 현재 PK로 동기화
+        
+        owner가 save()되어 PK가 할당된 후 호출하면 유용합니다.
+        """
+        pk_value = self._get_owner_pk_value()
+        if self._fk_field_name and pk_value is not None:
+            for item in self:
+                current_fk = getattr(item, self._fk_field_name, None)
+                if current_fk is None:
+                    setattr(item, self._fk_field_name, pk_value)
 
 
 # =============================================================================
@@ -602,7 +698,7 @@ class OneToMany[T]:
         """Eager 로딩 여부"""
         return self._fetch == FetchType.EAGER
 
-    def __get__(self, obj: object | None, objtype: type) -> "list[T]":
+    def __get__(self, obj: object | None, objtype: type) -> "TrackedList[T]":
         if obj is None:
             # 클래스 레벨 접근 - 디스크립터 자체 반환
             return self  # type: ignore
@@ -616,40 +712,57 @@ class OneToMany[T]:
         owner_pk = getattr(objtype, "__bloom_pk__", "id")
         pk_value = getattr(obj, owner_pk, None)
 
-        if pk_value is None:
-            raise ValueError(
-                f"Cannot access OneToMany relation: {objtype.__name__}.{owner_pk} is None"
-            )
-
-        # Eager 모드: 아직 로드되지 않았으면 빈 리스트 (Session에서 채워짐)
-        if self._fetch == FetchType.EAGER:
-            return []
-
-        # Lazy 모드: 즉시 쿼리 실행
-        from .query import Query
-
+        # FK 필드 정보 가져오기
         fk_db_name = self.foreign_key  # db_name (예: users_id)
-
-        # target_cls의 __bloom_columns__에서 db_name이 일치하는 컬럼 찾기
         target_columns = getattr(target_cls, "__bloom_columns__", {})
         fk_column = None
+        fk_field_name = None
         for col in target_columns.values():
             if hasattr(col, "db_name") and col.db_name == fk_db_name:
                 fk_column = col
+                fk_field_name = col.field_name
                 break
 
+        # Session 가져오기 (엔티티에 바인딩된 세션)
+        session: "Session | None" = getattr(obj, "__bloom_session__", None)
+
+        # PK가 None이면 빈 TrackedList 반환 (새 엔티티)
+        if pk_value is None:
+            tracked = TrackedList(
+                [],
+                owner=obj,
+                owner_pk_field=owner_pk,
+                fk_field_name=fk_field_name,
+                session=session,
+            )
+            self._cache[obj] = tracked
+            return tracked
+
+        # Eager 모드: 아직 로드되지 않았으면 빈 리스트 (Session에서 채워짐)
+        if self._fetch == FetchType.EAGER:
+            tracked = TrackedList(
+                [],
+                owner=obj,
+                owner_pk_field=owner_pk,
+                fk_field_name=fk_field_name,
+                session=session,
+            )
+            self._cache[obj] = tracked
+            return tracked
+
+        # Lazy 모드: 즉시 쿼리 실행
         if fk_column is None:
             raise ValueError(
                 f"Foreign key with db_name='{fk_db_name}' not found in {target_cls.__name__}"
             )
 
-        # Session 가져오기 (엔티티에 바인딩된 세션)
-        session: Session | None = getattr(obj, "__bloom_session__", None)
         if session is None:
             raise ValueError(
                 f"Cannot lazy load OneToMany: {objtype.__name__} has no bound session. "
                 "Load the entity through a Session first."
             )
+
+        from .query import Query
 
         # 쿼리 실행 - 클래스 레벨에서 필드 접근해야 FieldExpression 반환
         fk_field_expr = getattr(target_cls, fk_column.field_name)
@@ -658,13 +771,43 @@ class OneToMany[T]:
         )
         result = query.all()
 
-        # 캐시에 저장
-        self._cache[obj] = result
-        return result
+        # TrackedList로 감싸서 캐시에 저장
+        tracked = TrackedList(
+            result,
+            owner=obj,
+            owner_pk_field=owner_pk,
+            fk_field_name=fk_field_name,
+            session=session,
+        )
+        self._cache[obj] = tracked
+        return tracked
 
     def set_loaded_data(self, obj: object, data: list[T]) -> None:
-        """로딩된 데이터 설정 (Session에서 호출)"""
-        self._cache[obj] = data
+        """로딩된 데이터 설정 (Session에서 호출)
+        
+        TrackedList로 감싸서 저장합니다.
+        """
+        owner_pk = getattr(type(obj), "__bloom_pk__", "id")
+        session: "Session | None" = getattr(obj, "__bloom_session__", None)
+        
+        # FK 필드명 가져오기
+        target_cls = self._resolve_target()
+        fk_db_name = self.foreign_key
+        target_columns = getattr(target_cls, "__bloom_columns__", {})
+        fk_field_name = None
+        for col in target_columns.values():
+            if hasattr(col, "db_name") and col.db_name == fk_db_name:
+                fk_field_name = col.field_name
+                break
+        
+        tracked = TrackedList(
+            data,
+            owner=obj,
+            owner_pk_field=owner_pk,
+            fk_field_name=fk_field_name,
+            session=session,
+        )
+        self._cache[obj] = tracked
 
     def clear_cache(self, obj: object) -> None:
         """캐시 클리어 (refresh 시)"""

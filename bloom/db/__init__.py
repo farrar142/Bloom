@@ -27,6 +27,7 @@ from .columns import (
     JSONColumn,
     OneToMany,
     FetchType,
+    TrackedList,
 )
 from .tracker import DirtyTracker
 from .entity import Entity, EntityMeta, create
