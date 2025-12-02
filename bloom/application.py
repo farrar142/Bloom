@@ -43,6 +43,7 @@ class Application:
         self._websocket_manager: "WebSocketManager | None" = None
         self._initialized_containers: list["Container"] = []
         self._invocation_manager: "MethodInvocationManager | None" = None
+        self._scanned_modules: list[Any] = []  # 스캔된 모듈들 (Entity 검색용)
         # 생성 시점에 현재 매니저로 설정 (데코레이터 자동 등록 지원)
         set_current_manager(self.manager)
 
@@ -210,6 +211,7 @@ class Application:
             try:
                 module = importlib.import_module(module_name)
                 self.manager.scan(module)
+                self._scanned_modules.append(module)  # 스캔된 모듈 저장
             except ImportError as e:
                 # import 실패 시 경고만 출력
                 import warnings

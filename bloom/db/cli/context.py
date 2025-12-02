@@ -56,15 +56,25 @@ class DBContext:
                     if obj not in entities:
                         entities.append(obj)
 
-        # 2. Application DI에서 엔티티 찾기
+        # 2. Application에서 스캔된 모든 모듈에서 엔티티 찾기
         if self.application:
-            # DI 컨테이너에서 Entity로 등록된 클래스들 수집
+            for module in getattr(self.application, '_scanned_modules', []):
+                for name in dir(module):
+                    try:
+                        obj = getattr(module, name)
+                        if isinstance(obj, type) and get_entity_meta(obj):
+                            if obj not in entities:
+                                entities.append(obj)
+                    except Exception:
+                        continue
+
+            # 3. DI 컨테이너에서 Entity로 등록된 클래스들 수집
             for cls in self.application.manager.container_registry.keys():
                 if isinstance(cls, type) and get_entity_meta(cls):
                     if cls not in entities:
                         entities.append(cls)
 
-        # 3. entities_module에서 직접 로드
+        # 4. entities_module에서 직접 로드
         if self.entities_module:
             try:
                 module = importlib.import_module(self.entities_module)
