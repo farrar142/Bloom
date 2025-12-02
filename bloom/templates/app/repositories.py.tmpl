@@ -1,7 +1,7 @@
 """{{app_name}} Repositories
 
 데이터 접근 레이어를 정의합니다.
-CrudRepository를 상속하여 기본 CRUD 메서드를 사용합니다.
+CrudRepository를 상속하면 자동으로 @Component로 등록됩니다.
 """
 
 from bloom.db import CrudRepository
@@ -15,14 +15,10 @@ class {{app_name_pascal}}Repository(CrudRepository[{{app_name_pascal}}, int]):
     CrudRepository 기본 메서드:
       - find_by_id(id) -> Entity | None
       - find_all() -> list[Entity]
-      - find_one(condition) -> Entity | None
+      - find_one_by(**kwargs) -> Entity | None
       - save(entity) -> Entity
       - delete(entity) -> None
       - delete_by_id(id) -> bool
       - count() -> int
-    
-    커스텀 메서드 예시:
-        def find_by_name(self, name: str) -> {{app_name_pascal}} | None:
-            return self.find_one({{app_name_pascal}}.name == name)
     """
     pass

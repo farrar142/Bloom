@@ -55,23 +55,12 @@ class Repository(ABC, Generic[T, ID]):
     """리포지토리 베이스 클래스
 
     Spring Data JPA의 CrudRepository와 유사합니다.
+    Repository를 상속하면 자동으로 @Component로 등록됩니다.
 
-    사용법 1: 팩토리 메서드 (context manager 내 사용)
-        with session_factory.session() as session:
-            repo = Repository.for_entity(User, session)
-            user = repo.find_by_id(1)
-
-    사용법 2: Bloom DI 필드 주입 (권장)
-        @Component
-        class DatabaseConfig:
-            @Factory
-            def get_session(self, sf: SessionFactory) -> Session:
-                return sf.create()
-
-        @Component
-        class UserRepository(Repository[User, int]):
-            session: Session  # 필드 주입
-
+    사용법:
+        class UserRepository(CrudRepository[User, int]):
+            # session은 자동 주입됨
+            
             def find_by_email(self, email: str) -> User | None:
                 return self.find_one_by(email=email)
 
@@ -81,13 +70,25 @@ class Repository(ABC, Generic[T, ID]):
             id = PrimaryKey[int](auto_increment=True)
             name = Column[str](nullable=False)
 
-        class UserRepository(Repository[User, int]):
+        class UserRepository(CrudRepository[User, int]):
             def find_by_email(self, email: str) -> User | None:
                 return self.find_one_by(email=email)
     """
 
     # 필드 주입용
     session: "Session | None" = None
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Repository를 상속하면 자동으로 @Component로 등록"""
+        super().__init_subclass__(**kwargs)
+        
+        # ABC를 직접 상속한 경우 (Repository 자체)는 스킵
+        if cls.__name__ == "Repository":
+            return
+            
+        # @Component 데코레이터 적용
+        from bloom.core.decorators import Component
+        Component(cls)
 
     # 지연 초기화 캐시
     _entity_cls: "type[T] | None" = None
