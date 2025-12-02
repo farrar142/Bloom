@@ -6,15 +6,15 @@ HTTP 엔드포인트를 정의합니다.
 from bloom import Controller, Get, Post, Put, Delete, RequestMapping
 from bloom.core.exceptions import NotFoundError
 
-from .services import {{app_name_pascal}}Service
+from .services import {{entity_name}}Service
 
 
 @Controller
 @RequestMapping("/{{app_name}}")
-class {{app_name_pascal}}Controller:
-    """{{app_name_pascal}} API 컨트롤러"""
+class {{entity_name}}Controller:
+    """{{entity_name}} API 컨트롤러"""
 
-    service: {{app_name_pascal}}Service
+    service: {{entity_name}}Service
 
     @Get("/")
     async def list(self) -> list[dict]:

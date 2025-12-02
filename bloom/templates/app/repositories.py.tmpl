@@ -6,11 +6,11 @@ CrudRepository를 상속하여 기본 CRUD 메서드를 사용합니다.
 
 from bloom.db import CrudRepository
 
-from .entities import {{app_name_pascal}}
+from .entities import {{entity_name}}
 
 
-class {{app_name_pascal}}Repository(CrudRepository[{{app_name_pascal}}, int]):
-    """{{app_name_pascal}} 레포지토리
+class {{entity_name}}Repository(CrudRepository[{{entity_name}}, int]):
+    """{{entity_name}} 레포지토리
 
     CrudRepository 기본 메서드 (동기):
       - find_by_id(id) -> Entity | None
@@ -33,10 +33,10 @@ class {{app_name_pascal}}Repository(CrudRepository[{{app_name_pascal}}, int]):
       - count_async() -> int
 
     커스텀 메서드 예시:
-        def find_by_name(self, name: str) -> {{app_name_pascal}} | None:
+        def find_by_name(self, name: str) -> {{entity_name}} | None:
             return self.find_one_by(name=name)
 
-        async def find_by_name_async(self, name: str) -> {{app_name_pascal}} | None:
+        async def find_by_name_async(self, name: str) -> {{entity_name}} | None:
             return await self.find_one_by_async(name=name)
     """
 

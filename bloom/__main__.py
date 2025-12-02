@@ -326,6 +326,39 @@ def _to_pascal_case(name: str) -> str:
     return "".join(part.capitalize() for part in parts)
 
 
+def _singularize(word: str) -> str:
+    """영어 복수형을 단수형으로 변환 (간단한 규칙 기반)
+
+    Examples:
+        Users -> User
+        Categories -> Category
+        Addresses -> Address
+        Status -> Status (이미 단수)
+    """
+    # 이미 단수인 경우 (ss로 끝나는 단어)
+    if word.endswith("ss"):
+        return word
+
+    # -ies -> -y (Categories -> Category)
+    if word.endswith("ies"):
+        return word[:-3] + "y"
+
+    # -es -> '' for words ending in s, x, z, ch, sh
+    if word.endswith("es"):
+        # Addresses -> Address, Boxes -> Box
+        if len(word) > 3 and word[-3] in "sxz":
+            return word[:-2]
+        # Matches -> Match, Dishes -> Dish
+        if len(word) > 4 and word[-4:-2] in ("ch", "sh"):
+            return word[:-2]
+
+    # -s -> '' (Users -> User)
+    if word.endswith("s"):
+        return word[:-1]
+
+    return word
+
+
 @cli.command()
 @click.argument("name")
 @click.option(
@@ -335,7 +368,21 @@ def _to_pascal_case(name: str) -> str:
     default=None,
     help="Directory to create app in (default: current directory)",
 )
-def startapp(name: str, directory: str | None):
+@click.option(
+    "-e",
+    "--entity",
+    type=str,
+    default=None,
+    help="Entity class name (default: interactive prompt or singularized app name)",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    default=False,
+    help="Skip interactive prompts and use defaults",
+)
+def startapp(name: str, directory: str | None, entity: str | None, yes: bool):
     """Create a new Bloom app
 
     \b
@@ -350,9 +397,10 @@ def startapp(name: str, directory: str | None):
 
     \b
     Examples:
-        bloom startapp users
-        bloom startapp user_profiles
-        bloom startapp orders -d apps/
+        bloom startapp users                    # Interactive mode
+        bloom startapp users -e User            # Specify entity name
+        bloom startapp users -y                 # Use defaults (User)
+        bloom startapp orders -d apps/ -e Order
     """
     import shutil
     from importlib import resources
@@ -367,10 +415,32 @@ def startapp(name: str, directory: str | None):
     base_path = Path(directory).resolve() if directory else Path.cwd()
     target_path = base_path / name
 
-    # PascalCase 이름
+    # PascalCase 이름 (app 전체 이름)
     app_name_pascal = _to_pascal_case(name)
 
+    # 엔티티 이름 결정
+    default_entity = _singularize(app_name_pascal)
+
+    if entity:
+        # 명시적으로 지정된 경우
+        entity_name = entity
+    elif yes:
+        # -y 옵션: 기본값 사용
+        entity_name = default_entity
+    else:
+        # 인터랙티브 프롬프트
+        click.echo()
+        click.echo(f"[Bloom] Creating app '{name}'")
+        click.echo()
+        entity_name = click.prompt(
+            click.style("? ", fg="green") + "Entity class name",
+            default=default_entity,
+            type=str,
+        )
+
+    click.echo()
     click.echo(f"[Bloom] Creating app '{name}' at {target_path}")
+    click.echo(f"        Entity: {entity_name}")
 
     # 기존 디렉토리 확인
     if target_path.exists():
@@ -386,7 +456,9 @@ def startapp(name: str, directory: str | None):
     try:
         template_ref = resources.files("bloom.templates.app")
         with resources.as_file(template_ref) as template_dir:
-            _copy_app_template(template_dir, target_path, name, app_name_pascal)
+            _copy_app_template(
+                template_dir, target_path, name, app_name_pascal, entity_name
+            )
     except Exception as e:
         # 실패 시 디렉토리 정리
         if target_path.exists():
@@ -399,7 +471,7 @@ def startapp(name: str, directory: str | None):
     click.echo("Next steps:")
     click.echo("  1. Add to application.py:")
     click.echo(
-        f"     from {name} import {app_name_pascal}Controller, {app_name_pascal}Service"
+        f"     from {name} import {entity_name}Controller, {entity_name}Service"
     )
     click.echo(f"     application.scan({name})")
     click.echo()
@@ -408,7 +480,11 @@ def startapp(name: str, directory: str | None):
 
 
 def _copy_app_template(
-    template_dir: Path, target_path: Path, app_name: str, app_name_pascal: str
+    template_dir: Path,
+    target_path: Path,
+    app_name: str,
+    app_name_pascal: str,
+    entity_name: str,
 ):
     """앱 템플릿 디렉토리를 복사하고 변수를 치환합니다."""
     import shutil
@@ -435,6 +511,8 @@ def _copy_app_template(
             content = content.replace("{{ app_name }}", app_name)
             content = content.replace("{{app_name_pascal}}", app_name_pascal)
             content = content.replace("{{ app_name_pascal }}", app_name_pascal)
+            content = content.replace("{{entity_name}}", entity_name)
+            content = content.replace("{{ entity_name }}", entity_name)
 
             # .tmpl 확장자 제거
             final_dest = dest_file.with_suffix("")
