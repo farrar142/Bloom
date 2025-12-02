@@ -236,7 +236,7 @@ class ForeignKey[T](Column[T]):
         *,
         name: str | None = None,
         db_name: str | None = None,
-        nullable: bool = True,
+        nullable: bool = False,
         on_delete: str = "CASCADE",
         on_update: str = "CASCADE",
     ):
