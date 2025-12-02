@@ -73,6 +73,8 @@ class ContainerOrchestrator:
             result = await self._initialize_single_container_async(container)
             if result:
                 container, instance = result
+                # PostConstruct에서 자기 자신의 Factory 메서드를 호출할 수 있도록
+                # PostConstruct 실행 전에 인스턴스를 먼저 등록
                 self._register_initialized_container(container, instance)
 
     async def _initialize_parallel_async(self) -> None:
@@ -182,6 +184,10 @@ class ContainerOrchestrator:
         if isinstance(container, FactoryContainer) and container._is_chain_intermediate:
             return (container, instance)
 
+        # @PostConstruct에서 자기 자신의 Factory 메서드를 호출할 수 있도록
+        # PostConstruct 실행 전에 인스턴스를 먼저 등록
+        self.manager.set_instance(container.target, instance)
+
         # @PostConstruct 호출 (동기/비동기 모두 처리)
         await self.manager.lifecycle.invoke_post_construct_async(container, instance)
 
@@ -220,8 +226,14 @@ class ContainerOrchestrator:
     def _register_initialized_container(
         self, container: "Container", instance: Any
     ) -> None:
-        """초기화된 컨테이너를 등록"""
-        self.manager.set_instance(container.target, instance)
+        """초기화된 컨테이너를 등록
+
+        Note: 인스턴스는 이미 _initialize_single_container_async에서 등록됨
+              (PostConstruct에서 자기 Factory 호출 지원)
+        """
+        # 이미 등록되어 있지 않으면 등록 (중복 방지)
+        if not self.manager.get_instances(container.target):
+            self.manager.set_instance(container.target, instance)
         self.initialized_containers.append(container)
 
     def _save_circular_dependency_graph(self, error: CircularDependencyError) -> None:
