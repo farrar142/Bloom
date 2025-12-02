@@ -411,6 +411,9 @@ def rollback(ctx: DBContext, steps: int, fake: bool):
             return
 
     click.echo("\nDone.")
+    
+    # 롤백 후 스키마 검사
+    _check_schema_drift(ctx, session_factory)
 
 
 @db.command()
