@@ -431,6 +431,8 @@ class UserRepository:
 
 ### CrudRepository
 
+Repository는 동기와 비동기 메서드를 모두 지원합니다.
+
 ```python
 from bloom.db import CrudRepository, Entity, PrimaryKey, Column
 
@@ -441,9 +443,39 @@ class User:
 
 class UserRepository(CrudRepository[User, int]):
     pass
+```
 
-# 사용
-repo = UserRepository(session_factory)
+#### Session 설정
+
+Repository는 `session`과 `async_session` 필드를 @Factory로 주입받아야 합니다:
+
+```python
+from bloom import Component
+from bloom.core import Factory, Scope
+from bloom.core.protocols import PrototypeMode
+from bloom.db import Session, AsyncSession, SessionFactory
+
+@Component
+class DatabaseConfig:
+    session_factory: SessionFactory
+
+    @Factory
+    @Scope(Scope.CALL, PrototypeMode.CALL_SCOPED)
+    def session(self) -> Session:
+        """동기 Session - 같은 요청 내 공유, 요청 끝나면 자동 close"""
+        return self.session_factory.create()
+
+    @Factory
+    @Scope(Scope.CALL, PrototypeMode.CALL_SCOPED)
+    async def async_session(self) -> AsyncSession:
+        """비동기 AsyncSession - 같은 요청 내 공유, 요청 끝나면 자동 close"""
+        return await self.session_factory.create_async()
+```
+
+#### 동기 메서드
+
+```python
+repo = UserRepository()
 
 # Create
 user = repo.save(create(User, name="alice"))
@@ -451,6 +483,8 @@ user = repo.save(create(User, name="alice"))
 # Read
 user = repo.find_by_id(1)
 users = repo.find_all()
+user = repo.find_one_by(name="alice")
+users = repo.find_by(status="active")
 
 # Update
 user.name = "bob"
@@ -460,34 +494,81 @@ repo.save(user)
 repo.delete(user)
 repo.delete_by_id(1)
 
-# Count
+# Utility
 count = repo.count()
-
-# Exists
 exists = repo.exists_by_id(1)
 ```
+
+#### 비동기 메서드
+
+```python
+repo = UserRepository()
+
+# Create
+user = await repo.save_async(create(User, name="alice"))
+
+# Read
+user = await repo.find_by_id_async(1)
+users = await repo.find_all_async()
+user = await repo.find_one_by_async(name="alice")
+users = await repo.find_by_async(status="active")
+
+# Update
+user.name = "bob"
+await repo.save_async(user)
+
+# Delete
+await repo.delete_async(user)
+await repo.delete_by_id_async(1)
+
+# Utility
+count = await repo.count_async()
+exists = await repo.exists_by_id_async(1)
+```
+
+#### 전체 메서드 목록
+
+| 동기 메서드              | 비동기 메서드                  | 설명                  |
+| ------------------------ | ------------------------------ | --------------------- |
+| `find_by_id(id)`         | `find_by_id_async(id)`         | ID로 조회             |
+| `find_all()`             | `find_all_async()`             | 전체 조회             |
+| `find_all_by_id(ids)`    | `find_all_by_id_async(ids)`    | 여러 ID로 조회        |
+| `find_by(**kwargs)`      | `find_by_async(**kwargs)`      | 조건으로 조회         |
+| `find_one_by(**kwargs)`  | `find_one_by_async(**kwargs)`  | 조건으로 단일 조회    |
+| `find_page(page, size)`  | `find_page_async(page, size)`  | 페이지네이션          |
+| `find_slice(off, limit)` | `find_slice_async(off, limit)` | 슬라이스 조회         |
+| `save(entity)`           | `save_async(entity)`           | 저장 (INSERT/UPDATE)  |
+| `save_all(entities)`     | `save_all_async(entities)`     | 여러 엔티티 저장      |
+| `delete(entity)`         | `delete_async(entity)`         | 삭제                  |
+| `delete_by_id(id)`       | `delete_by_id_async(id)`       | ID로 삭제             |
+| `delete_all(entities)`   | `delete_all_async(entities)`   | 여러 엔티티 삭제      |
+| `delete_all_by_id(ids)`  | `delete_all_by_id_async(ids)`  | 여러 ID로 삭제        |
+| `exists_by_id(id)`       | `exists_by_id_async(id)`       | 존재 여부             |
+| `count()`                | `count_async()`                | 전체 개수             |
 
 ### 커스텀 Repository
 
 ```python
 class UserRepository(CrudRepository[User, int]):
+    # 동기 메서드
     def find_by_email(self, email: str) -> User | None:
-        with self.session_factory.session() as session:
-            return session.query(User).filter(
-                User.email == email
-            ).first()
+        return self.find_one_by(email=email)
 
     def find_active_users(self) -> list[User]:
-        with self.session_factory.session() as session:
-            return session.query(User).filter(
-                User.is_active == True
-            ).all()
+        return self.find_by(is_active=True)
 
     def find_by_age_range(self, min_age: int, max_age: int) -> list[User]:
-        with self.session_factory.session() as session:
+        with self.session as session:
             return session.query(User).filter(
                 User.age.between(min_age, max_age)
             ).all()
+
+    # 비동기 메서드
+    async def find_by_email_async(self, email: str) -> User | None:
+        return await self.find_one_by_async(email=email)
+
+    async def find_active_users_async(self) -> list[User]:
+        return await self.find_by_async(is_active=True)
 ```
 
 ## 마이그레이션

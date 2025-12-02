@@ -39,7 +39,9 @@ Options:
 
 Commands:
   db           Database management commands
+  run          Run custom scripts
   server       Start development server
+  startapp     Create a new Bloom app
   startproject Create a new Bloom project
   task         Task management commands
   tests        Run tests with pytest
@@ -255,6 +257,9 @@ myproject/
 │   ├── database.py
 │   ├── advice.py
 │   └── task.py
+├── scripts/
+│   ├── __init__.py
+│   └── hello.py
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py
@@ -262,6 +267,147 @@ myproject/
 ├── pyproject.toml
 └── README.md
 ```
+
+---
+
+## startapp - 앱 생성
+
+새 Bloom 앱을 생성합니다.
+
+### 사용법
+
+```bash
+bloom startapp [OPTIONS] NAME
+```
+
+### 옵션
+
+| 옵션          | 단축 | 설명                         | 기본값               |
+| ------------- | ---- | ---------------------------- | -------------------- |
+| `--directory` | `-d` | 앱을 생성할 디렉토리         | 현재 디렉토리        |
+| `--entity`    | `-e` | 엔티티 클래스 이름           | 앱 이름에서 단수화   |
+| `--yes`       | `-y` | 기본값 사용 (프롬프트 스킵)  | -                    |
+
+### 예제
+
+```bash
+# 인터랙티브 모드 (기본)
+bloom startapp users
+# ? Entity class name [User]: █
+
+# 엔티티 이름 명시적 지정
+bloom startapp categories -e Category
+
+# 기본값 사용 (단수화 자동 적용)
+bloom startapp users -y
+# → Entity: User (Users에서 s 제거)
+
+bloom startapp categories -y
+# → Entity: Category (Categories에서 ies → y)
+
+# 디렉토리와 함께 사용
+bloom startapp orders -d apps/ -e Order
+```
+
+### 단수화 규칙
+
+앱 이름에서 엔티티 이름을 자동으로 추론합니다:
+
+| 앱 이름      | 엔티티 이름 |
+| ------------ | ----------- |
+| `users`      | `User`      |
+| `categories` | `Category`  |
+| `addresses`  | `Address`   |
+| `posts`      | `Post`      |
+
+### 생성되는 구조
+
+```
+users/
+├── __init__.py
+├── controllers.py   (HTTP 엔드포인트)
+├── services.py      (비즈니스 로직)
+├── repositories.py  (데이터 접근)
+├── entities.py      (ORM 엔티티)
+├── schemas.py       (요청/응답 스키마)
+└── tests.py         (테스트)
+```
+
+---
+
+## run - 커스텀 스크립트 실행
+
+프로젝트의 커스텀 스크립트를 실행합니다.
+
+### 사용법
+
+```bash
+bloom run [SCRIPT_NAME] [OPTIONS]
+```
+
+### 스크립트 정의
+
+스크립트는 `scripts/` 디렉토리에 정의합니다:
+
+#### 함수 기반
+
+```python
+# scripts/hello.py
+from bloom.scripts import script
+import click
+
+@script
+@click.option("--name", "-n", default="World")
+def hello(name: str):
+    """인사 스크립트"""
+    click.echo(f"Hello, {name}!")
+```
+
+#### 클래스 기반 (DI 지원)
+
+```python
+# scripts/seed.py
+from bloom.scripts import script, BaseScript
+import click
+
+@script
+class SeedDataScript(BaseScript):
+    """테스트 데이터 시딩"""
+
+    user_repo: UserRepository  # DI 필드 주입
+
+    @click.option("--count", "-c", type=int, default=10)
+    @click.option("--dry-run", is_flag=True)
+    def handle(self, count: int, dry_run: bool):
+        if dry_run:
+            click.echo(f"[DRY RUN] Would create {count} users")
+            return
+
+        for i in range(count):
+            self.user_repo.save(User(name=f"User {i}"))
+        click.secho(f"✓ Created {count} users", fg="green")
+```
+
+### 예제
+
+```bash
+# 스크립트 목록 보기
+bloom run --help
+
+# 함수 기반 스크립트 실행
+bloom run hello --name Alice
+
+# 클래스 기반 스크립트 실행 (kebab-case로 변환)
+bloom run seed-data --count 100
+bloom run seed-data --count 100 --dry-run
+```
+
+### 스크립트 이름 규칙
+
+- **함수**: 함수 이름 그대로 사용 (`hello`, `seed_data`)
+- **클래스**: CamelCase → kebab-case, Script 접미사 제거
+  - `SeedDataScript` → `seed-data`
+  - `MyTestScript` → `my-test`
 
 ---
 
