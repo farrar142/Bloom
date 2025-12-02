@@ -172,6 +172,78 @@ user_id: int = ForeignKey(
 )
 ```
 
+### OneToMany 역참조 관계
+
+`OneToMany`는 DB에 컬럼을 생성하지 않고 역참조 관계를 제공합니다. 순환 임포트 방지를 위해 문자열로 타겟 클래스를 지정할 수 있습니다.
+
+```python
+from bloom.db import Entity, PrimaryKey, ForeignKey, StringColumn, OneToMany
+
+@Entity(table_name="users")
+class User:
+    id = PrimaryKey[int](auto_increment=True)
+    name = StringColumn(max_length=100)
+
+    # 역참조 관계 - DB 컬럼 없음
+    posts: "OneToMany[Post]" = OneToMany("Post", foreign_key="user_id")
+
+@Entity(table_name="posts")
+class Post:
+    id = PrimaryKey[int](auto_increment=True)
+    title = StringColumn(max_length=200)
+    user_id = ForeignKey[int]("users.id")  # 실제 FK 컬럼
+```
+
+#### QueryDSL 스타일 체이닝
+
+`OneToMany` 접근 시 `OneToManyQuery`가 반환되며, QueryDSL 스타일로 체이닝할 수 있습니다:
+
+```python
+# 기본 조회
+posts = user.posts.with_session(session).all()
+
+# 필터 + 정렬 + 페이지네이션
+recent_posts = (
+    user.posts
+    .filter(Post.published == True)
+    .order_by(Post.created_at.desc())
+    .limit(10)
+    .with_session(session)
+    .all()
+)
+
+# 첫 번째 결과
+first_post = user.posts.with_session(session).first()
+
+# 존재 여부
+has_posts = user.posts.with_session(session).exists()
+```
+
+#### OneToManyQuery 메서드
+
+| 메서드                       | 설명           | 반환 타입         |
+| ---------------------------- | -------------- | ----------------- |
+| `filter(*conditions)`        | WHERE 조건 추가 | `OneToManyQuery[T]` |
+| `order_by(*clauses)`         | ORDER BY 추가   | `OneToManyQuery[T]` |
+| `limit(n)`                   | LIMIT 설정      | `OneToManyQuery[T]` |
+| `offset(n)`                  | OFFSET 설정     | `OneToManyQuery[T]` |
+| `with_session(session)`      | Session 주입    | `OneToManyQuery[T]` |
+| `all()`                      | 전체 결과       | `list[T]`          |
+| `first()`                    | 첫 번째 결과    | `T \| None`        |
+| `count()`                    | 결과 수         | `int`              |
+| `exists()`                   | 존재 여부       | `bool`             |
+
+#### 문자열 타겟
+
+순환 임포트를 방지하기 위해 문자열로 타겟을 지정할 수 있습니다:
+
+```python
+# 같은 모듈 내 클래스
+posts: "OneToMany[Post]" = OneToMany("Post", foreign_key="user_id")
+
+# 다른 모듈의 클래스
+posts: "OneToMany[Post]" = OneToMany("myapp.models.Post", foreign_key="user_id")
+
 ## 쿼리 빌더 (QueryDSL 스타일)
 
 ### 기본 조회
@@ -528,23 +600,23 @@ exists = await repo.exists_by_id_async(1)
 
 #### 전체 메서드 목록
 
-| 동기 메서드              | 비동기 메서드                  | 설명                  |
-| ------------------------ | ------------------------------ | --------------------- |
-| `find_by_id(id)`         | `find_by_id_async(id)`         | ID로 조회             |
-| `find_all()`             | `find_all_async()`             | 전체 조회             |
-| `find_all_by_id(ids)`    | `find_all_by_id_async(ids)`    | 여러 ID로 조회        |
-| `find_by(**kwargs)`      | `find_by_async(**kwargs)`      | 조건으로 조회         |
-| `find_one_by(**kwargs)`  | `find_one_by_async(**kwargs)`  | 조건으로 단일 조회    |
-| `find_page(page, size)`  | `find_page_async(page, size)`  | 페이지네이션          |
-| `find_slice(off, limit)` | `find_slice_async(off, limit)` | 슬라이스 조회         |
-| `save(entity)`           | `save_async(entity)`           | 저장 (INSERT/UPDATE)  |
-| `save_all(entities)`     | `save_all_async(entities)`     | 여러 엔티티 저장      |
-| `delete(entity)`         | `delete_async(entity)`         | 삭제                  |
-| `delete_by_id(id)`       | `delete_by_id_async(id)`       | ID로 삭제             |
-| `delete_all(entities)`   | `delete_all_async(entities)`   | 여러 엔티티 삭제      |
-| `delete_all_by_id(ids)`  | `delete_all_by_id_async(ids)`  | 여러 ID로 삭제        |
-| `exists_by_id(id)`       | `exists_by_id_async(id)`       | 존재 여부             |
-| `count()`                | `count_async()`                | 전체 개수             |
+| 동기 메서드              | 비동기 메서드                  | 설명                 |
+| ------------------------ | ------------------------------ | -------------------- |
+| `find_by_id(id)`         | `find_by_id_async(id)`         | ID로 조회            |
+| `find_all()`             | `find_all_async()`             | 전체 조회            |
+| `find_all_by_id(ids)`    | `find_all_by_id_async(ids)`    | 여러 ID로 조회       |
+| `find_by(**kwargs)`      | `find_by_async(**kwargs)`      | 조건으로 조회        |
+| `find_one_by(**kwargs)`  | `find_one_by_async(**kwargs)`  | 조건으로 단일 조회   |
+| `find_page(page, size)`  | `find_page_async(page, size)`  | 페이지네이션         |
+| `find_slice(off, limit)` | `find_slice_async(off, limit)` | 슬라이스 조회        |
+| `save(entity)`           | `save_async(entity)`           | 저장 (INSERT/UPDATE) |
+| `save_all(entities)`     | `save_all_async(entities)`     | 여러 엔티티 저장     |
+| `delete(entity)`         | `delete_async(entity)`         | 삭제                 |
+| `delete_by_id(id)`       | `delete_by_id_async(id)`       | ID로 삭제            |
+| `delete_all(entities)`   | `delete_all_async(entities)`   | 여러 엔티티 삭제     |
+| `delete_all_by_id(ids)`  | `delete_all_by_id_async(ids)`  | 여러 ID로 삭제       |
+| `exists_by_id(id)`       | `exists_by_id_async(id)`       | 존재 여부            |
+| `count()`                | `count_async()`                | 전체 개수            |
 
 ### 커스텀 Repository
 

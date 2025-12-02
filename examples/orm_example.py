@@ -19,6 +19,7 @@ from bloom.db import (
     CrudRepository,
     Query,
     create,
+    OneToMany,
 )
 from bloom.db.backends import SQLiteBackend
 from bloom.db.session import SessionFactory
@@ -63,6 +64,9 @@ class User:
     age = IntegerColumn(default=0)
     is_active = BooleanColumn(default=True)
     created_at = DateTimeColumn(default=datetime.now)
+
+    # 역참조 관계 - DB에는 컬럼 없음, 쿼리용
+    posts: "OneToMany[Post]" = OneToMany("Post", foreign_key="user_id")
 
 
 @Entity(table_name="posts")
@@ -350,6 +354,67 @@ Repository는 데이터 접근을 추상화합니다:
 
 
 # =============================================================================
+# 8. OneToMany 역참조 관계 예제
+# =============================================================================
+
+
+def one_to_many_examples():
+    """OneToMany 관계 예제 (QueryDSL 스타일)"""
+    print("\n=== OneToMany 역참조 관계 ===")
+
+    print(
+        """
+OneToMany는 DB에 컬럼 없이 역참조 관계를 제공합니다:
+
+@Entity(table_name="users")
+class User:
+    id = PrimaryKey[int](auto_increment=True)
+    name = StringColumn(...)
+
+    # 역참조 관계 - DB 컬럼 없음, 쿼리용
+    posts: "OneToMany[Post]" = OneToMany("Post", foreign_key="user_id")
+
+# 사용법 (QueryDSL 스타일)
+user = ...
+query = (
+    user.posts
+    .filter(Post.published == True)
+    .order_by(Post.created_at.desc())
+    .limit(10)
+    .with_session(session)
+)
+posts = query.all()
+"""
+    )
+
+    # 개념 데모 - 쿼리 생성 확인
+    print("--- OneToMany 쿼리 빌더 데모 ---")
+
+    # User 인스턴스 시뮬레이션 (id=1)
+    user = create(User, id=1, name="Alice", email="alice@example.com", age=25)
+    user.__bloom_tracker__.mark_persisted()
+
+    # OneToMany 접근 시 OneToManyQuery 반환
+    posts_query = user.posts
+    print(f"\nuser.posts 타입: {type(posts_query).__name__}")
+    print(f"user.posts repr: {posts_query}")
+
+    # 체이닝 가능
+    filtered_query = (
+        posts_query.filter(Post.published == True)  # type: ignore
+        .order_by(Post.created_at.desc())  # type: ignore
+        .limit(10)
+    )
+    print(f"\n체이닝 후: {filtered_query}")
+
+    # 내부 Query 빌드 확인 (세션 없이 SQL만 확인)
+    internal_query = filtered_query._build_query()
+    sql, params = internal_query.build()
+    print(f"\n생성된 SQL:\n  {sql}")
+    print(f"  params: {params}")
+
+
+# =============================================================================
 # 메인 실행
 # =============================================================================
 
@@ -383,6 +448,7 @@ if __name__ == "__main__":
     migration_examples()
     session_examples()
     repository_examples()
+    one_to_many_examples()
 
     print("\n" + "=" * 60)
     print("예제 완료!")

@@ -470,9 +470,7 @@ def startapp(name: str, directory: str | None, entity: str | None, yes: bool):
     click.echo()
     click.echo("Next steps:")
     click.echo("  1. Add to application.py:")
-    click.echo(
-        f"     from {name} import {entity_name}Controller, {entity_name}Service"
-    )
+    click.echo(f"     from {name} import {entity_name}Controller, {entity_name}Service")
     click.echo(f"     application.scan({name})")
     click.echo()
     click.echo("  2. Or use auto_import():")

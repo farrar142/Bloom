@@ -1,7 +1,7 @@
 """Column descriptors - Column, PrimaryKey, ForeignKey, and typed columns"""
 
 from __future__ import annotations
-from typing import Any, overload, TYPE_CHECKING, Callable
+from typing import Any, overload, TYPE_CHECKING, Callable, Self
 from weakref import WeakKeyDictionary
 from datetime import datetime
 from decimal import Decimal
@@ -11,6 +11,8 @@ from .expressions import FieldExpression
 
 if TYPE_CHECKING:
     from .tracker import DirtyTracker
+    from .session import Session
+    from .query import Query
 
 
 # =============================================================================
@@ -362,3 +364,249 @@ class JSONColumn(Column[dict[str, Any] | list[Any]]):
         if isinstance(value, str):
             value = json.loads(value)
         super().__set__(obj, value)
+
+
+# =============================================================================
+# OneToMany Relationship (역참조)
+# =============================================================================
+
+
+class OneToMany[T]:
+    """OneToMany 관계 디스크립터 (역참조)
+
+    ForeignKey의 반대 방향 관계를 정의합니다.
+    DB에 컬럼을 생성하지 않고, 쿼리 빌더를 반환합니다.
+
+    순환 임포트를 피하기 위해 문자열로 엔티티를 참조할 수 있습니다:
+    - "Post": 같은 모듈 내 클래스
+    - "posts.Post": 다른 모듈의 클래스 (app.Entity 형식)
+
+    Examples:
+        # User 입장에서 Post 역참조
+        @Entity
+        class User:
+            id = PrimaryKey[int](auto_increment=True)
+            name = StringColumn(max_length=255)
+            posts = OneToMany["Post"](foreign_key="user_id")
+
+        # 사용
+        user = session.get(User, 1)
+        posts_query = user.posts  # Query[Post] 반환
+        posts = posts_query.all()  # 실제 쿼리 실행
+
+        # 체이닝 가능
+        recent_posts = user.posts.order_by(Post.created_at.desc()).limit(10).all()
+    """
+
+    def __init__(
+        self,
+        target: type[T] | str,
+        *,
+        foreign_key: str,
+    ):
+        """
+        Args:
+            target: 대상 엔티티 클래스 또는 문자열 (순환 임포트 방지)
+            foreign_key: 대상 엔티티의 ForeignKey 필드명
+        """
+        self._target = target
+        self._foreign_key = foreign_key
+        self._field_name: str = ""
+        self._owner: type | None = None
+        self._resolved_target: type[T] | None = None
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self._field_name = name
+        self._owner = owner
+
+        # OneToMany는 DB 컬럼이 아니므로 __bloom_columns__에 등록하지 않음
+        # 대신 __bloom_relations__에 등록
+        if not hasattr(owner, "__bloom_relations__"):
+            owner.__bloom_relations__ = {}
+        owner.__bloom_relations__[name] = self
+
+    def _resolve_target(self) -> type[T]:
+        """문자열 타겟을 실제 클래스로 resolve"""
+        if self._resolved_target is not None:
+            return self._resolved_target
+
+        if isinstance(self._target, type):
+            self._resolved_target = self._target
+            return self._resolved_target
+
+        # 문자열인 경우 resolve
+        target_str = self._target
+
+        # "module.ClassName" 형식
+        if "." in target_str:
+            module_path, class_name = target_str.rsplit(".", 1)
+            import importlib
+
+            module = importlib.import_module(module_path)
+            self._resolved_target = getattr(module, class_name)
+        else:
+            # 같은 모듈 내 클래스 - owner의 모듈에서 찾기
+            if self._owner is not None:
+                module = __import__(self._owner.__module__, fromlist=[target_str])
+                self._resolved_target = getattr(module, target_str)
+            else:
+                raise ValueError(
+                    f"Cannot resolve target '{target_str}' without owner class"
+                )
+
+        return self._resolved_target  # type: ignore
+
+    def __get__(self, obj: object | None, objtype: type) -> "OneToManyQuery[T]":
+        if obj is None:
+            # 클래스 레벨 접근 - 디스크립터 자체 반환
+            return self  # type: ignore
+
+        # 인스턴스 레벨 접근 - OneToManyQuery 반환
+        target_cls = self._resolve_target()
+        owner_pk = getattr(objtype, "__bloom_pk__", "id")
+        pk_value = getattr(obj, owner_pk, None)
+
+        if pk_value is None:
+            raise ValueError(
+                f"Cannot access OneToMany relation: {objtype.__name__}.{owner_pk} is None"
+            )
+
+        return OneToManyQuery(
+            target_cls=target_cls,
+            foreign_key=self._foreign_key,
+            foreign_value=pk_value,
+        )
+
+    def __repr__(self) -> str:
+        target_name = (
+            self._target if isinstance(self._target, str) else self._target.__name__
+        )
+        return f"OneToMany({self._field_name!r} -> {target_name}, fk={self._foreign_key!r})"
+
+
+class OneToManyQuery[T]:
+    """OneToMany 관계를 위한 쿼리 래퍼
+
+    Query 객체처럼 동작하며, Session이 주입되면 실제 쿼리를 실행합니다.
+    """
+
+    def __init__(
+        self,
+        target_cls: type[T],
+        foreign_key: str,
+        foreign_value: Any,
+    ):
+        self._target_cls = target_cls
+        self._foreign_key = foreign_key
+        self._foreign_value = foreign_value
+        self._session: "Session | None" = None
+
+        # Query 옵션들
+        self._conditions: list[Any] = []
+        self._order_by_clauses: list[Any] = []
+        self._limit_value: int | None = None
+        self._offset_value: int | None = None
+
+    def with_session(self, session: "Session") -> Self:
+        """세션 주입"""
+        self._session = session
+        return self
+
+    def filter(self, *conditions: Any) -> Self:
+        """추가 필터 조건"""
+        new_query = self._copy()
+        new_query._conditions.extend(conditions)
+        return new_query
+
+    def order_by(self, *clauses: Any) -> Self:
+        """정렬"""
+        new_query = self._copy()
+        new_query._order_by_clauses.extend(clauses)
+        return new_query
+
+    def limit(self, n: int) -> Self:
+        """제한"""
+        new_query = self._copy()
+        new_query._limit_value = n
+        return new_query
+
+    def offset(self, n: int) -> Self:
+        """오프셋"""
+        new_query = self._copy()
+        new_query._offset_value = n
+        return new_query
+
+    def _copy(self) -> Self:
+        """복사본 생성"""
+        new_query = OneToManyQuery(
+            target_cls=self._target_cls,
+            foreign_key=self._foreign_key,
+            foreign_value=self._foreign_value,
+        )
+        new_query._session = self._session
+        new_query._conditions = list(self._conditions)
+        new_query._order_by_clauses = list(self._order_by_clauses)
+        new_query._limit_value = self._limit_value
+        new_query._offset_value = self._offset_value
+        return new_query  # type: ignore
+
+    def _build_query(self) -> "Query[T]":
+        """Query 객체 생성"""
+        from .query import Query
+
+        # 기본 FK 조건
+        fk_column = getattr(self._target_cls, self._foreign_key, None)
+        if fk_column is None:
+            raise ValueError(
+                f"Foreign key '{self._foreign_key}' not found in {self._target_cls.__name__}"
+            )
+
+        query = Query(self._target_cls).filter(fk_column == self._foreign_value)
+
+        # 추가 조건
+        for cond in self._conditions:
+            query = query.filter(cond)
+
+        # 정렬
+        for clause in self._order_by_clauses:
+            query = query.order_by(clause)
+
+        # 제한/오프셋
+        if self._limit_value is not None:
+            query = query.limit(self._limit_value)
+        if self._offset_value is not None:
+            query = query.offset(self._offset_value)
+
+        # 세션 주입
+        if self._session is not None:
+            query = query.with_session(self._session)
+
+        return query
+
+    def all(self) -> list[T]:
+        """모든 결과 반환"""
+        return self._build_query().all()
+
+    def first(self) -> T | None:
+        """첫 번째 결과"""
+        return self._build_query().first()
+
+    def count(self) -> int:
+        """결과 수"""
+        return len(self.all())
+
+    def exists(self) -> bool:
+        """결과 존재 여부"""
+        return self.first() is not None
+
+    def __iter__(self):
+        return iter(self.all())
+
+    def __len__(self) -> int:
+        return self.count()
+
+    def __repr__(self) -> str:
+        return (
+            f"OneToManyQuery({self._target_cls.__name__}, "
+            f"{self._foreign_key}={self._foreign_value})"
+        )

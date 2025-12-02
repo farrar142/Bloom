@@ -25,6 +25,7 @@ from .columns import (
     DecimalColumn,
     TextColumn,
     JSONColumn,
+    OneToMany,
 )
 from .tracker import DirtyTracker
 from .entity import Entity, EntityMeta, create
@@ -62,6 +63,7 @@ __all__ = [
     "DecimalColumn",
     "TextColumn",
     "JSONColumn",
+    "OneToMany",
     # Tracking
     "DirtyTracker",
     # Entity
