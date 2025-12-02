@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 def _load_application(app_path: str | None = None) -> "Application | None":
     """프로젝트의 Application 로드 시도
-    
+
     Args:
         app_path: 앱 경로 (예: "application:application", "main:app")
     """
@@ -37,25 +37,28 @@ def _load_application(app_path: str | None = None) -> "Application | None":
         try:
             if ":" not in app_path:
                 app_path = f"{app_path}:application"
-            
+
             module_path, attr_path = app_path.split(":", 1)
-            
+
             # 경로 구분자 변환: backend/application -> backend.application
             if "/" in module_path:
                 module_path = module_path.replace("/", ".")
-            
+
             module = importlib.import_module(module_path)
             app = module
             for attr_name in attr_path.split("."):
                 app = getattr(app, attr_name)
-            
+
             if app is not None:
                 if hasattr(app, "ready_async") and not getattr(app, "_is_ready", False):
                     import asyncio
+
                     asyncio.run(app.ready_async())
                 return app
         except (ImportError, AttributeError) as e:
-            click.echo(f"Warning: Failed to load application '{app_path}': {e}", err=True)
+            click.echo(
+                f"Warning: Failed to load application '{app_path}': {e}", err=True
+            )
             return None
 
     # 기본: application:application 시도
@@ -66,6 +69,7 @@ def _load_application(app_path: str | None = None) -> "Application | None":
             # ready_async() 호출하여 초기화
             if hasattr(app, "ready_async") and not getattr(app, "_is_ready", False):
                 import asyncio
+
                 asyncio.run(app.ready_async())
             return app
     except ImportError:
@@ -134,6 +138,8 @@ def _wrap_command_with_app(
     cmd: click.Command, app: "Application | None"
 ) -> click.Command:
     """스크립트 명령어에 app 인자를 주입하는 래퍼 생성"""
+    from bloom.core.advice.tracing.context import call_scope
+
     original_callback = cmd.callback
     original_func = getattr(cmd, "_original_func", None)
     is_class_script = getattr(cmd, "_is_class_script", False)
@@ -149,8 +155,9 @@ def _wrap_command_with_app(
             instance = script_class()
             # DI 주입
             _inject_dependencies(instance, app)
-            # handle 메서드 호출
-            return instance.handle(**kwargs)
+            # handle 메서드 호출 - call_scope로 감싸서 CALL/CALLSCOPED 세션 열기
+            with call_scope(instance, "handle"):
+                return instance.handle(**kwargs)
 
         new_cmd = click.Command(
             name=cmd.name,
@@ -167,7 +174,9 @@ def _wrap_command_with_app(
                 sig = inspect.signature(original_func)
                 if "app" in sig.parameters:
                     kwargs["app"] = app
-            return original_callback(**kwargs)
+            # call_scope로 감싸서 CALL/CALLSCOPED 세션 열기
+            with call_scope():
+                return original_callback(**kwargs)
 
         new_cmd = click.Command(
             name=cmd.name,
