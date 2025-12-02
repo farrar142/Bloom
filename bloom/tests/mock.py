@@ -32,7 +32,8 @@ class MockContainer:
 
         with mock.apply():
             # 이 스코프 내에서 UserRepository 주입 시 FakeUserRepository가 사용됨
-            app = Application("test").scan(module).ready()
+            app = Application("test").scan(module)
+            asyncio.run(app.ready_async())
             user_service = app.manager.get_instance(UserService)
     """
 
@@ -189,7 +190,8 @@ def isolated_container(
         with isolated_container() as manager:
             # 새로운 격리된 환경에서 테스트
             app = Application("test")
-            app.scan(module).ready()
+            app.scan(module)
+            asyncio.run(app.ready_async())
 
     Args:
         name: ContainerManager 이름

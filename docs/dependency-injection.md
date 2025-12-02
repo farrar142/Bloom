@@ -369,7 +369,7 @@ class BadConfig:
 | Scope       | 설명                               | 사용 예                     |
 | ----------- | ---------------------------------- | --------------------------- |
 | `SINGLETON` | 앱 전체에서 단일 인스턴스 (기본값) | 대부분의 서비스, 리포지토리 |
-| `PROTOTYPE` | 접근할 때마다 새 인스턴스 생성     | 상태를 가진 객체, 빌더      |
+| `CALL`      | 접근할 때마다 새 인스턴스 생성     | 상태를 가진 객체, 빌더      |
 | `REQUEST`   | HTTP 요청마다 새 인스턴스 (TODO)   | 요청별 컨텍스트             |
 
 ### 5.2 사용법
@@ -384,7 +384,7 @@ class SingletonService:
     pass
 
 @Component
-@Scope(ScopeEnum.PROTOTYPE)
+@Scope(ScopeEnum.CALL)
 class PrototypeBuilder:
     """매번 새 인스턴스가 필요한 경우"""
     state: list
@@ -405,7 +405,7 @@ class Consumer:
 ### 5.3 동작 원리
 
 1. **SINGLETON**: 최초 접근 시 인스턴스 생성 후 캐시, 이후 동일 인스턴스 반환
-2. **PROTOTYPE**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
+2. **CALL**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
 3. 모든 필드는 `LazyFieldProxy`로 주입되어 Scope 정보를 활용
 
 ```python
@@ -414,18 +414,18 @@ service = app.manager.get_instance(SingletonService)
 service2 = app.manager.get_instance(SingletonService)
 assert service is service2  # True - 동일 인스턴스
 
-# PROTOTYPE 동작
+# CALL 동작
 builder1 = app.manager.get_instance(PrototypeBuilder)
 builder2 = app.manager.get_instance(PrototypeBuilder)
 assert builder1 is not builder2  # True - 다른 인스턴스
 ```
 
-### 5.4 PROTOTYPE 초기화 시점
+### 5.4 CALL 초기화 시점
 
-PROTOTYPE 스코프의 컴포넌트는 `ready()` 시점에 초기화되지 않습니다:
+CALL 스코프의 컴포넌트는 `ready()` 시점에 초기화되지 않습니다:
 
 - **SINGLETON**: `ready()` 호출 시 인스턴스 생성 및 의존성 주입
-- **PROTOTYPE**: 첫 접근 시점에 인스턴스 생성
+- **CALL**: 첫 접근 시점에 인스턴스 생성
 
 ```python
 app = Application("myapp").scan(__name__).ready()
@@ -870,7 +870,7 @@ app = Application("my-app").scan(module).ready(parallel=True)
 | 기능                   | 설명                                        |
 | ---------------------- | ------------------------------------------- |
 | **@Component**         | 클래스를 DI 컨테이너에 등록                 |
-| **@Scope**             | 인스턴스 스코프 지정 (SINGLETON/PROTOTYPE)  |
+| **@Scope**             | 인스턴스 스코프 지정 (SINGLETON/CALL)       |
 | **@Factory**           | 메서드 기반 인스턴스 생성                   |
 | **@Handler(key)**      | 키 기반 핸들러 등록                         |
 | **Factory Chain**      | 동일 타입 반환 Factory 체인 실행            |

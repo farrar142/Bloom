@@ -49,12 +49,9 @@ class Tag:
 
 @pytest.fixture
 def backend(request):
-    """인메모리 SQLite 백엔드 (각 테스트마다 고유한 DB로 격리)"""
-    import uuid
-
-    # 각 테스트마다 고유한 DB 이름 생성
-    db_name = f"test_{uuid.uuid4().hex[:8]}"
-    return SQLiteBackend(f"file:{db_name}?mode=memory&cache=shared")
+    """인메모리 SQLite 백엔드"""
+    # 단순한 :memory: 모드 사용
+    return SQLiteBackend(":memory:")
 
 
 @pytest.fixture

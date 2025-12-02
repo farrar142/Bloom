@@ -58,17 +58,17 @@ class Scope(Enum):
     """컴포넌트 인스턴스의 생명주기 범위
 
     - SINGLETON: 애플리케이션 전체에서 단일 인스턴스 (기본값)
-    - PROTOTYPE: 주입될 때마다 새 인스턴스 생성
+    - CALL: 주입될 때마다 새 인스턴스 생성
     - REQUEST: HTTP 요청마다 새 인스턴스 (웹 컨텍스트에서만)
     """
 
     SINGLETON = "singleton"
-    PROTOTYPE = "prototype"
+    CALL = "prototype"
     REQUEST = "request"
 
 
 class PrototypeMode(Enum):
-    """PROTOTYPE 스코프의 인스턴스 캐싱 모드
+    """CALL 스코프의 인스턴스 캐싱 모드
 
     - DEFAULT: 매번 새 인스턴스 생성 (Spring 동일)
     - CALL_SCOPED: 같은 핸들러 호출 내에서는 같은 인스턴스 반환
@@ -84,13 +84,13 @@ class ScopeElement(Element):
 
     사용 예시:
         @Component
-        @Scope(Scope.PROTOTYPE)
+        @Scope(Scope.CALL)
         class MyService:
             pass
 
         # 같은 핸들러 호출 내에서는 같은 인스턴스 반환
         @Component
-        @Scope(Scope.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        @Scope(Scope.CALL, mode=PrototypeMode.CALL_SCOPED)
         class ScopedResource:
             pass
     """
@@ -107,7 +107,7 @@ class ScopeElement(Element):
     @property
     def prototype_mode(self) -> PrototypeMode:
         """
-        PROTOTYPE 스코프의 캐싱 모드
+        CALL 스코프의 캐싱 모드
 
         - DEFAULT: 매번 새 인스턴스 생성
         - CALL_SCOPED: 같은 핸들러 호출 내에서 같은 인스턴스 반환
@@ -120,7 +120,7 @@ class SingletonOnlyElement(Element):
     SINGLETON 스코프에서만 사용 가능한 핸들러임을 표시하는 Element
 
     @Factory, @EventListener, @Task 등 애플리케이션 시작 시 한 번만 등록되는
-    핸들러에 사용됩니다. PROTOTYPE 또는 REQUEST 스코프 컴포넌트에서
+    핸들러에 사용됩니다. CALL 또는 REQUEST 스코프 컴포넌트에서
     이 Element가 있는 핸들러를 사용하면 InvalidScopeError가 발생합니다.
 
     Attributes:

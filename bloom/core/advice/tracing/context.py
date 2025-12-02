@@ -3,10 +3,10 @@
 ContextVar 기반으로 각 코루틴/스레드별 독립적인 콜스택을 관리합니다.
 불변 튜플을 사용하여 스레드 안전성을 보장합니다.
 
-PROTOTYPE 스코프 인스턴스 자동 정리:
-- 메서드 진입 시: 새 depth에 대한 PROTOTYPE 리스트 생성
-- PROTOTYPE 생성 시: 현재 depth의 리스트에 추가
-- 메서드 종료 시: 해당 depth의 PROTOTYPE들 @PreDestroy 호출
+CALL 스코프 인스턴스 자동 정리:
+- 메서드 진입 시: 새 depth에 대한 CALL 리스트 생성
+- CALL 생성 시: 현재 depth의 리스트에 추가
+- 메서드 종료 시: 해당 depth의 CALL들 @PreDestroy 호출
 """
 
 from contextvars import ContextVar
@@ -28,13 +28,13 @@ _call_stack: ContextVar[tuple[CallFrame, ...]] = ContextVar(
 # 요청별 추적 ID
 _trace_id: ContextVar[str] = ContextVar("bloom_trace_id", default="")
 
-# PROTOTYPE 인스턴스 저장 (depth -> [(instance, container), ...])
-# 각 콜스택 깊이별로 생성된 PROTOTYPE 인스턴스들을 추적
+# CALL 인스턴스 저장 (depth -> [(instance, container), ...])
+# 각 콜스택 깊이별로 생성된 CALL 인스턴스들을 추적
 _prototype_instances: ContextVar[dict[int, list[tuple[Any, "Container"]]]] = ContextVar(
     "bloom_prototype_instances", default={}
 )
 
-# CALL_SCOPED PROTOTYPE 캐시 (frame_id -> {component_type: instance})
+# CALL_SCOPED CALL 캐시 (frame_id -> {component_type: instance})
 # 같은 핸들러 호출(frame_id) 내에서 같은 타입 요청 시 캐시된 인스턴스 반환
 _scoped_prototype_cache: ContextVar[dict[str, dict[type, Any]]] = ContextVar(
     "bloom_scoped_prototype_cache", default={}
@@ -135,7 +135,7 @@ def pop_frame() -> CallFrame | None:
     """
     마지막 프레임을 콜스택에서 제거 (동기 버전)
 
-    해당 프레임에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy를 호출합니다.
+    해당 프레임에서 생성된 CALL 인스턴스들의 @PreDestroy를 호출합니다.
     동기 컨텍스트 매니저(__exit__)만 처리합니다.
 
     Note: 비동기 __aexit__ 처리가 필요하면 pop_frame_async() 사용
@@ -150,7 +150,7 @@ def pop_frame() -> CallFrame | None:
     frame = current_stack[-1]
     depth = frame.depth
 
-    # PROTOTYPE 인스턴스 정리 (메서드 스코프 종료)
+    # CALL 인스턴스 정리 (메서드 스코프 종료)
     cleanup_prototypes_at_depth(depth)
 
     # 새 튜플 생성 (불변성 유지)
@@ -163,7 +163,7 @@ async def pop_frame_async() -> CallFrame | None:
     """
     마지막 프레임을 콜스택에서 제거 (비동기 버전)
 
-    해당 프레임에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy를 호출합니다.
+    해당 프레임에서 생성된 CALL 인스턴스들의 @PreDestroy를 호출합니다.
     비동기 컨텍스트 매니저(__aexit__)도 처리합니다.
 
     Returns:
@@ -176,7 +176,7 @@ async def pop_frame_async() -> CallFrame | None:
     frame = current_stack[-1]
     depth = frame.depth
 
-    # PROTOTYPE 인스턴스 정리 (비동기 버전)
+    # CALL 인스턴스 정리 (비동기 버전)
     await cleanup_prototypes_at_depth_async(depth)
 
     # 새 튜플 생성 (불변성 유지)
@@ -308,23 +308,23 @@ class async_call_scope:
 
 
 # =============================================================================
-# PROTOTYPE 인스턴스 자동 정리
+# CALL 인스턴스 자동 정리
 # =============================================================================
 
 
 def register_prototype(instance: Any, container: "Container") -> None:
     """
-    현재 콜스택 깊이에 PROTOTYPE 인스턴스 등록
+    현재 콜스택 깊이에 CALL 인스턴스 등록
 
     메서드 종료 시 자동으로 @PreDestroy가 호출됩니다.
 
     Args:
-        instance: PROTOTYPE 인스턴스
+        instance: CALL 인스턴스
         container: 컨테이너 (라이프사이클 메서드 조회용)
     """
     depth = get_call_depth()
     if depth == 0:
-        # 콜스택 외부에서 생성된 PROTOTYPE은 추적하지 않음
+        # 콜스택 외부에서 생성된 CALL은 추적하지 않음
         return
 
     # 현재 depth - 1에 등록 (현재 메서드 내에서 생성된 것이므로)
@@ -339,7 +339,7 @@ def register_prototype(instance: Any, container: "Container") -> None:
 
 def cleanup_prototypes_at_depth(depth: int) -> None:
     """
-    특정 콜스택 깊이에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy 호출
+    특정 콜스택 깊이에서 생성된 CALL 인스턴스들의 @PreDestroy 호출
 
     pop_frame 시 자동으로 호출됩니다.
 
@@ -371,7 +371,7 @@ def cleanup_prototypes_at_depth(depth: int) -> None:
 
 async def cleanup_prototypes_at_depth_async(depth: int) -> None:
     """
-    특정 콜스택 깊이에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy 호출 (비동기 버전)
+    특정 콜스택 깊이에서 생성된 CALL 인스턴스들의 @PreDestroy 호출 (비동기 버전)
 
     pop_frame_async 시 자동으로 호출됩니다.
     비동기 컨텍스트 매니저(__aexit__)도 처리합니다.
@@ -403,7 +403,7 @@ async def cleanup_prototypes_at_depth_async(depth: int) -> None:
 
 
 def get_prototype_count_at_depth(depth: int) -> int:
-    """특정 깊이에 등록된 PROTOTYPE 인스턴스 수 (테스트/디버깅용)"""
+    """특정 깊이에 등록된 CALL 인스턴스 수 (테스트/디버깅용)"""
     instances = _prototype_instances.get()
     return len(instances.get(depth, []))
 
@@ -452,7 +452,7 @@ def _summarize_value(value: Any, max_len: int = 20) -> str:
 
 
 # =============================================================================
-# CALL_SCOPED PROTOTYPE 캐시
+# CALL_SCOPED CALL 캐시
 # =============================================================================
 
 
@@ -467,7 +467,7 @@ def get_current_frame_id() -> str | None:
 
 def get_scoped_prototype(component_type: type) -> Any | None:
     """
-    현재 핸들러 호출 내에서 캐시된 PROTOTYPE 인스턴스 조회
+    현재 핸들러 호출 내에서 캐시된 CALL 인스턴스 조회
 
     CALL_SCOPED 스코프의 컴포넌트가 같은 핸들러 호출 내에서
     동일한 인스턴스를 반환받기 위해 사용됩니다.
@@ -492,7 +492,7 @@ def get_scoped_prototype(component_type: type) -> Any | None:
 
 def set_scoped_prototype(component_type: type, instance: Any) -> None:
     """
-    현재 핸들러 호출에 PROTOTYPE 인스턴스 캐싱 (동기 버전)
+    현재 핸들러 호출에 CALL 인스턴스 캐싱 (동기 버전)
 
     인스턴스가 컨텍스트 매니저 프로토콜(__enter__/__exit__)을 구현하면
     캐싱 시점에 __enter__를 호출합니다. __exit__은 call_scope 종료 시 호출됩니다.
@@ -525,7 +525,7 @@ def set_scoped_prototype(component_type: type, instance: Any) -> None:
 
 async def set_scoped_prototype_async(component_type: type, instance: Any) -> None:
     """
-    현재 핸들러 호출에 PROTOTYPE 인스턴스 캐싱 (비동기 버전)
+    현재 핸들러 호출에 CALL 인스턴스 캐싱 (비동기 버전)
 
     인스턴스가 비동기 컨텍스트 매니저 프로토콜(__aenter__/__aexit__)을 구현하면
     캐싱 시점에 __aenter__를 호출합니다. __aexit__은 call_scope 종료 시 호출됩니다.
@@ -560,7 +560,7 @@ async def set_scoped_prototype_async(component_type: type, instance: Any) -> Non
 
 def _cleanup_scoped_cache_at_depth(depth: int) -> None:
     """
-    특정 depth의 scoped PROTOTYPE 캐시 정리 (동기 버전)
+    특정 depth의 scoped CALL 캐시 정리 (동기 버전)
 
     depth=0일 때만 캐시 정리 (핸들러 호출 종료 시)
     캐시된 인스턴스가 컨텍스트 매니저 프로토콜을 구현하면 __exit__ 호출
@@ -589,7 +589,7 @@ def _cleanup_scoped_cache_at_depth(depth: int) -> None:
 
 async def _cleanup_scoped_cache_at_depth_async(depth: int) -> None:
     """
-    특정 depth의 scoped PROTOTYPE 캐시 정리 (비동기 버전)
+    특정 depth의 scoped CALL 캐시 정리 (비동기 버전)
 
     depth=0일 때만 캐시 정리 (핸들러 호출 종료 시)
     캐시된 인스턴스가 비동기 컨텍스트 매니저(__aexit__)를 구현하면 await 호출

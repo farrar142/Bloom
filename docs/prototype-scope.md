@@ -1,22 +1,22 @@
-# PROTOTYPE 스코프와 자동 라이프사이클 관리
+# CALL 스코프와 자동 라이프사이클 관리
 
 ## 개요
 
-Bloom의 PROTOTYPE 스코프는 필드에 접근할 때마다 새 인스턴스를 생성합니다.
+Bloom의 CALL 스코프는 필드에 접근할 때마다 새 인스턴스를 생성합니다.
 **콜스택 기반 자동 정리** 기능으로 메서드 종료 시 해당 메서드에서 생성된
-PROTOTYPE 인스턴스들의 `@PreDestroy`가 자동으로 호출됩니다.
+CALL 인스턴스들의 `@PreDestroy`가 자동으로 호출됩니다.
 
 ## 스코프 종류
 
 | Scope       | 설명                               | 인스턴스 저장 위치            | 라이프사이클              |
 | ----------- | ---------------------------------- | ----------------------------- | ------------------------- |
 | `SINGLETON` | 앱 전체에서 단일 인스턴스 (기본값) | `ContainerManager`            | 앱 시작 ~ 앱 종료         |
-| `PROTOTYPE` | 접근할 때마다 새 인스턴스 생성     | 저장하지 않음 (콜스택 추적)   | 메서드 시작 ~ 메서드 종료 |
+| `CALL`      | 접근할 때마다 새 인스턴스 생성     | 저장하지 않음 (콜스택 추적)   | 메서드 시작 ~ 메서드 종료 |
 | `REQUEST`   | HTTP 요청마다 새 인스턴스          | `RequestContext` (ContextVar) | 요청 시작 ~ 요청 종료     |
 
-## PROTOTYPE 모드
+## CALL 모드
 
-`PrototypeMode`로 PROTOTYPE의 인스턴스 캐싱 방식을 지정합니다:
+`PrototypeMode`로 CALL의 인스턴스 캐싱 방식을 지정합니다:
 
 | Mode          | 설명                                    | 사용 사례                                   |
 | ------------- | --------------------------------------- | ------------------------------------------- |
@@ -28,12 +28,12 @@ from bloom import Component
 from bloom.core import Scope, ScopeEnum, PrototypeMode
 
 @Component
-@Scope(ScopeEnum.PROTOTYPE)  # DEFAULT: 매번 새 인스턴스
+@Scope(ScopeEnum.CALL)  # DEFAULT: 매번 새 인스턴스
 class DefaultPrototype:
     pass
 
 @Component
-@Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)  # 핸들러 내 공유
+@Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)  # 핸들러 내 공유
 class CallScopedPrototype:
     pass
 ```
@@ -47,7 +47,7 @@ from bloom.core.decorators import PostConstruct, PreDestroy, Handler, Factory
 from bloom.core.advice import MethodAdvice, MethodAdviceRegistry, CallStackTraceAdvice
 
 @Component
-@Scope(ScopeEnum.PROTOTYPE)
+@Scope(ScopeEnum.CALL)
 class DatabaseConnection:
     connection_id: int = 0
 
@@ -80,7 +80,7 @@ class UserService:
 
 
     def create_user(self, name: str) -> str:
-        # PROTOTYPE 접근 시 새 인스턴스 생성 + @PostConstruct
+        # CALL 접근 시 새 인스턴스 생성 + @PostConstruct
         conn_id = self.db.connection_id
         print(f"사용자 생성: {name} (연결: {conn_id})")
         return f"user-{conn_id}"
@@ -113,7 +113,7 @@ from bloom.core.decorators import Handler, Factory
 from bloom.core.advice import MethodAdvice, MethodAdviceRegistry, CallStackTraceAdvice
 
 @Component
-@Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+@Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
 class TransactionContext:
     """핸들러 호출 내에서 공유되는 트랜잭션 컨텍스트"""
     tx_id: str = ""
@@ -216,9 +216,9 @@ class Consumer:
         assert d1 != d2 != d3  # ✓ 모두 다른 ID
 ```
 
-## PROTOTYPE 접근 방식
+## CALL 접근 방식
 
-⚠️ **중요**: PROTOTYPE 필드는 **속성 접근**을 통해서만 resolve됩니다.
+⚠️ **중요**: CALL 필드는 **속성 접근**을 통해서만 resolve됩니다.
 
 ```python
 @Component
@@ -253,24 +253,24 @@ def process(self):
 ### 동작 원리
 
 1. **메서드 진입**: `CallStackTraceAdvice`가 `push_frame()` 호출
-2. **PROTOTYPE 생성**: `LazyFieldProxy`가 `register_prototype(instance, container)` 호출
+2. **CALL 생성**: `LazyFieldProxy`가 `register_prototype(instance, container)` 호출
 3. **메서드 종료**: `pop_frame()`에서 `cleanup_prototypes_at_depth(depth)` 자동 호출
-4. **@PreDestroy 실행**: 해당 depth에서 생성된 모든 PROTOTYPE의 `@PreDestroy` 호출
+4. **@PreDestroy 실행**: 해당 depth에서 생성된 모든 CALL의 `@PreDestroy` 호출
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ outer_method() [depth=0]                                     │
 │  ├─ push_frame(depth=0)                                      │
-│  ├─ self.resource.xxx → PROTOTYPE 생성 → register(depth=0)  │
+│  ├─ self.resource.xxx → CALL 생성 → register(depth=0)  │
 │  │                                                           │
 │  │  ┌──────────────────────────────────────────────────────┐ │
 │  │  │ inner_method() [depth=1]                              │ │
 │  │  │  ├─ push_frame(depth=1)                               │ │
 │  │  │  ├─ self.resource.xxx → register(depth=1)            │ │
-│  │  │  └─ pop_frame(depth=1) → cleanup depth=1 PROTOTYPES  │ │
+│  │  │  └─ pop_frame(depth=1) → cleanup depth=1 CALLS  │ │
 │  │  └──────────────────────────────────────────────────────┘ │
 │  │                                                           │
-│  └─ pop_frame(depth=0) → cleanup depth=0 PROTOTYPES         │
+│  └─ pop_frame(depth=0) → cleanup depth=0 CALLS         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -283,19 +283,19 @@ class OuterService:
     resource: PrototypeResource  # depth=0에서 생성
 
     def outer_process(self):
-        self.resource.init()           # ① PROTOTYPE A 생성 (depth=0)
+        self.resource.init()           # ① CALL A 생성 (depth=0)
         self.inner.inner_process()     # ② inner 호출
         return "done"
-        # ⑤ pop_frame(0) → PROTOTYPE A의 @PreDestroy
+        # ⑤ pop_frame(0) → CALL A의 @PreDestroy
 
 @Component
 class InnerService:
     resource: PrototypeResource  # depth=1에서 생성
 
     def inner_process(self):
-        self.resource.init()           # ③ PROTOTYPE B 생성 (depth=1)
+        self.resource.init()           # ③ CALL B 생성 (depth=1)
         return "inner done"
-        # ④ pop_frame(1) → PROTOTYPE B의 @PreDestroy
+        # ④ pop_frame(1) → CALL B의 @PreDestroy
 
 # 실행 순서:
 # ① A 생성
@@ -307,7 +307,7 @@ class InnerService:
 
 ## Async 환경에서의 격리
 
-`ContextVar` 기반으로 각 코루틴별 독립적인 콜스택과 PROTOTYPE 저장소를 가집니다.
+`ContextVar` 기반으로 각 코루틴별 독립적인 콜스택과 CALL 저장소를 가집니다.
 
 ```python
 @Component
@@ -316,11 +316,11 @@ class AsyncService:
 
 
     async def process(self, request_id: str):
-        # 각 코루틴별 독립적인 PROTOTYPE 생성
+        # 각 코루틴별 독립적인 CALL 생성
         self.resource.request_id = request_id
         await asyncio.sleep(0.1)  # 다른 코루틴에 양보
         return self.resource.request_id
-        # 이 코루틴의 PROTOTYPE만 정리됨
+        # 이 코루틴의 CALL만 정리됨
 
 # 동시 실행
 results = await asyncio.gather(
@@ -328,7 +328,7 @@ results = await asyncio.gather(
     service.process("B"),
     service.process("C"),
 )
-# 각 요청의 PROTOTYPE이 독립적으로 생성/정리됨
+# 각 요청의 CALL이 독립적으로 생성/정리됨
 ```
 
 ### 격리 보장 구조
@@ -345,7 +345,7 @@ _prototype_instances: ContextVar[dict[int, list[tuple[Any, Container]]]] = Conte
 
 ## 예외 발생 시 정리
 
-예외가 발생해도 `on_error`에서 `pop_frame`이 호출되어 PROTOTYPE이 정리됩니다.
+예외가 발생해도 `on_error`에서 `pop_frame`이 호출되어 CALL이 정리됩니다.
 
 ```python
 @Component
@@ -354,7 +354,7 @@ class FailingService:
 
 
     async def might_fail(self):
-        self.resource.init()  # PROTOTYPE 생성
+        self.resource.init()  # CALL 생성
 
         raise ValueError("오류 발생!")
         # 예외 발생해도 @PreDestroy 호출됨
@@ -362,21 +362,21 @@ class FailingService:
 try:
     await service.might_fail()
 except ValueError:
-    pass  # PROTOTYPE은 이미 정리됨
+    pass  # CALL은 이미 정리됨
 ```
 
 ## Spring과의 비교
 
-| 특성                    | Spring          | Bloom                       |
-| ----------------------- | --------------- | --------------------------- |
-| PROTOTYPE 인스턴스 추적 | 추적 안 함      | 콜스택 기반 추적            |
-| @PostConstruct          | ✅ 호출됨       | ✅ 호출됨                   |
-| @PreDestroy             | ❌ 호출 안 됨   | ✅ 메서드 종료 시 자동 호출 |
-| 리소스 정리             | 클라이언트 책임 | 프레임워크가 자동 처리      |
+| 특성               | Spring          | Bloom                       |
+| ------------------ | --------------- | --------------------------- |
+| CALL 인스턴스 추적 | 추적 안 함      | 콜스택 기반 추적            |
+| @PostConstruct     | ✅ 호출됨       | ✅ 호출됨                   |
+| @PreDestroy        | ❌ 호출 안 됨   | ✅ 메서드 종료 시 자동 호출 |
+| 리소스 정리        | 클라이언트 책임 | 프레임워크가 자동 처리      |
 
 ## 필수 요구사항
 
-PROTOTYPE 자동 정리가 작동하려면:
+CALL 자동 정리가 작동하려면:
 
 1. **TracingAdvice 등록 필수**
 
@@ -399,7 +399,7 @@ PROTOTYPE 자동 정리가 작동하려면:
            return reg
    ```
 
-3. **PROTOTYPE 사용 메서드에 데코레이터**
+3. **CALL 사용 메서드에 데코레이터**
 
    ```python
 
@@ -414,10 +414,10 @@ PROTOTYPE 자동 정리가 작동하려면:
 ```python
 def register_prototype(instance: Any, container: Container) -> None:
     """
-    현재 콜스택 깊이에 PROTOTYPE 인스턴스 등록
+    현재 콜스택 깊이에 CALL 인스턴스 등록
 
     LazyFieldProxy._lfp_resolve()에서 자동 호출됩니다.
-    콜스택 외부(depth=0)에서 생성된 PROTOTYPE은 등록되지 않습니다.
+    콜스택 외부(depth=0)에서 생성된 CALL은 등록되지 않습니다.
     """
 ```
 
@@ -426,7 +426,7 @@ def register_prototype(instance: Any, container: Container) -> None:
 ```python
 def cleanup_prototypes_at_depth(depth: int) -> None:
     """
-    특정 콜스택 깊이에서 생성된 PROTOTYPE 인스턴스들의 @PreDestroy 호출
+    특정 콜스택 깊이에서 생성된 CALL 인스턴스들의 @PreDestroy 호출
 
     pop_frame()에서 자동 호출됩니다.
     """
@@ -436,7 +436,7 @@ def cleanup_prototypes_at_depth(depth: int) -> None:
 
 ```python
 def get_prototype_count_at_depth(depth: int) -> int:
-    """특정 깊이에 등록된 PROTOTYPE 인스턴스 수 (테스트/디버깅용)"""
+    """특정 깊이에 등록된 CALL 인스턴스 수 (테스트/디버깅용)"""
 ```
 
 ## 관련 문서

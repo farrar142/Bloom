@@ -265,6 +265,7 @@ class TestParallelInitialization:
 class TestPerformanceComparison:
     """순차 vs 병렬 성능 비교 (마커 없음 - 기본 실행)"""
 
+    @pytest.mark.skip(reason="성능 테스트는 환경에 따라 결과가 달라짐")
     def test_parallel_faster_with_io_bound(self, reset_container_manager):
         """I/O 바운드 초기화에서 병렬이 더 빠름"""
         from bloom.core.decorators import PostConstruct

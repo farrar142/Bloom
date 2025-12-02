@@ -173,7 +173,7 @@ class TestPrototypeLifecycle:
         """PROTOTYPE은 필드 주입을 통해 사용"""
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeService:
             def get_id(self) -> int:
                 return id(self)

@@ -157,7 +157,7 @@ class TaskLifecycleManager:
     """태스크 백엔드 생명주기 관리
 
     async @PostConstruct/@PreDestroy는 ASGI lifespan 또는
-    app.start_async()/shutdown_async()에서 자동으로 실행됩니다.
+    await app.ready_async()에서 자동으로 실행됩니다.
     """
 
     backend: Lazy[DistributedTaskBackend]  # Lazy로 지연 주입 (투명 프록시)
@@ -191,7 +191,6 @@ app = (
     .scan(InventoryService)
     .scan(TaskBackendFactory)
     .scan(TaskLifecycleManager)
-    .ready()
 )
 
 
@@ -207,8 +206,8 @@ async def run_producer():
     print("=" * 60)
     print()
 
-    # async @PostConstruct 실행 (Redis 연결 등)
-    await app.start_async()
+    # async @PostConstruct 포함 초기화 (Redis 연결 등)
+    await app.ready_async()
 
     # 서비스 인스턴스 가져오기
     order_service = app.manager.get_instance(OrderService)
@@ -290,8 +289,8 @@ async def run_worker():
     print("Ctrl+C로 종료")
     print()
 
-    # async 생명주기 핸들러 실행 (TaskLifecycleManager.start_backend)
-    await app.start_async()
+    # async 생명주기 핸들러 포함 초기화 (TaskLifecycleManager.start_backend)
+    await app.ready_async()
 
     backend = app.manager.get_instance(DistributedTaskBackend)
 

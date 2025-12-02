@@ -282,7 +282,7 @@ class TestScopeEdgeCases:
         """PROTOTYPE 스코프 인스턴스 차이"""
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeService:
             pass
 

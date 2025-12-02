@@ -69,7 +69,7 @@ class TestScopePrototype:
         instance_count = 0
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeService:
             def __init__(self):
                 nonlocal instance_count
@@ -101,7 +101,7 @@ class TestScopePrototype:
         instance_count = 0
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class RequestHandler:
             def __init__(self):
                 nonlocal instance_count
@@ -138,7 +138,7 @@ class TestScopeMixed:
         proto_count = 0
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeLogger:
             def __init__(self):
                 nonlocal proto_count
@@ -180,7 +180,7 @@ class TestScopeMixed:
                 return self.count
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeWorker:
             counter: SingletonCounter
 
@@ -221,7 +221,7 @@ class TestPrototypeLifecycleWithEvents:
         created = []
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class ManagedResource:
             resource_id: int = 0
 
@@ -286,7 +286,7 @@ class TestPrototypeLifecycleWithEvents:
         destroyed = []
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class ManagedResource:
             resource_id: int = 0
 
@@ -334,7 +334,7 @@ class TestCallScopedPrototype:
         instance_count = 0
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        @Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
         class ScopedResource:
             def __init__(self):
                 nonlocal instance_count
@@ -400,7 +400,7 @@ class TestCallScopedPrototype:
         instance_count = 0
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        @Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
         class SharedResource:
             def __init__(self):
                 nonlocal instance_count
@@ -465,7 +465,7 @@ class TestCallScopedPrototype:
         default_count = 0
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        @Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
         class ScopedService:
             def __init__(self):
                 nonlocal scoped_count
@@ -473,7 +473,7 @@ class TestCallScopedPrototype:
                 self.id = scoped_count
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)  # DEFAULT
+        @Scope(ScopeEnum.CALL)  # DEFAULT
         class DefaultService:
             def __init__(self):
                 nonlocal default_count

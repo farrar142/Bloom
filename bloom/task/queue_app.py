@@ -21,7 +21,8 @@ uvicorn이 ASGI 앱을 실행하는 것처럼, bloom worker가 이 Queue App을 
             broker = RedisBroker("redis://localhost:6379/0")
             return DistributedTaskBackend(broker)
 
-    app = Application("myapp").scan(__name__).ready()
+    app = Application("myapp").scan(__name__)
+    asyncio.run(app.ready_async())
 
     # 웹 서버 실행
     # uvicorn main:app.asgi
@@ -56,7 +57,8 @@ class QueueApplication:
 
     사용 예시:
         # main.py
-        app = Application("myapp").scan(__name__).ready()
+        app = Application("myapp").scan(__name__)
+        asyncio.run(app.ready_async())
 
         # 커맨드라인
         bloom worker main:app.queue --concurrency 4

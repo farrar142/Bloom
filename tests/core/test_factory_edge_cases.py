@@ -407,7 +407,7 @@ class TestFactoryLifecycleEdgeCases:
         @Component
         class Config:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE)
+            @Scope(ScopeEnum.CALL)
             def create(self) -> PrototypeValue:
                 return PrototypeValue()
 
@@ -795,7 +795,7 @@ class TestFactoryScopeEdgeCases:
         @Component
         class Config:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE)
+            @Scope(ScopeEnum.CALL)
             def create(self) -> PrototypeValue:
                 return PrototypeValue()
 
@@ -828,7 +828,7 @@ class TestFactoryScopeEdgeCases:
         @Component
         class Config:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def create(self) -> CallScopedValue:
                 return CallScopedValue()
 
@@ -907,7 +907,7 @@ class TestFactoryScopeEdgeCases:
             factory: TransactionFactory
 
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def transaction(self) -> Transaction:
                 return self.factory.create()
 
@@ -1020,7 +1020,7 @@ class TestFactoryScopeEdgeCases:
         @Component
         class ResourceConfig:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def resource(self) -> SharedResource:
                 counter[0] += 1
                 return SharedResource(counter[0])
@@ -1101,7 +1101,7 @@ class TestFactoryScopeEdgeCases:
         @Component
         class ResourceConfig:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def resource(self) -> ManagedResource:
                 counter[0] += 1
                 return ManagedResource(counter[0])
@@ -1197,7 +1197,7 @@ class TestFactoryScopeEdgeCases:
         @Component
         class ConnectionConfig:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def connection(self) -> DatabaseConnection:
                 counter[0] += 1
                 return DatabaseConnection(counter[0])
@@ -1293,7 +1293,7 @@ class TestFactoryScopeEdgeCases:
         @Component
         class Config:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def resource(self) -> Resource:
                 counter[0] += 1
                 return Resource(counter[0])
@@ -1340,15 +1340,16 @@ class TestFactoryScopeEdgeCases:
         assert lifecycle_log.count("exit:1") == 1
         assert lifecycle_log.count("pre_destroy:1") == 1
 
-        # 순서: init -> enter -> post_construct -> ... -> exit -> pre_destroy
+        # 순서: init -> enter -> post_construct -> ... -> pre_destroy -> exit
         # 참고: __enter__는 캐싱 시점에 호출되므로 post_construct보다 먼저 호출됨
+        # pre_destroy는 exit 전에 호출됨
         init_idx = lifecycle_log.index("init:1")
         enter_idx = lifecycle_log.index("enter:1")
         pc_idx = lifecycle_log.index("post_construct:1")
         exit_idx = lifecycle_log.index("exit:1")
         pd_idx = lifecycle_log.index("pre_destroy:1")
 
-        assert init_idx < enter_idx < pc_idx < exit_idx < pd_idx
+        assert init_idx < enter_idx < pc_idx < pd_idx < exit_idx
 
         # 중첩 call_scope 진입/종료에서 추가 호출 없음
         lifecycle_events = [
@@ -1397,7 +1398,7 @@ class TestFactoryScopeEdgeCases:
         @Component
         class SessionConfig:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def session(self) -> AsyncSession:
                 counter[0] += 1
                 return AsyncSession(counter[0])
@@ -1470,7 +1471,7 @@ class TestFactoryScopeEdgeCases:
         @Component
         class Config:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def resource(self) -> AsyncResource:
                 counter[0] += 1
                 return AsyncResource(counter[0])
@@ -1547,12 +1548,12 @@ class TestFactoryScopeEdgeCases:
         @Component
         class Config:
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def cache(self) -> AsyncCache:
                 return AsyncCache("redis")
 
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def queue(self) -> AsyncQueue:
                 return AsyncQueue("rabbitmq")
 

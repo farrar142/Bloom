@@ -648,12 +648,12 @@ class ConfigurationError(SystemException):
 class InvalidScopeError(ContainerException):
     """잘못된 스코프 사용 예외
 
-    PROTOTYPE 또는 REQUEST 스코프의 컴포넌트에 @Factory, @EventListener, @Task 등
+    CALL 또는 REQUEST 스코프의 컴포넌트에 @Factory, @EventListener, @Task 등
     SINGLETON에서만 사용 가능한 핸들러를 정의했을 때 발생합니다.
 
     예시:
         @Component
-        @Scope(Scope.PROTOTYPE)  # ❌ 오류 발생
+        @Scope(Scope.CALL)  # ❌ 오류 발생
         class MyService:
             @Factory
             def create_something(self) -> Something:
@@ -668,9 +668,9 @@ class InvalidScopeError(ContainerException):
                 pass
 
     이유:
-        - PROTOTYPE 스코프는 주입될 때마다 새 인스턴스가 생성됩니다.
+        - CALL 스코프는 주입될 때마다 새 인스턴스가 생성됩니다.
         - @Factory, @EventListener, @Task는 애플리케이션 시작 시 한 번만 등록됩니다.
-        - PROTOTYPE 컴포넌트의 핸들러가 등록되면, 어떤 인스턴스에서 실행될지 모호해집니다.
+        - CALL 컴포넌트의 핸들러가 등록되면, 어떤 인스턴스에서 실행될지 모호해집니다.
         - REQUEST 스코프도 동일한 이유로 허용되지 않습니다.
     """
 

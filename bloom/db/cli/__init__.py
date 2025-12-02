@@ -193,10 +193,11 @@ def db(
 
     try:
         app, app_module = load_application(app_path)
-        # app.ready() 호출하여 DI 초기화
+        # ready_async() 호출하여 DI 초기화
         if not app._is_ready:
+            import asyncio
             click.echo(f"Initializing application: {app.name}")
-            app.ready()
+            asyncio.run(app.ready_async())
         click.echo(f"Using application: {app.name}")
     except (ImportError, AttributeError, click.ClickException) as e:
         # application 모듈을 찾을 수 없는 경우

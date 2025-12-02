@@ -187,12 +187,12 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
 
         Factory Chain에서는 각 Factory가 독립적으로 _create_instance()를 호출해야 함.
         이전 단계의 결과를 의존성으로 받아서 수정하는 패턴이기 때문임.
+        
+        Note: @PostConstruct는 여기서 호출하지 않습니다.
+        orchestrator가 async로 처리합니다.
         """
         # Factory는 항상 _create_instance() 호출 (캐시 무시)
         instance = self._create_instance()
-        # PostConstruct 호출 (마지막 Factory만 호출하도록 하려면 조건 추가)
-        if not self._is_chain_intermediate:
-            self._get_manager().lifecycle.invoke_post_construct(self, instance)
         return instance
 
     @classmethod

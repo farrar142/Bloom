@@ -32,14 +32,15 @@ def create_test_app(
             config={"database.url": "sqlite:///:memory:"}
         )
 
-        # ready() 호출 없이 생성
+        # ready_async() 호출 없이 생성
         app = create_test_app(MyController, ready=False)
-        app.scan(AnotherModule).ready()
+        app.scan(AnotherModule)
+        asyncio.run(app.ready_async())
 
     Args:
         name: 애플리케이션 이름
         *modules: 스캔할 모듈들
-        ready: True면 자동으로 ready() 호출
+        ready: True면 자동으로 ready_async() 호출
         config: 설정 딕셔너리 (Application.config에 주입)
 
     Returns:
@@ -55,9 +56,21 @@ def create_test_app(
     for module in modules:
         app.scan(module)
 
-    # ready() 호출 (선택적)
+    # ready_async() 호출 (선택적)
     if ready and modules:
-        app.ready()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        
+        if loop and loop.is_running():
+            # 이벤트 루프가 이미 실행 중이면 스레드에서 실행
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, app.ready_async())
+                future.result()
+        else:
+            asyncio.run(app.ready_async())
 
     return app
 

@@ -36,7 +36,7 @@ class Session:
     """세션 - Unit of Work 패턴 구현
 
     AutoCloseable 프로토콜을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
-    PROTOTYPE 스코프로 사용 시 메서드 종료 시 자동으로 close()가 호출됩니다.
+    CALL 스코프로 사용 시 메서드 종료 시 자동으로 close()가 호출됩니다.
 
     엔티티의 생명주기를 관리하고, 변경 사항을 추적하여
     flush 시점에 DB에 반영합니다.
@@ -48,7 +48,7 @@ class Session:
             session.add(user)
             session.commit()
 
-        # DI로 주입받아 사용 (PROTOTYPE + CALL_SCOPED 권장)
+        # DI로 주입받아 사용 (CALL + CALL_SCOPED 권장)
         @Component
         class UserService:
             session: Session  # 자동으로 정리됨

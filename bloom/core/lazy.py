@@ -37,8 +37,8 @@ class LazyFieldProxy[T]:
     모든 필드 주입은 기본적으로 이 프록시로 래핑됩니다.
     접근 시점에 실제 인스턴스를 해결하며, Scope에 따라 동작이 다릅니다:
     - SINGLETON: 최초 접근 시 한 번만 resolve (캐시)
-    - PROTOTYPE: 매 접근마다 새 인스턴스 생성
-    - PROTOTYPE (CALL_SCOPED): 같은 핸들러 호출 내에서는 같은 인스턴스 반환
+    - CALL: 매 접근마다 새 인스턴스 생성
+    - CALL (CALL_SCOPED): 같은 핸들러 호출 내에서는 같은 인스턴스 반환
     - REQUEST: HTTP 요청 컨텍스트마다 새 인스턴스
 
     사용법:
@@ -93,9 +93,9 @@ class LazyFieldProxy[T]:
             object.__setattr__(self, "_lfp_resolved", True)
             return instance
 
-        # PROTOTYPE: 매번 새 인스턴스 생성
+        # CALL: 매번 새 인스턴스 생성
         # 콜스택 내에서 생성되면 메서드 종료 시 자동으로 @PreDestroy 호출
-        if scope == Scope.PROTOTYPE:
+        if scope == Scope.CALL:
             prototype_mode = object.__getattribute__(self, "_lfp_prototype_mode")
             target_type = object.__getattribute__(self, "_lfp_target_type")
             container = object.__getattribute__(self, "_lfp_container")
@@ -116,7 +116,7 @@ class LazyFieldProxy[T]:
             if prototype_mode == PrototypeMode.CALL_SCOPED and target_type is not None:
                 set_scoped_prototype(target_type, instance)
 
-            # PROTOTYPE @PostConstruct 호출 - LifecycleManager 위임
+            # CALL @PostConstruct 호출 - LifecycleManager 위임
             if container is not None:
                 manager = container._get_manager()
                 if manager is not None:
@@ -176,7 +176,7 @@ class LazyFieldProxy[T]:
     def _lfp_publish_instance_created(
         self, manager: Any, instance: Any, scope: Scope
     ) -> None:
-        """InstanceCreatedEvent 발행 (PROTOTYPE/REQUEST 추적용)"""
+        """InstanceCreatedEvent 발행 (CALL/REQUEST 추적용)"""
         from .events import InstanceCreatedEvent
 
         target_type = object.__getattribute__(self, "_lfp_target_type")

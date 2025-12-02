@@ -20,10 +20,10 @@
 | 의존성 그래프 초기화             | ✅   | DAG 기반 병렬 초기화              |
 | Factory Chain                    | ✅   | 동일 타입 Factory 체이닝          |
 | `@Scope(SINGLETON)`              | ✅   | 싱글톤 스코프 (기본값)            |
-| `@Scope(PROTOTYPE)`              | ✅   | 프로토타입 스코프                 |
+| `@Scope(CALL)`                   | ✅   | 프로토타입 스코프                 |
 | `PrototypeMode.DEFAULT`          | ✅   | 매번 새 인스턴스 생성             |
 | `PrototypeMode.CALL_SCOPED`      | ✅   | 핸들러 호출 내 동일 인스턴스 공유 |
-| PROTOTYPE 자동 정리              | ✅   | 콜스택 기반 @PreDestroy 자동 호출 |
+| CALL 자동 정리                   | ✅   | 콜스택 기반 @PreDestroy 자동 호출 |
 
 #### AOP (Aspect-Oriented Programming)
 
@@ -153,7 +153,7 @@
 | `task-system.md`           | ✅   | Task 시스템 문서        |
 | `method-advice-pattern.md` | ✅   | AOP 패턴 문서           |
 | `tracing-system.md`        | ✅   | 콜스택 추적 시스템 문서 |
-| `prototype-scope.md`       | ✅   | PROTOTYPE 스코프 문서   |
+| `prototype-scope.md`       | ✅   | CALL 스코프 문서        |
 | `event-system.md`          | ✅   | 이벤트 시스템 문서      |
 
 #### 테스팅
@@ -216,7 +216,7 @@
 - [x] `PrototypeMode.CALL_SCOPED` - 핸들러 호출 내 공유 ✅
 - [x] `Lazy[T]` - 지연 초기화 ✅
 - [x] `@PostConstruct` / `@PreDestroy` - 라이프사이클 훅 ✅
-- [x] PROTOTYPE 자동 정리 - 콜스택 기반 @PreDestroy ✅
+- [x] CALL 자동 정리 - 콜스택 기반 @PreDestroy ✅
 - [ ] 조건부 빈 등록 (`@ConditionalOnProperty`)
 
 #### 🌐 Web 확장

@@ -350,7 +350,7 @@ class TestAsyncPrototypeIsolation:
         destroyed_by_coroutine: dict[str, list[int]] = {"A": [], "B": [], "C": []}
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeResource:
             coro_id: str = ""
             resource_id: int = 0
@@ -456,7 +456,7 @@ class TestAsyncPrototypeIsolation:
         lifecycle_log: list[str] = []
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class NestedResource:
             level: str = ""
             resource_id: int = 0
@@ -555,7 +555,7 @@ class TestAsyncPrototypeIsolation:
         destroyed = []
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class ResourceWithCleanup:
             resource_id: int = 0
 

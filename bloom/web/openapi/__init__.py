@@ -18,7 +18,8 @@ OpenAPI 3.0 스펙을 자동으로 생성합니다.
                 description="My awesome API",
             )
 
-    app = Application("my_app").scan(OpenAPIConfiguration, MyController).ready()
+    app = Application("my_app").scan(OpenAPIConfiguration, MyController)
+    asyncio.run(app.ready_async())
     # /openapi.json, /docs 엔드포인트 자동 등록
 """
 

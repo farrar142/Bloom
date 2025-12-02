@@ -177,8 +177,8 @@ class Container[T]:
 
                     def make_resolver(m: "ContainerManager", t: type, s: ScopeEnum):
                         def resolver():
-                            # PROTOTYPE/REQUEST는 항상 새 인스턴스 생성
-                            if s == ScopeEnum.PROTOTYPE or s == ScopeEnum.REQUEST:
+                            # CALL/REQUEST는 항상 새 인스턴스 생성
+                            if s == ScopeEnum.CALL or s == ScopeEnum.REQUEST:
                                 if container := m.get_container(t):
                                     return container._create_instance()
                                 raise Exception(
@@ -197,10 +197,10 @@ class Container[T]:
 
                         return resolver
 
-                    # PROTOTYPE/REQUEST인 경우 container 전달 (라이프사이클 관리용)
+                    # CALL/REQUEST인 경우 container 전달 (라이프사이클 관리용)
                     lifecycle_container = (
                         inner_container
-                        if inner_scope in (ScopeEnum.PROTOTYPE, ScopeEnum.REQUEST)
+                        if inner_scope in (ScopeEnum.CALL, ScopeEnum.REQUEST)
                         else None
                     )
                     # prototype_mode 정보 가져오기
@@ -232,7 +232,7 @@ class Container[T]:
                         prototype_mode = elem.prototype_mode
                         break
 
-                # SINGLETON만 캐시된 인스턴스 사용 (PROTOTYPE/REQUEST는 LazyFieldProxy에서 처리)
+                # SINGLETON만 캐시된 인스턴스 사용 (CALL/REQUEST는 LazyFieldProxy에서 처리)
                 if scope == ScopeEnum.SINGLETON:
                     existing_instance = manager.get_instance(
                         dep_type, raise_exception=False
@@ -242,14 +242,14 @@ class Container[T]:
                         continue
 
                 # LazyFieldProxy로 주입 (기본 Lazy 동작)
-                # PROTOTYPE: 매번 새 인스턴스 생성
+                # CALL: 매번 새 인스턴스 생성
                 # REQUEST: 요청마다 새 인스턴스 (RequestContext에서 캐시)
                 # SINGLETON: 캐시 확인 후 없으면 생성
                 def make_default_resolver(m: "ContainerManager", t: type, s: ScopeEnum):
                     def resolver():
-                        # PROTOTYPE/REQUEST는 항상 새 인스턴스 생성
+                        # CALL/REQUEST는 항상 새 인스턴스 생성
                         # (REQUEST는 LazyFieldProxy에서 RequestContext 캐시를 확인)
-                        if s == ScopeEnum.PROTOTYPE or s == ScopeEnum.REQUEST:
+                        if s == ScopeEnum.CALL or s == ScopeEnum.REQUEST:
                             if container := m.get_container(t):
                                 return container._create_instance()
                             raise Exception(
@@ -268,10 +268,10 @@ class Container[T]:
 
                     return resolver
 
-                # PROTOTYPE/REQUEST인 경우 container 전달 (라이프사이클 관리용)
+                # CALL/REQUEST인 경우 container 전달 (라이프사이클 관리용)
                 lifecycle_container = (
                     dep_container
-                    if scope in (ScopeEnum.PROTOTYPE, ScopeEnum.REQUEST)
+                    if scope in (ScopeEnum.CALL, ScopeEnum.REQUEST)
                     else None
                 )
                 kwargs[name] = LazyFieldProxy(
@@ -296,7 +296,7 @@ class Container[T]:
                             kwargs[name] = existing_instance
                             continue
                     
-                    # PROTOTYPE Factory - LazyFieldProxy로 주입
+                    # CALL Factory - LazyFieldProxy로 주입
                     def make_factory_resolver(fc: "FactoryContainer", m: "ContainerManager"):
                         def resolver():
                             return fc.initialize_instance()
@@ -336,12 +336,15 @@ class Container[T]:
         self._get_manager().lifecycle.invoke_pre_destroy(self, instance)
 
     def initialize_instance(self) -> T:
-        """인스턴스 초기화 (캐시 확인 후 생성)"""
+        """
+        인스턴스 초기화 (캐시 확인 후 생성)
+        
+        Note: @PostConstruct는 여기서 호출하지 않습니다.
+        orchestrator가 async로 처리합니다.
+        """
         if instance := self._get_cached_instance():
             return instance
         instance = self._create_instance()
-        # PostConstruct 호출
-        self._get_manager().lifecycle.invoke_post_construct(self, instance)
         return instance
 
     def _transfer_elements_to(self, target_container: "Container") -> None:

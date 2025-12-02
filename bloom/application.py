@@ -1,5 +1,6 @@
 """bloom Application"""
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 from pathlib import Path
 
@@ -21,11 +22,13 @@ class Application:
     bloom 애플리케이션 진입점
 
     사용 예시:
+        import asyncio
+        
         app = Application("my_app")
         app.scan(MyModule)
-        app.ready()
+        asyncio.run(app.ready_async())
 
-        # ASGI 서버로 실행
+        # ASGI 서버로 실행 (lifespan에서 자동 ready_async 호출)
         # uvicorn main:app.asgi
     """
 
@@ -67,7 +70,7 @@ class Application:
         ASGI 애플리케이션 반환 (uvicorn 등에서 사용)
 
         멀티 워커 환경에서는 각 워커가 lifespan.startup 이벤트 시
-        자동으로 Application.ready()를 호출합니다.
+        자동으로 Application.ready_async()를 호출합니다.
 
         사용 예시:
             app = Application("my_app").scan(module)
@@ -86,7 +89,7 @@ class Application:
         @Factory로 DistributedTaskBackend를 생성하세요.
 
         사용 예시:
-            app = Application("my_app").scan(module).ready()
+            app = await Application("my_app").scan(module).ready_async()
             # bloom worker main:app.queue --concurrency 4
 
             # 또는 직접 실행
@@ -151,7 +154,7 @@ class Application:
 
         사용 예시:
             # 현재 디렉토리 전체 스캔
-            app = Application("myapp").auto_import().ready()
+            await Application("myapp").auto_import().ready_async()
 
             # 특정 경로 스캔
             app.auto_import("src/")
@@ -160,7 +163,7 @@ class Application:
             app.auto_import(exclude={"application.py", "tests"})
 
             # scan과 조합
-            app.scan(configure).auto_import(exclude={"application.py"}).ready()
+            await app.scan(configure).auto_import(exclude={"application.py"}).ready_async()
         """
         import importlib
         import os
@@ -231,22 +234,15 @@ class Application:
             self.manager.scan(module)
         return self
 
-    def ready(
-        self, parallel: bool = False, run_async_init: bool = True
-    ) -> "Application":
+    async def ready_async(self, parallel: bool = False) -> "Application":
         """
-        애플리케이션 초기화 완료
+        애플리케이션 초기화 완료 (비동기 환경용)
 
-        1. 컴포넌트 의존성 정렬 및 초기화
-        2. 라우터에 핸들러 등록
-        3. WebSocket 초기화 (@EnableWebSocket이 있는 경우)
+        ASGI lifespan.startup에서 자동으로 호출됩니다.
+        동기/비동기 @PostConstruct 모두 실행합니다.
 
         Args:
             parallel: True면 의존성 레벨별로 병렬 초기화 수행
-                     같은 레벨의 컨테이너들을 동시에 초기화하여 시작 시간 단축
-            run_async_init: True면 비동기 @PostConstruct도 즉시 실행 (기본값)
-                           이벤트 루프가 이미 실행 중이면 자동으로 스킵됨
-                           (ASGI 환경에서는 lifespan의 start_async()에서 실행)
 
         Returns:
             self (메서드 체이닝 지원)
@@ -254,6 +250,49 @@ class Application:
         if self._is_ready:
             return self
 
+        self._ready_common()
+
+        orchestrator = ContainerOrchestrator(self.manager)
+        self._initialized_containers = await orchestrator.initialize_async(
+            parallel=parallel
+        )
+
+        self._ready_finalize()
+        return self
+
+    def ready(self, parallel: bool = False) -> "Application":
+        """
+        애플리케이션 초기화 완료 (동기 편의 메서드)
+
+        내부적으로 ready_async()를 호출합니다.
+        이벤트 루프가 이미 실행 중이면 스레드에서 실행합니다.
+
+        Args:
+            parallel: True면 의존성 레벨별로 병렬 초기화 수행
+
+        Returns:
+            self (메서드 체이닝 지원)
+        """
+        import asyncio
+        
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        
+        if loop and loop.is_running():
+            # 이벤트 루프가 실행 중이면 스레드에서 실행
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, self.ready_async(parallel))
+                future.result()
+        else:
+            asyncio.run(self.ready_async(parallel))
+        
+        return self
+
+    def _ready_common(self) -> None:
+        """ready() 공통 초기화 로직"""
         # 현재 매니저 설정
         set_current_manager(self.manager)
 
@@ -263,13 +302,8 @@ class Application:
         # 2. ConfigurationProperties 바인딩
         self._bind_configuration_properties()
 
-        # 3. 컨테이너 초기화 (Orchestrator 사용)
-        #    run_async_init이 True면 비동기 @PostConstruct도 실행
-        orchestrator = ContainerOrchestrator(self.manager)
-        self._initialized_containers = orchestrator.initialize(
-            parallel=parallel, run_async_init=run_async_init
-        )
-
+    def _ready_finalize(self) -> None:
+        """ready() 마무리 로직"""
         # 4. @EventListener 바인딩
         self._bind_event_listeners()
 
@@ -283,8 +317,6 @@ class Application:
         self._initialize_websocket()
 
         self._is_ready = True
-
-        return self
 
     def _register_event_buses(self) -> None:
         """이벤트 버스들을 DI 컨테이너에 등록 (사용자 정의가 없는 경우에만)"""
@@ -358,19 +390,21 @@ class Application:
         HandlerContainer가 있는 모든 메서드에 프록시를 적용합니다.
 
         MethodInvocationManager를 생성하고, ContainerManager에서 Registry를 조회합니다.
-        Registry가 없거나 Advice가 없으면 프록시를 적용하지 않습니다.
+        Registry가 없으면 기본 MethodAdviceRegistry를 생성합니다.
+        (기본 Registry에는 CallStackTraceAdvice가 포함되어 CALL 라이프사이클 지원)
         """
-        from .core.advice import MethodInvocationManager
+        from .core.advice import MethodInvocationManager, MethodAdviceRegistry
 
         # MethodInvocationManager 생성 및 초기화 (ContainerManager에서 Registry 조회)
         self._invocation_manager = MethodInvocationManager()
         self._invocation_manager.initialize(self.manager)
 
-        # Registry가 없거나 Advice가 없으면 프록시 적용 안 함
-        if (
-            self._invocation_manager._advice_registry is None
-            or len(self._invocation_manager._advice_registry) == 0
-        ):
+        # Registry가 없으면 기본 Registry 생성 (CallStackTraceAdvice 포함)
+        if self._invocation_manager._advice_registry is None:
+            self._invocation_manager._advice_registry = MethodAdviceRegistry()
+
+        # Advice가 없으면 프록시 적용 안 함
+        if len(self._invocation_manager._advice_registry) == 0:
             return
 
         # 모든 인스턴스를 순회하며 프록시 적용
@@ -435,7 +469,11 @@ class Application:
                 # HandlerContainer가 없으면 자동 생성 (모든 메서드 추적 지원)
                 # method 객체에서 원본 함수 추출 (__func__)
                 original_func = getattr(attr, "__func__", attr)
-                container = HandlerContainer.get_or_create(original_func)
+                try:
+                    container = HandlerContainer.get_or_create(original_func)
+                except (AttributeError, TypeError):
+                    # pydantic 등 특수 클래스의 메서드는 setattr 불가 - 스킵
+                    continue
 
             # 프록시 생성 및 적용
             proxy = MethodProxy(
@@ -444,7 +482,11 @@ class Application:
                 original=attr,
                 manager=invocation_manager,
             )
-            setattr(instance, name, proxy)
+            try:
+                setattr(instance, name, proxy)
+            except (AttributeError, TypeError, ValueError):
+                # pydantic 등 특수 클래스는 setattr 불가 - 스킵
+                pass
 
     def _initialize_websocket(self) -> None:
         """WebSocket 초기화 (@EnableWebSocket 컴포넌트가 있는 경우)"""
@@ -452,10 +494,9 @@ class Application:
 
     def shutdown(self) -> "Application":
         """
-        애플리케이션 종료 (동기 핸들러만)
+        애플리케이션 종료 (동기 환경용)
 
-        동기 @PreDestroy 메서드를 역순으로 호출합니다.
-        비동기 @PreDestroy가 있으면 shutdown_async()를 사용하세요.
+        내부적으로 asyncio.run()을 통해 shutdown_async()를 호출합니다.
 
         Returns:
             self (메서드 체이닝 지원)
@@ -463,46 +504,15 @@ class Application:
         if not self._is_ready:
             return self
 
-        # 현재 매니저 설정
-        set_current_manager(self.manager)
-
-        # LifecycleManager를 통해 역순으로 PreDestroy 호출
-        if self._initialized_containers:
-            self.manager.lifecycle.invoke_all_pre_destroy(self._initialized_containers)
-
-        self._is_ready = False
-        return self
-
-    async def start_async(self) -> "Application":
-        """
-        애플리케이션 비동기 시작
-
-        지연된 async @PostConstruct 핸들러들을 실행합니다.
-        ASGI lifespan startup에서 자동으로 호출되거나,
-        asyncio.run() 내에서 직접 호출해야 합니다.
-
-        Returns:
-            self (메서드 체이닝 지원)
-
-        사용 예시:
-            async def main():
-                app = Application("my_app").scan(module).ready()
-                await app.start_async()  # async @PostConstruct 실행
-                # ... 비즈니스 로직 ...
-                await app.shutdown_async()
-
-            asyncio.run(main())
-        """
-        await self.manager.lifecycle.start_async()
+        asyncio.run(self.shutdown_async())
         return self
 
     async def shutdown_async(self, wait: bool = True) -> "Application":
         """
         애플리케이션 비동기 종료
 
-        모든 컴포넌트의 @PreDestroy 메서드를 호출합니다.
-        ASGI lifespan shutdown에서 자동으로 호출되거나,
-        asyncio.run() 내에서 직접 호출해야 합니다.
+        모든 컴포넌트의 @PreDestroy 메서드를 호출합니다 (동기/비동기 모두).
+        ASGI lifespan shutdown에서 자동으로 호출됩니다.
 
         Args:
             wait: True이면 실행 중인 작업 완료 대기
@@ -516,12 +526,10 @@ class Application:
         # 현재 매니저 설정
         set_current_manager(self.manager)
 
-        # 비동기 PreDestroy 실행
-        await self.manager.lifecycle.shutdown_async()
-
-        # 동기 PreDestroy 실행
+        # Orchestrator를 통해 모든 SINGLETON PreDestroy 실행
         if self._initialized_containers:
-            self.manager.lifecycle.invoke_all_pre_destroy(self._initialized_containers)
+            orchestrator = ContainerOrchestrator(self.manager)
+            await orchestrator.finalize_async(self._initialized_containers)
 
         self._is_ready = False
         return self

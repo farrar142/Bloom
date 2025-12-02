@@ -41,7 +41,7 @@ class ASGIApplication:
 
     멀티 워커 지원:
         각 워커 프로세스에서 lifespan.startup 이벤트 시 자동으로
-        Application.ready()가 호출되어 DI 컨테이너가 초기화됩니다.
+        Application.ready_async()가 호출되어 DI 컨테이너가 초기화됩니다.
     """
 
     def __init__(
@@ -182,6 +182,10 @@ class ASGIApplication:
                         await self._send_response(send, static_response)
                     return
 
+            # REQUEST 스코프 빈 초기화 (모든 REQUEST 빈 생성 + @PostConstruct 실행)
+            if self.application:
+                await self.application.manager.lifecycle.initialize_request_scope_async()
+
             # Router를 통해 핸들러 호출 (비동기)
             response = await self.router.dispatch(request)
 
@@ -193,7 +197,7 @@ class ASGIApplication:
         finally:
             # REQUEST 스코프 컨텍스트 종료 (@PreDestroy 호출, async 지원)
             if self.application:
-                await self.application.manager.lifecycle.end_request_async()
+                await self.application.manager.lifecycle.finalize_request_scope_async()
 
             # 활성 요청 카운트 감소
             self._active_requests -= 1
@@ -266,16 +270,16 @@ class ASGIApplication:
                 return
 
     async def _startup(self) -> None:
-        """startup 이벤트 처리"""
-        # Application이 있으면 ready() 호출 (멀티워커 환경 지원)
+        """
+        startup 이벤트 처리
+        
+        Application.ready_async()를 호출하여 비동기 초기화를 수행합니다.
+        이미 ready_async()가 호출되었으면 스킵됩니다.
+        """
         if self.application and not self.application._is_ready:
-            self.application.ready()
+            await self.application.ready_async()
 
-        # async @PostConstruct 실행
-        if self.application:
-            await self.application.start_async()
-
-        # WebSocketManager에서 설정 가져오기 (ready()에서 이미 초기화됨)
+        # WebSocketManager에서 설정 가져오기 (ready_async()에서 이미 초기화됨)
         self._apply_websocket_from_manager()
 
         # 등록된 startup 콜백 실행

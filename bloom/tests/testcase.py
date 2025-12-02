@@ -125,9 +125,24 @@ class TestCase(UnitTestCase):
             for component in self.components:
                 self.app.scan(component)
 
-            # ready() 호출
+            # ready_async() 호출 (동기 setUp에서)
             if self.auto_ready and self.components:
-                self.app.ready()
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                
+                if loop and loop.is_running():
+                    # 이벤트 루프가 실행 중이면 nested 실행은 불가능
+                    # (이 경우는 드물며, 테스트에서는 일반적으로 발생하지 않음)
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, self.app.ready_async())
+                        future.result()
+                else:
+                    # 새 이벤트 루프에서 실행
+                    asyncio.run(self.app.ready_async())
 
         # TestClient 생성
         self.client = TestClient(self.app)

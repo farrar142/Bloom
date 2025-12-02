@@ -240,7 +240,7 @@ class TestPrototypePostConstruct:
         call_log = []
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeService:
             @PostConstruct
             def init(self):
@@ -281,7 +281,7 @@ class TestPrototypePostConstruct:
         call_log = []
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeService:
             @PostConstruct
             def init(self):
@@ -336,7 +336,7 @@ class TestPrototypePostConstruct:
         instance_refs = []
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeService:
             def register_self(self):
                 # weak reference 등록
@@ -381,7 +381,7 @@ class TestPrototypePostConstruct:
                 call_log.append("singleton_cleanup")
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeService:
             @PreDestroy
             def cleanup(self):
@@ -432,12 +432,13 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(AsyncService, SyncService)
-        app.ready(run_async_init=True)
+        app.ready()
 
         assert "sync_init" in call_log
         assert "async_init" in call_log
         assert len(call_log) == 2
 
+    @pytest.mark.skip(reason="run_async_init 파라미터 제거됨 - ready()는 항상 비동기 초기화 수행")
     def test_async_post_construct_without_run_async_init(self, reset_container_manager):
         """run_async_init=False 시 비동기 @PostConstruct는 지연됨"""
         call_log = []
@@ -491,7 +492,7 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(First, Second, Third)
-        app.ready(run_async_init=True)
+        app.ready()
 
         # 의존성 순서대로 실행
         assert call_log == ["first", "second", "third"]
@@ -524,7 +525,7 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(SyncFirst, AsyncSecond, SyncThird)
-        app.ready(run_async_init=True)
+        app.ready()
 
         # 동기가 먼저 실행되고, 비동기가 나중에 실행됨
         # (동기: ready() 시점, 비동기: start_async() 시점)
@@ -549,7 +550,7 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(AsyncService)
-        app.ready(run_async_init=True)
+        app.ready()
 
         # await가 완료되어야 값이 설정됨
         assert result["value"] == "completed"
@@ -588,7 +589,7 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(ServiceA, ServiceB, ServiceC)
-        app.ready(run_async_init=True)
+        app.ready()
 
         # 모든 비동기 초기화가 완료됨
         assert results == ["A", "B", "C"]
@@ -618,7 +619,7 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(DatabasePool, Repository)
-        app.ready(run_async_init=True)
+        app.ready()
 
         repo = app.manager.get_instance(Repository)
         # 비동기 초기화가 완료되어야 connection_string이 설정됨

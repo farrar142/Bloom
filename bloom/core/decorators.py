@@ -62,7 +62,7 @@ def Factory[**P, R](method: Callable[P, R]) -> Callable[P, R]:
 
     Note:
         @Factory는 SINGLETON 스코프 컴포넌트에서만 사용 가능합니다.
-        PROTOTYPE/REQUEST 스코프에서 사용하면 InvalidScopeError가 발생합니다.
+        CALL/REQUEST 스코프에서 사용하면 InvalidScopeError가 발생합니다.
     """
     container = FactoryContainer.get_or_create(method)
     container.add_elements(SingletonOnlyElement("Factory"))
@@ -196,12 +196,12 @@ def Scope(scope: ScopeEnum, mode: PrototypeMode | None = None):
     Scope 데코레이터: 컴포넌트의 인스턴스 생명주기 범위 지정
 
     - SINGLETON (기본값): 애플리케이션 전체에서 단일 인스턴스
-    - PROTOTYPE: 주입될 때마다 새 인스턴스 생성
+    - CALL: 주입될 때마다 새 인스턴스 생성
     - REQUEST: HTTP 요청마다 새 인스턴스 (웹 컨텍스트에서만)
 
     Args:
         scope: 스코프 유형
-        mode: PROTOTYPE 스코프의 캐싱 모드 (PrototypeMode)
+        mode: CALL 스코프의 캐싱 모드 (PrototypeMode)
             - DEFAULT: 매번 새 인스턴스 생성
             - CALL_SCOPED: 같은 핸들러 호출 내에서 같은 인스턴스 반환
 
@@ -210,13 +210,13 @@ def Scope(scope: ScopeEnum, mode: PrototypeMode | None = None):
         from bloom.core.container.element import Scope as ScopeEnum, PrototypeMode
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class RequestHandler:
             # 매번 새 인스턴스 생성
             pass
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        @Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
         class ScopedResource:
             # 같은 핸들러 호출 내에서는 같은 인스턴스 반환
             pass

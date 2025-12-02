@@ -36,11 +36,11 @@ class DatabaseConfig:
 
 
 @Component
-@Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+@Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
 class DbSession(AutoCloseable):
     """DB 세션 풀 획득 컴포넌트
 
-    PROTOTYPE + CALL_SCOPED로 동작하여:
+    CALL + CALL_SCOPED로 동작하여:
     - 메서드 호출 시 새 세션 획득 (initialize/initialize_async)
     - 메서드 종료 시 자동으로 세션 반환 (close/close_async)
 

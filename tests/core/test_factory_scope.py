@@ -34,7 +34,7 @@ class TestFactoryPrototypeScope:
             factory: SessionFactory
 
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE)
+            @Scope(ScopeEnum.CALL)
             def session(self) -> FakeSession:
                 return self.factory.create()
 
@@ -81,7 +81,7 @@ class TestFactoryCallScopedMode:
             factory: SessionFactory
 
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def session(self) -> FakeSession:
                 return self.factory.create()
 
@@ -151,7 +151,7 @@ class TestFactoryCallScopedMode:
             factory: SessionFactory
 
             @Factory
-            @Scope(ScopeEnum.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def session(self) -> FakeSession:
                 return self.factory.create()
 

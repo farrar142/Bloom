@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import os
 import sys
@@ -544,8 +545,8 @@ def _load_application_for_cli(app_path: str | None = None) -> Any:
         for attr_name in attr_path.split("."):
             app = getattr(app, attr_name)
 
-        if hasattr(app, "ready") and not getattr(app, "_is_ready", False):
-            app.ready()
+        if hasattr(app, "ready_async") and not getattr(app, "_is_ready", False):
+            asyncio.run(app.ready_async())
         return app
 
     # 기본: application:application 시도
@@ -553,8 +554,8 @@ def _load_application_for_cli(app_path: str | None = None) -> Any:
         module = importlib.import_module("application")
         app = getattr(module, "application", None)
         if app is not None:
-            if hasattr(app, "ready") and not getattr(app, "_is_ready", False):
-                app.ready()
+            if hasattr(app, "ready_async") and not getattr(app, "_is_ready", False):
+                asyncio.run(app.ready_async())
             return app
     except ImportError:
         pass

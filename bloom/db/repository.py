@@ -57,7 +57,7 @@ class Repository(ABC, Generic[T, ID]):
     Spring Data JPA의 CrudRepository와 유사합니다.
     Repository를 상속하면 자동으로 @Component로 등록됩니다.
 
-    Session은 @Factory + @Scope(PROTOTYPE, CALL_SCOPED)로 주입받아야 합니다.
+    Session은 @Factory + @Scope(CALL, CALL_SCOPED)로 주입받아야 합니다.
     이렇게 하면 같은 요청 내에서는 같은 Session을 공유하고,
     요청이 끝나면 자동으로 close됩니다.
 
@@ -68,7 +68,7 @@ class Repository(ABC, Generic[T, ID]):
             session_factory: SessionFactory
             
             @Factory
-            @Scope(Scope.PROTOTYPE, PrototypeMode.CALL_SCOPED)
+            @Scope(Scope.CALL, PrototypeMode.CALL_SCOPED)
             def session(self) -> Session:
                 return self.session_factory.create()
 

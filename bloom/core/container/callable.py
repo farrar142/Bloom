@@ -76,7 +76,7 @@ class CallableContainer[**P, R](Container[Callable[P, R]]):
         """
         owner 컴포넌트의 스코프를 검증
 
-        SingletonOnlyElement가 있는 핸들러가 PROTOTYPE 또는 REQUEST 스코프
+        SingletonOnlyElement가 있는 핸들러가 CALL 또는 REQUEST 스코프
         컴포넌트에 정의되어 있으면 InvalidScopeError를 발생시킵니다.
 
         Raises:
@@ -106,8 +106,8 @@ class CallableContainer[**P, R](Container[Callable[P, R]]):
         scope_element = scope_elements[0]
         scope = scope_element.scope
 
-        # PROTOTYPE 또는 REQUEST면 에러
-        if scope in (Scope.PROTOTYPE, Scope.REQUEST):
+        # CALL 또는 REQUEST면 에러
+        if scope in (Scope.CALL, Scope.REQUEST):
             from ..exceptions import InvalidScopeError
 
             handler_name = self.get_callable_name()

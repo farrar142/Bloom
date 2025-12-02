@@ -25,5 +25,6 @@ from settings import configure
 
 application = Application("{{project_name}}")
 
-# 설정 모듈 스캔 + 현재 디렉토리 자동 스캔 + DI 초기화
-application.scan(configure).auto_import(exclude={"application.py"}).ready()
+# 설정 모듈 스캔 + 현재 디렉토리 자동 스캔
+# ASGI 실행 시 lifespan.startup에서 자동으로 초기화됩니다
+application.scan(configure).auto_import(exclude={"application.py"})

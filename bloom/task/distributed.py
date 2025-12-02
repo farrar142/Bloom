@@ -168,10 +168,12 @@ class DistributedTaskBackend[**P, T](TaskBackend[P, T]):
 
     ```python
     # worker.py
+    import asyncio
     from bloom import Application
     from bloom.task.distributed import DistributedTaskBackend
 
-    app = Application("worker").scan(my_module).ready()
+    app = Application("worker").scan(my_module)
+    asyncio.run(app.ready_async())
 
     # 워커 시작 (태스크 처리)
     backend = app.manager.get_instance(DistributedTaskBackend)

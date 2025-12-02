@@ -237,26 +237,26 @@ class OTelAdvice(CallStackTraceAdvice):
         span.end()
 ```
 
-## PROTOTYPE 자동 정리
+## CALL 자동 정리
 
-콜스택 시스템은 PROTOTYPE 스코프 인스턴스의 자동 정리도 담당합니다.
+콜스택 시스템은 CALL 스코프 인스턴스의 자동 정리도 담당합니다.
 
 ### 동작 원리
 
 1. **메서드 진입**: `push_frame()`으로 새 depth 생성
-2. **PROTOTYPE 생성**: `LazyFieldProxy`가 `register_prototype(instance, container)` 호출
+2. **CALL 생성**: `LazyFieldProxy`가 `register_prototype(instance, container)` 호출
 3. **메서드 종료**: `pop_frame()`에서 `cleanup_prototypes_at_depth(depth)` 자동 호출
-4. **@PreDestroy 실행**: 해당 depth에서 생성된 모든 PROTOTYPE의 `@PreDestroy` 호출
+4. **@PreDestroy 실행**: 해당 depth에서 생성된 모든 CALL의 `@PreDestroy` 호출
 
 ```python
 from bloom.core.advice.tracing.context import (
-    register_prototype,           # PROTOTYPE 등록
+    register_prototype,           # CALL 등록
     cleanup_prototypes_at_depth,  # 특정 depth 정리
     get_prototype_count_at_depth, # 디버깅용
 )
 ```
 
-자세한 내용은 [PROTOTYPE 스코프와 자동 라이프사이클 관리](./prototype-scope.md) 참조.
+자세한 내용은 [CALL 스코프와 자동 라이프사이클 관리](./prototype-scope.md) 참조.
 
 ## 시스템 이벤트 발행
 
@@ -284,13 +284,13 @@ from bloom.core.events import (
 bloom/core/advice/tracing/
 ├── __init__.py      # 패키지 exports
 ├── frame.py         # CallFrame 정의
-├── context.py       # ContextVar 기반 스택 관리, PROTOTYPE 추적
+├── context.py       # ContextVar 기반 스택 관리, CALL 추적
 └── advice.py        # CallStackTraceAdvice
 ```
 
 ## 관련 문서
 
-- [PROTOTYPE 스코프와 자동 라이프사이클 관리](./prototype-scope.md)
+- [CALL 스코프와 자동 라이프사이클 관리](./prototype-scope.md)
 - [이벤트 시스템](./event-system.md)
 - [Method Advice 패턴](./method-advice-pattern.md)
 - [Architecture Patterns](./architecture-patterns.md)

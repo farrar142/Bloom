@@ -18,7 +18,7 @@ Bloom은 Spring Framework에서 영감을 받은 Python DI(의존성 주입) 컨
 | 데코레이터                 | 역할                                         |
 | -------------------------- | -------------------------------------------- |
 | `@Component`               | 클래스를 DI 컨테이너에 등록                  |
-| `@Scope(Scope.XXX)`        | 인스턴스 스코프 지정 (SINGLETON/PROTOTYPE)   |
+| `@Scope(Scope.XXX)`        | 인스턴스 스코프 지정 (SINGLETON/CALL)        |
 | `@Factory`                 | 메서드 기반 인스턴스 생성 (복잡한 초기화 시) |
 | `@Handler(key)`            | 키 기반 핸들러 등록 (예외 처리, 라우팅 등)   |
 | `@Controller`              | 웹 컨트롤러 (Component 확장)                 |
@@ -55,10 +55,10 @@ class Service:
 | Scope       | 설명                               | 사용 예                     |
 | ----------- | ---------------------------------- | --------------------------- |
 | `SINGLETON` | 앱 전체에서 단일 인스턴스 (기본값) | 대부분의 서비스, 리포지토리 |
-| `PROTOTYPE` | 접근할 때마다 새 인스턴스 생성     | 상태를 가진 객체, 빌더      |
+| `CALL`      | 접근할 때마다 새 인스턴스 생성     | 상태를 가진 객체, 빌더      |
 | `REQUEST`   | HTTP 요청마다 새 인스턴스 (TODO)   | 요청별 컨텍스트             |
 
-**PROTOTYPE 모드 (PrototypeMode):**
+**CALL 모드 (PrototypeMode):**
 
 | Mode          | 설명                                    | 사용 예                                     |
 | ------------- | --------------------------------------- | ------------------------------------------- |
@@ -74,13 +74,13 @@ class SingletonService:
     pass  # 기본값: SINGLETON
 
 @Component
-@Scope(ScopeEnum.PROTOTYPE)
+@Scope(ScopeEnum.CALL)
 class PrototypeBuilder:
     """매번 새 인스턴스가 필요한 경우"""
     state: list = []  # 인스턴스별 독립 상태
 
 @Component
-@Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+@Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
 class TransactionContext:
     """같은 핸들러 호출 내에서 공유되는 트랜잭션"""
     tx_id: str = ""
@@ -105,8 +105,8 @@ class Consumer:
 **동작 원리:**
 
 1. **SINGLETON**: 최초 접근 시 인스턴스 생성 후 캐시, 이후 동일 인스턴스 반환
-2. **PROTOTYPE (DEFAULT)**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
-3. **PROTOTYPE (CALL_SCOPED)**: 최상위 핸들러의 `frame_id`로 캐싱, 핸들러 종료 시 정리
+2. **CALL (DEFAULT)**: 매 접근마다 `_create_instance()` 호출하여 새 인스턴스 생성
+3. **CALL (CALL_SCOPED)**: 최상위 핸들러의 `frame_id`로 캐싱, 핸들러 종료 시 정리
 4. 모든 필드는 `LazyFieldProxy`로 주입되어 Scope/PrototypeMode 정보를 활용
 
 **스코프별 인스턴스 저장 위치:**
@@ -114,7 +114,7 @@ class Consumer:
 | Scope       | 저장 위치                            | 관리 주체                | 라이프사이클               |
 | ----------- | ------------------------------------ | ------------------------ | -------------------------- |
 | `SINGLETON` | `ContainerManager.instance_registry` | `ContainerManager`       | 앱 시작 ~ 앱 종료          |
-| `PROTOTYPE` | 저장하지 않음 (비관리)               | GC (Garbage Collector)   | 생성 ~ 참조 해제 (GC 정리) |
+| `CALL`      | 저장하지 않음 (비관리)               | GC (Garbage Collector)   | 생성 ~ 참조 해제 (GC 정리) |
 | `REQUEST`   | `RequestContext` (ContextVar)        | `RequestScopeMiddleware` | 요청 시작 ~ 요청 종료      |
 
 **상세 동작:**
@@ -125,7 +125,7 @@ class Consumer:
    - `LazyFieldProxy._lfp_resolve()`에서 최초 접근 시 한 번만 resolve하고 프록시 내부 캐시
    - `Application.shutdown()` 시 `LifecycleManager`가 역순으로 `@PreDestroy` 호출
 
-2. **PROTOTYPE** (`bloom/core/lazy.py`, `bloom/core/advice/tracing/context.py`):
+2. **CALL** (`bloom/core/lazy.py`, `bloom/core/advice/tracing/context.py`):
 
    - **콜스택 기반 자동 추적** (Spring과 다름!)
    - `LazyFieldProxy._lfp_resolve()`에서 매 접근마다 새 인스턴스 생성
@@ -145,9 +145,9 @@ class Consumer:
 
    자세한 내용은 `docs/request-scope-pool.md` 참조.
 
-**PROTOTYPE 라이프사이클 (Spring과 다름!):**
+**CALL 라이프사이클 (Spring과 다름!):**
 
-Bloom의 PROTOTYPE은 **콜스택 기반 자동 정리**를 지원합니다:
+Bloom의 CALL은 **콜스택 기반 자동 정리**를 지원합니다:
 
 - **@PostConstruct**: 인스턴스 생성 직후 호출됨 ✅
 - **@PreDestroy**: 메서드 종료 시 자동 호출됨 ✅ (`MethodAdviceRegistry` 필요)
@@ -159,7 +159,7 @@ from bloom.core.decorators import PostConstruct, PreDestroy, Handler, Factory
 from bloom.core.advice import MethodAdvice, MethodAdviceRegistry, CallStackTraceAdvice
 
 @Component
-@Scope(ScopeEnum.PROTOTYPE)
+@Scope(ScopeEnum.CALL)
 class PrototypeResource:
     @PostConstruct
     def init(self):
@@ -191,14 +191,14 @@ class Consumer:
 
     @Handler  # @Handler 필요
     def use_resource(self):
-        # 속성 접근으로 PROTOTYPE resolve
+        # 속성 접근으로 CALL resolve
         self.resource.do_something()  # @PostConstruct 호출
         # 메서드 종료 시 자동으로 @PreDestroy 호출
 ```
 
 **Spring과의 차이점:**
 
-- **Spring**: PROTOTYPE의 `@PreDestroy`는 호출되지 않음 (컨테이너가 추적 안 함)
+- **Spring**: CALL의 `@PreDestroy`는 호출되지 않음 (컨테이너가 추적 안 함)
 - **Bloom**: 콜스택 기반으로 `@PreDestroy` 자동 호출됨 (`MethodAdviceRegistry` 필요)
 - **장점**: 리소스 누수 방지, DB 연결/파일 핸들 등 자동 정리
 - **요구사항**: `MethodAdviceRegistry` + `@Handler` (기본 `CallStackTraceAdvice` 자동 포함)
@@ -351,21 +351,21 @@ def __getattr__(name: str):
     if name == "MyClass":
         from .mymodule import MyClass
         return MyClass
-    
+
     if name == "my_function":
         from .utils import my_function
         return my_function
-    
+
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 ```
 
 #### 효과
 
-| 패키지 | Before (즉시 로드) | After (lazy) |
-|--------|-------------------|--------------|
-| `import bloom` | 1.85s | 0.008s |
-| `import bloom.core` | 2.6s | 0.01s |
-| `import bloom.task` | 2.3s | 0.02s |
+| 패키지              | Before (즉시 로드) | After (lazy) |
+| ------------------- | ------------------ | ------------ |
+| `import bloom`      | 1.85s              | 0.008s       |
+| `import bloom.core` | 2.6s               | 0.01s        |
+| `import bloom.task` | 2.3s               | 0.02s        |
 
 **실제 사용 시에는 필요한 모듈만 로드됩니다.**
 
@@ -1061,7 +1061,7 @@ class UserService:
 
 | 이벤트                 | 발생 시점                        | 용도             |
 | ---------------------- | -------------------------------- | ---------------- |
-| `InstanceCreatedEvent` | PROTOTYPE/REQUEST 인스턴스 생성  | 메트릭, 추적     |
+| `InstanceCreatedEvent` | CALL/REQUEST 인스턴스 생성       | 메트릭, 추적     |
 | `MethodEnteredEvent`   | 메서드 진입 (TracingAdvice 필요) | 프로파일링, 로깅 |
 | `MethodExitedEvent`    | 메서드 종료 (정상)               | 성능 측정        |
 | `MethodErrorEvent`     | 메서드 예외 발생                 | 에러 트래킹      |

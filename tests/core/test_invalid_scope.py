@@ -24,7 +24,7 @@ class TestInvalidScopeError:
             pass
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeConfig:
             @Factory
             def create_something(self) -> Something:
@@ -70,7 +70,7 @@ class TestInvalidScopeError:
             message: str
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeEventHandler:
             @EventListener(TestEvent)
             def on_event(self, event: TestEvent):
@@ -161,7 +161,7 @@ class TestInvalidScopeError:
             x: int
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeMultiHandler:
             @Factory
             def create_a(self) -> ThingA:
@@ -186,7 +186,7 @@ class TestInvalidScopeError:
             pass
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class ErrorTestConfig:
             @Factory
             def error_test_factory(self) -> ErrorTestThing:
@@ -213,7 +213,7 @@ class TestTaskOnInvalidScope:
         from bloom.task import Task
 
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class PrototypeTaskService:
             @Task
             def background_job(self) -> str:

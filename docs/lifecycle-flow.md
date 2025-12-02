@@ -32,20 +32,15 @@
 │         │          - 의존성 그래프 구축                                       │
 │         ▼                                                                   │
 │  ┌──────────────┐                                                           │
-│  │    READY     │  app.ready()                                              │
-│  │   (동기)     │  ┌────────────────────────────────────────┐               │
+│  │    READY     │  app.ready() 또는 await app.ready_async()                 │
+│  │  (동기/비동기)│  ┌────────────────────────────────────────┐               │
 │  └──────┬───────┘  │ 1. 컨테이너 정렬 (@Order 기반)          │               │
 │         │          │ 2. SINGLETON 인스턴스 생성              │               │
 │         │          │ 3. 의존성 주입 (필드/생성자)             │               │
 │         │          │ 4. 동기 @PostConstruct 호출             │               │
-│         │          │ 5. 비동기 @PostConstruct 지연 등록       │               │
-│         │          └────────────────────────────────────────┘               │
-│         ▼                                                                   │
-│  ┌──────────────┐                                                           │
-│  │ START_ASYNC  │  await app.start_async()  (또는 ASGI startup)             │
-│  │   (비동기)   │  ┌────────────────────────────────────────┐               │
-│  └──────┬───────┘  │ • 지연된 async @PostConstruct 실행      │               │
-│         │          │ • DB 연결, 외부 서비스 초기화 등         │               │
+│         │          │ 5. 비동기 @PostConstruct 실행           │               │
+│         │          │    - ready(): asyncio.run()으로 실행    │               │
+│         │          │    - ready_async(): await로 실행        │               │
 │         │          └────────────────────────────────────────┘               │
 │         ▼                                                                   │
 │  ╔══════════════╗                                                           │
@@ -93,8 +88,7 @@
 │  │    │          │    │    │          │                                     │
 │  │    ▼          │    │    ▼          │                                     │
 │  │ _startup()    │    │ _startup()    │   각 워커에서:                       │
-│  │ ├─ ready()    │    │ ├─ ready()    │   - Application.ready()             │
-│  │ ├─ start_     │    │ ├─ start_     │   - await start_async()             │
+│  │ ├─ ready_     │    │ ├─ ready_     │   - await ready_async()             │
 │  │ │  async()    │    │ │  async()    │   - startup 콜백 실행               │
 │  │ └─ callbacks  │    │ └─ callbacks  │                                     │
 │  │    │          │    │    │          │                                     │
@@ -140,7 +134,7 @@ from bloom.core.decorators import PostConstruct, PreDestroy
 class DatabaseService:
     @PostConstruct
     async def connect(self):
-        """비동기 초기화 - start_async()에서 실행"""
+        """비동기 초기화 - ready()/ready_async()에서 실행"""
         await self.pool.connect()
         print("DB Connected")
 
@@ -154,7 +148,7 @@ class DatabaseService:
 class CacheService:
     @PostConstruct
     def init_cache(self):
-        """동기 초기화 - ready()에서 실행"""
+        """동기 초기화 - ready()/ready_async()에서 실행"""
         self.cache = {}
         print("Cache Initialized")
 
@@ -167,11 +161,11 @@ class CacheService:
 # 애플리케이션 생성 및 실행
 app = Application("myapp")
 app.scan(DatabaseService, CacheService)
-app.ready()  # 동기 @PostConstruct 실행
+app.ready()  # 동기/비동기 @PostConstruct 모두 실행 (asyncio.run 사용)
 
 # ASGI 앱으로 uvicorn에서 실행
 # uvicorn main:app.asgi
-# → lifespan.startup에서 start_async() 자동 호출
+# → lifespan.startup에서 ready_async() 자동 호출 (await 사용)
 # → lifespan.shutdown에서 shutdown_async() 자동 호출
 ```
 
@@ -484,7 +478,7 @@ app.ready()  # 동기 @PostConstruct 실행
 │  └───────────────────────────────────────────────────────────────────────┘  │
 │                                                                             │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │  PROTOTYPE (일반)                                                     │  │
+│  │  CALL (일반)                                                     │  │
 │  │                                                                       │  │
 │  │  get_instance() ──► 새 인스턴스    get_instance() ──► 새 인스턴스     │  │
 │  │                          │                                 │          │  │
@@ -500,7 +494,7 @@ app.ready()  # 동기 @PostConstruct 실행
 │  └───────────────────────────────────────────────────────────────────────┘  │
 │                                                                             │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │  PROTOTYPE + CALL_SCOPED                                              │  │
+│  │  CALL + CALL_SCOPED                                              │  │
 │  │                                                                       │  │
 │  │  ┌─────────────────── CallStackTraceAdvice 관리 ─────────────────────┐│  │
 │  │  │                                                                   ││  │
@@ -511,7 +505,7 @@ app.ready()  # 동기 @PostConstruct 실행
 │  │  │     └──────► session ◄─────────────┘   ←── 같은 인스턴스 공유     ││  │
 │  │  │                  │                                                ││  │
 │  │  │             ┌────┴────┐                                           ││  │
-│  │  │             │ Session │  @Scope(PROTOTYPE, CALL_SCOPED)           ││  │
+│  │  │             │ Session │  @Scope(CALL, CALL_SCOPED)           ││  │
 │  │  │             │(id: 1)  │                                           ││  │
 │  │  │             └────┬────┘                                           ││  │
 │  │  │                  │                                                ││  │
@@ -685,6 +679,6 @@ app.ready()  # 동기 @PostConstruct 실행
 
 - [의존성 주입](dependency-injection.md) - DI 컨테이너 사용법
 - [Request Scope Pool](request-scope-pool.md) - REQUEST 스코프 상세
-- [Prototype Scope](prototype-scope.md) - PROTOTYPE/CALL_SCOPED 상세
+- [Prototype Scope](prototype-scope.md) - CALL/CALL_SCOPED 상세
 - [Event System](event-system.md) - 이벤트 기반 통신
 - [Testing](testing-testcase.md) - 테스트 작성 가이드

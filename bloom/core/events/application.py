@@ -87,7 +87,7 @@ def EventListener(event_type: type[Event]) -> Callable[[Callable], Callable]:
 
     Note:
         @EventListener는 SINGLETON 스코프 컴포넌트에서만 사용 가능합니다.
-        PROTOTYPE/REQUEST 스코프에서 사용하면 InvalidScopeError가 발생합니다.
+        CALL/REQUEST 스코프에서 사용하면 InvalidScopeError가 발생합니다.
 
     사용 예시:
         @Component

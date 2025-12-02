@@ -74,12 +74,12 @@ class Closeable(ABC):
     이 프로토콜을 구현하면 DI 컨테이너가 인스턴스 소멸 시
     자동으로 close()를 호출합니다.
 
-    PROTOTYPE 스코프에서는 메서드 종료 시 자동 호출됩니다.
+    CALL 스코프에서는 메서드 종료 시 자동 호출됩니다.
 
     Example:
         ```python
         @Component
-        @Scope(ScopeEnum.PROTOTYPE)
+        @Scope(ScopeEnum.CALL)
         class Session(Closeable):
             def close(self) -> None:
                 self._connection.close()
@@ -107,7 +107,7 @@ class AutoCloseable(Closeable, Initializable):
     Example:
         ```python
         @Component
-        @Scope(ScopeEnum.PROTOTYPE, mode=PrototypeMode.CALL_SCOPED)
+        @Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
         class Session(AutoCloseable):
             session_factory: SessionFactory
 

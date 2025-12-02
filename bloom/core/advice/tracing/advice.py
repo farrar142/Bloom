@@ -4,7 +4,7 @@ from typing import Any, Callable, TYPE_CHECKING
 
 from ..base import MethodAdvice
 from .frame import CallFrame
-from .context import push_frame, pop_frame, get_call_depth
+from .context import push_frame, pop_frame, pop_frame_async, get_call_depth
 
 # 성능 최적화: 모듈 수준에서 import (함수 내 동적 import 제거)
 from ...events import (
@@ -104,7 +104,7 @@ class CallStackTraceAdvice(MethodAdvice):
 
     async def after(self, context: "InvocationContext", result: Any) -> Any:
         """비동기 메서드 정상 종료 후"""
-        frame = self._pop_frame(context)
+        frame = await self._pop_frame_async(context)
         if frame:
             self._publish_exited_event(context, frame)
             self.on_exit(frame, frame.elapsed_ms)
@@ -112,7 +112,7 @@ class CallStackTraceAdvice(MethodAdvice):
 
     async def on_error(self, context: "InvocationContext", error: Exception) -> Any:
         """비동기 메서드 예외 발생 시"""
-        frame = self._pop_frame(context)
+        frame = await self._pop_frame_async(context)
         if frame:
             self._publish_error_event(context, frame, error)
             self.on_error_callback(frame, error)
@@ -156,8 +156,12 @@ class CallStackTraceAdvice(MethodAdvice):
         )
 
     def _pop_frame(self, context: "InvocationContext") -> CallFrame | None:
-        """스택에서 프레임 제거"""
+        """스택에서 프레임 제거 (동기 버전)"""
         return pop_frame()
+
+    async def _pop_frame_async(self, context: "InvocationContext") -> CallFrame | None:
+        """스택에서 프레임 제거 (비동기 버전) - CALL @PreDestroy async 지원"""
+        return await pop_frame_async()
 
     def _get_manager(self, context: "InvocationContext") -> "ContainerManager | None":
         """ContainerManager 가져오기"""

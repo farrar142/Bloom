@@ -3,6 +3,7 @@
 디렉토리의 정적 파일을 HTTP로 서빙하는 기능을 제공합니다.
 
 사용 예시:
+    import asyncio
     from bloom import Application, Component
     from bloom.core.decorators import Factory
     from bloom.web.static import StaticFiles, StaticFilesContainer
@@ -16,7 +17,8 @@
             container.add("/assets", "assets", html=True)
             return container
 
-    app = Application("my_app").scan(StaticConfig).ready()
+    app = Application("my_app").scan(StaticConfig)
+    asyncio.run(app.ready_async())
     # StaticFilesManager가 자동으로 StaticFilesContainer를 수집하여 사용
 """
 

@@ -183,14 +183,9 @@ class Router:
         # 로컬 변수 바인딩 (속성 조회 오버헤드 제거)
         middleware_chain = self.middleware_chain
         route_manager = self._route_manager
-        lifecycle = self.manager.lifecycle
 
         # 핸들러 먼저 찾기 (미들웨어에서 Authorize 검사에 필요)
         handler, path_params = route_manager.find_handler(request.method, request.path)
-
-        # REQUEST 스코프 인스턴스의 pending async @PostConstruct 실행
-        # 미들웨어 진입 전에 실행하여 미들웨어에서도 REQUEST 스코프 인스턴스 사용 가능
-        await lifecycle.run_pending_request_init()
 
         async with middleware_chain.process(request, handler) as ctx:
             # early return 확인 (인증 실패 등)
@@ -211,9 +206,6 @@ class Router:
                     resolved_params = await resolve_parameters_cached(
                         id(handler), type_hints, request, path_params
                     )
-
-                    # 미들웨어 실행 중 추가된 pending async @PostConstruct 실행
-                    await lifecycle.run_pending_request_init()
 
                     # 핸들러 호출 - 비동기
                     result = await handler(**resolved_params)

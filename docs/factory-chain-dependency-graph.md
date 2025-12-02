@@ -438,7 +438,7 @@ Level 4: transform
 
 ## 주의사항
 
-1. **PROTOTYPE Scope와 Factory Chain**: `@Scope(PROTOTYPE)` 컴포넌트는 즉시 초기화되지 않으므로, Factory Chain과 함께 사용 시 주의
+1. **CALL Scope와 Factory Chain**: `@Scope(CALL)` 컴포넌트는 즉시 초기화되지 않으므로, Factory Chain과 함께 사용 시 주의
 
 2. **순환 의존성**: 서로 다른 타입 간의 순환 의존성은 여전히 에러 발생
 

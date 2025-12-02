@@ -2,15 +2,19 @@
 
 Manager → Registry → Container(Entry) 패턴을 따릅니다.
 
-SINGLETON, PROTOTYPE, REQUEST 스코프별 라이프사이클 관리:
+SINGLETON, CALL, REQUEST 스코프별 라이프사이클 관리:
 - SINGLETON: ready() 시점에 PostConstruct, shutdown() 시점에 PreDestroy
-- PROTOTYPE: 필드 접근 시 PostConstruct (Spring과 동일하게 PreDestroy 미호출, GC가 정리)
-- REQUEST: 요청 내 첫 접근 시 PostConstruct, 요청 종료 시 PreDestroy (RequestContext)
+- CALL: 필드 접근 시 PostConstruct (Spring과 동일하게 PreDestroy 미호출, GC가 정리)
+- REQUEST: 요청 시작 시 모든 REQUEST 빈 생성 + PostConstruct, 요청 종료 시 PreDestroy
 
 프로토콜 기반 라이프사이클:
 - Initializable: initialize() 메서드가 PostConstruct로 동작
 - Closeable: close() 메서드가 PreDestroy로 동작
 - AutoCloseable: 둘 다 지원
+
+모든 초기화 흐름은 async로 통일:
+- 동기 환경: asyncio.run()으로 호출
+- 비동기 환경: await로 호출
 """
 
 import asyncio
@@ -34,10 +38,11 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
 
     Manager → Registry → Container(Entry) 패턴을 따릅니다.
 
-    - @PostConstruct: 컨테이너 인스턴스 생성 후 호출
-      - 동기 메서드: 즉시 실행
-      - 비동기 메서드: 지연 등록 후 start_async()에서 실행
-    - @PreDestroy: 애플리케이션 종료 시 역순으로 호출
+    모든 초기화 흐름은 async로 통일:
+    - invoke_post_construct_async(): 동기/비동기 @PostConstruct 모두 처리
+    - invoke_pre_destroy_async(): 동기/비동기 @PreDestroy 모두 처리
+    
+    동기 환경에서는 asyncio.run()으로 호출합니다.
     """
 
     registry_type: ClassVar[type[LifecycleRegistry]] = LifecycleRegistry
@@ -47,8 +52,6 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         super().__init__()
         self.container_manager = container_manager
         self._registry = LifecycleRegistry()
-        # 비동기 PostConstruct 핸들러들 (지연 실행용)
-        self._pending_async_post_construct: list[Callable[[], Any]] = []
         # 비동기 PreDestroy 핸들러들 (역순 실행용)
         self._pending_async_pre_destroy: list[Callable[[], Any]] = []
         # 초기화 완료 여부
@@ -67,25 +70,21 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         """async 생명주기 시작 여부"""
         return self._started
 
-    def _invoke_handler(
+    async def _invoke_handler_async(
         self, handler: LifecycleHandlerContainer, instance: Any
     ) -> None:
-        """핸들러 메서드 호출 (동기만)"""
+        """핸들러 메서드 호출 (동기/비동기 모두 지원)"""
         method = getattr(instance, handler.handler_method.__name__)
         result = method()
 
-        # 비동기 메서드인 경우: 지연 등록
+        # 비동기 메서드인 경우: await
         if inspect.iscoroutine(result):
-            # 코루틴을 클로저로 캡처하여 나중에 실행
-            async def run_coro(coro=result):
-                await coro
-
-            self._pending_async_post_construct.append(run_coro)
+            await result
 
     def _invoke_handler_for_destroy(
         self, handler: LifecycleHandlerContainer, instance: Any
     ) -> None:
-        """PreDestroy 핸들러 메서드 호출 (동기만)"""
+        """PreDestroy 핸들러 메서드 호출 (동기만, 비동기는 등록)"""
         method = getattr(instance, handler.handler_method.__name__)
         result = method()
 
@@ -97,21 +96,17 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
 
             self._pending_async_pre_destroy.append(run_coro)
 
-    async def start_async(self) -> None:
-        """
-        지연된 비동기 PostConstruct 핸들러들을 실행합니다.
-
-        ASGI lifespan startup 또는 asyncio.run() 내에서 호출해야 합니다.
-        """
-        if self._started:
-            return
-
-        # 등록된 순서대로 실행
-        for handler in self._pending_async_post_construct:
-            await handler()
-
-        self._pending_async_post_construct.clear()
-        self._started = True
+    async def _invoke_handler_for_destroy_async(
+        self, handler: LifecycleHandlerContainer, instance: Any
+    ) -> None:
+        """PreDestroy 핸들러 메서드 호출 (동기/비동기 모두 지원)"""
+        method = getattr(instance, handler.handler_method.__name__)
+        try:
+            result = method()
+            if inspect.iscoroutine(result):
+                await result
+        except Exception:
+            pass  # PreDestroy 에러는 무시
 
     async def shutdown_async(self) -> None:
         """
@@ -132,9 +127,11 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         self._pending_async_pre_destroy.clear()
         self._started = False
 
-    def invoke_post_construct(self, container: "Container", instance: Any) -> None:
+    async def invoke_post_construct_async(
+        self, container: "Container", instance: Any
+    ) -> None:
         """
-        특정 컨테이너 인스턴스의 @PostConstruct 메서드들 호출
+        특정 컨테이너 인스턴스의 @PostConstruct 메서드들 호출 (동기/비동기 모두 지원)
 
         Initializable 프로토콜을 구현한 경우 initialize()도 호출합니다.
 
@@ -145,7 +142,7 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         # 1. @PostConstruct 데코레이터로 지정된 메서드들
         handlers = self.registry.get_post_construct_handlers(container)
         for handler in handlers:
-            self._invoke_handler(handler, instance)
+            await self._invoke_handler_async(handler, instance)
 
         # 2. Initializable 프로토콜 (initialize 메서드가 @PostConstruct가 아닌 경우만)
         if isinstance(instance, Initializable):
@@ -154,14 +151,39 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
             if "initialize" not in handler_names:
                 result = instance.initialize()
                 if inspect.iscoroutine(result):
-                    coro = result  # 캡처
-                    self._pending_async_post_construct.append(
-                        lambda c=coro: asyncio.ensure_future(c)  # type: ignore
-                    )
+                    await result
+
+    async def invoke_pre_destroy_async(
+        self, container: "Container", instance: Any
+    ) -> None:
+        """
+        특정 컨테이너 인스턴스의 @PreDestroy 메서드들 호출 (동기/비동기 모두 지원)
+
+        Closeable 프로토콜을 구현한 경우 close()도 호출합니다.
+
+        Args:
+            container: 대상 컨테이너
+            instance: 컨테이너의 인스턴스
+        """
+        # 1. @PreDestroy 데코레이터로 지정된 메서드들
+        handlers = self.registry.get_pre_destroy_handlers(container)
+        for handler in handlers:
+            await self._invoke_handler_for_destroy_async(handler, instance)
+
+        # 2. Closeable 프로토콜 (close 메서드가 @PreDestroy가 아닌 경우만)
+        if isinstance(instance, Closeable):
+            handler_names = [h.handler_method.__name__ for h in handlers]
+            if "close" not in handler_names:
+                try:
+                    result = instance.close()
+                    if inspect.iscoroutine(result):
+                        await result
+                except Exception:
+                    pass  # PreDestroy 에러는 무시
 
     def invoke_pre_destroy(self, container: "Container", instance: Any) -> None:
         """
-        특정 컨테이너 인스턴스의 @PreDestroy 메서드들 호출
+        특정 컨테이너 인스턴스의 @PreDestroy 메서드들 호출 (동기 버전, 비동기는 등록)
 
         Closeable 프로토콜을 구현한 경우 close()도 호출합니다.
 
@@ -188,9 +210,24 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
                 except Exception:
                     pass  # PreDestroy 에러는 무시
 
+    async def invoke_all_pre_destroy_async(
+        self, containers_order: list["Container"]
+    ) -> None:
+        """
+        모든 컨테이너의 @PreDestroy 메서드들을 역순으로 호출 (동기/비동기 모두 지원)
+
+        Args:
+            containers_order: 초기화 순서대로 정렬된 컨테이너 리스트 (역순으로 호출됨)
+        """
+        for container in reversed(containers_order):
+            # Container의 캐시된 인스턴스를 직접 가져옴
+            instance = container._get_cached_instance()
+            if instance:
+                await self.invoke_pre_destroy_async(container, instance)
+
     def invoke_all_pre_destroy(self, containers_order: list["Container"]) -> None:
         """
-        모든 컨테이너의 @PreDestroy 메서드들을 역순으로 호출
+        모든 컨테이너의 @PreDestroy 메서드들을 역순으로 호출 (동기 버전)
 
         Args:
             containers_order: 초기화 순서대로 정렬된 컨테이너 리스트 (역순으로 호출됨)
@@ -202,7 +239,7 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
                 self.invoke_pre_destroy(container, instance)
 
     # =========================================================================
-    # PROTOTYPE 라이프사이클 관리
+    # CALL 라이프사이클 관리
     # =========================================================================
 
     def _get_lifecycle_method_names(
@@ -243,21 +280,21 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         prototype_mode: "PrototypeMode | None" = None,
     ) -> None:
         """
-        PROTOTYPE 인스턴스의 @PostConstruct 메서드들을 호출합니다.
+        CALL 인스턴스의 @PostConstruct 메서드들을 호출합니다.
 
         Initializable 프로토콜을 구현한 경우 initialize()도 호출합니다.
 
-        PROTOTYPE은 필드 접근 시마다 새 인스턴스가 생성되므로,
+        CALL은 필드 접근 시마다 새 인스턴스가 생성되므로,
         LazyFieldProxy에서 인스턴스 생성 직후 이 메서드를 호출합니다.
 
         Args:
-            instance: PROTOTYPE 인스턴스
+            instance: CALL 인스턴스
             container: 컨테이너
-            prototype_mode: PROTOTYPE 모드 (CALL_SCOPED 등)
+            prototype_mode: CALL 모드 (CALL_SCOPED 등)
 
         Raises:
             Exception: PostConstruct 실패 시 예외 전파
-            RuntimeError: 일반 PROTOTYPE에서 비동기 @PostConstruct 사용 시
+            RuntimeError: 일반 CALL에서 비동기 @PostConstruct 사용 시
         """
         from bloom.core.container.element import PrototypeMode
         from bloom.core.request_context import RequestContext
@@ -279,10 +316,10 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
                         # CALL_SCOPED: REQUEST와 동일하게 pending에 등록
                         RequestContext.add_pending_init(result)
                     else:
-                        # 일반 PROTOTYPE: 지원 안 함
+                        # 일반 CALL: 지원 안 함
                         result.close()  # 코루틴 정리
                         raise RuntimeError(
-                            f"Async @PostConstruct is not supported for PROTOTYPE scope. "
+                            f"Async @PostConstruct is not supported for CALL scope. "
                             f"Use CALL_SCOPED mode instead: "
                             f"{target_cls.__name__}.{method_name}"
                         )
@@ -297,7 +334,7 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
                     else:
                         result.close()  # 코루틴 정리
                         raise RuntimeError(
-                            f"Async initialize() is not supported for PROTOTYPE scope. "
+                            f"Async initialize() is not supported for CALL scope. "
                             f"Use CALL_SCOPED mode instead: "
                             f"{target_cls.__name__}.initialize"
                         )
@@ -386,53 +423,64 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         모든 REQUEST 스코프 인스턴스의 @PreDestroy를 호출하고 컨텍스트를 정리합니다.
 
         Note:
-            async @PreDestroy가 있는 경우 end_request_async()를 사용하세요.
+            async @PreDestroy가 있는 경우 finalize_request_scope_async()를 사용하세요.
         """
         from bloom.core.request_context import RequestContext
 
         RequestContext.end()
 
-    async def run_pending_request_init(self) -> None:
-        """
-        대기 중인 REQUEST 스코프 인스턴스의 async @PostConstruct 실행
-
-        Router에서 미들웨어 진입 전, 핸들러 실행 전에 호출됩니다.
-        여러 번 호출해도 안전합니다 (pending이 없으면 즉시 리턴).
-        """
-        from bloom.core.request_context import RequestContextManager
-
-        await RequestContextManager.run_pending_init()
-
-    async def end_request_async(self) -> None:
+    async def finalize_request_scope_async(self) -> None:
         """
         HTTP 요청 종료 시 호출 - REQUEST 인스턴스 정리 (비동기 버전)
 
         ASGI 앱에서 요청 처리 완료 후 호출됩니다.
-        pending async @PostConstruct를 실행하고,
         모든 REQUEST 스코프 인스턴스의 @PreDestroy (async 포함)를 호출합니다.
+
+        대칭: initialize_request_scope_async() ↔ finalize_request_scope_async()
         """
         from bloom.core.request_context import RequestContext
 
-        # pending async @PostConstruct 실행
-        await RequestContext.run_pending_init()
         # async @PreDestroy 지원하는 정리
         await RequestContext.end_async()
 
+    async def initialize_request_scope_async(self) -> None:
+        """
+        모든 REQUEST 스코프 빈을 생성하고 @PostConstruct를 실행합니다.
+
+        ASGIApplication._handle_http()에서 router.dispatch() 전에 호출됩니다.
+        이 시점에 모든 REQUEST 빈이 완전히 초기화되어 있어야
+        미들웨어/핸들러에서 안전하게 사용할 수 있습니다.
+        """
+        from bloom.core.container.element import Scope
+        from bloom.core.request_context import RequestContext
+
+        # 모든 REQUEST 스코프 컨테이너 찾기
+        for containers in self.container_manager.get_all_containers().values():
+            for container in containers:
+                scope, _ = self.container_manager.get_container_scope(container)
+                if scope == Scope.REQUEST:
+                    # 인스턴스 생성
+                    instance = container.initialize_instance()
+                    # RequestContext에 저장
+                    RequestContext.set_instance(container.target, instance, container)
+                    # @PostConstruct 실행
+                    await self.invoke_request_post_construct_async(instance, container)
+
     # =========================================================================
-    # PROTOTYPE 라이프사이클 수동 관리
+    # CALL 라이프사이클 수동 관리
     # =========================================================================
 
     def invoke_prototype_pre_destroy(
         self, instance: Any, container: "Container | None" = None
     ) -> None:
         """
-        PROTOTYPE 인스턴스의 @PreDestroy 메서드들을 호출합니다.
+        CALL 인스턴스의 @PreDestroy 메서드들을 호출합니다.
 
         Spring과 달리 Bloom에서는 사용자가 SystemEventBus를 통해
-        PROTOTYPE 인스턴스를 추적하고 명시적으로 정리할 수 있습니다.
+        CALL 인스턴스를 추적하고 명시적으로 정리할 수 있습니다.
 
         Args:
-            instance: PROTOTYPE 인스턴스
+            instance: CALL 인스턴스
             container: 컨테이너 (없으면 인스턴스 타입에서 조회)
 
         사용 예시:
@@ -448,7 +496,7 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
                     self.system_events.subscribe(InstanceCreatedEvent, self._on_created)
 
                 def _on_created(self, event: InstanceCreatedEvent):
-                    if event.scope == Scope.PROTOTYPE:
+                    if event.scope == Scope.CALL:
                         container = self._get_container(event.instance_type)
                         self._resources.append((event.instance, container))
 
@@ -476,7 +524,7 @@ class LifecycleManager(AbstractManager[LifecycleRegistry]):
         event = InstanceDestroyingEvent(
             instance=instance,
             instance_type=target_cls,
-            scope=Scope.PROTOTYPE,
+            scope=Scope.CALL,
         )
         self.container_manager.system_events.publish(event)
 

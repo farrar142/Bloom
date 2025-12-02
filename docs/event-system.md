@@ -132,7 +132,7 @@ class EventConfig:
 
 ```python
 from bloom.core.events import (
-    InstanceCreatedEvent,   # PROTOTYPE/REQUEST 인스턴스 생성
+    InstanceCreatedEvent,   # CALL/REQUEST 인스턴스 생성
     MethodEnteredEvent,     # 메서드 진입
     MethodExitedEvent,      # 메서드 정상 종료
     MethodErrorEvent,       # 메서드 예외 발생
@@ -141,14 +141,14 @@ from bloom.core.events import (
 
 ### InstanceCreatedEvent
 
-PROTOTYPE 또는 REQUEST 스코프 인스턴스가 생성될 때 발행됩니다.
+CALL 또는 REQUEST 스코프 인스턴스가 생성될 때 발행됩니다.
 
 ```python
 @dataclass
 class InstanceCreatedEvent(SystemEvent):
     instance: Any           # 생성된 인스턴스
     instance_type: type     # 인스턴스 타입
-    scope: Scope            # PROTOTYPE 또는 REQUEST
+    scope: Scope            # CALL 또는 REQUEST
 ```
 
 ### MethodEnteredEvent / MethodExitedEvent / MethodErrorEvent
@@ -288,7 +288,7 @@ ApplicationEventBus.publish(UserCreatedEvent)
 ```
 LazyFieldProxy._lfp_resolve()
     │
-    ▼ (PROTOTYPE 생성 시)
+    ▼ (CALL 생성 시)
 SystemEventBus.publish(InstanceCreatedEvent)
     │
     └─► MetricsCollector._on_instance_created()
@@ -406,6 +406,6 @@ def EventListener(*event_types: type[DomainEvent]):
 
 ## 관련 문서
 
-- [PROTOTYPE 스코프와 자동 라이프사이클 관리](./prototype-scope.md)
+- [CALL 스코프와 자동 라이프사이클 관리](./prototype-scope.md)
 - [콜스택 추적 시스템](./tracing-system.md)
 - [Method Advice 패턴](./method-advice-pattern.md)

@@ -50,8 +50,9 @@ def _load_application(app_path: str | None = None) -> "Application | None":
                 app = getattr(app, attr_name)
             
             if app is not None:
-                if hasattr(app, "ready") and not getattr(app, "_is_ready", False):
-                    app.ready()
+                if hasattr(app, "ready_async") and not getattr(app, "_is_ready", False):
+                    import asyncio
+                    asyncio.run(app.ready_async())
                 return app
         except (ImportError, AttributeError) as e:
             click.echo(f"Warning: Failed to load application '{app_path}': {e}", err=True)
@@ -62,9 +63,10 @@ def _load_application(app_path: str | None = None) -> "Application | None":
         module = importlib.import_module("application")
         app = getattr(module, "application", None)
         if app is not None:
-            # ready() 호출하여 초기화
-            if hasattr(app, "ready") and not getattr(app, "_is_ready", False):
-                app.ready()
+            # ready_async() 호출하여 초기화
+            if hasattr(app, "ready_async") and not getattr(app, "_is_ready", False):
+                import asyncio
+                asyncio.run(app.ready_async())
             return app
     except ImportError:
         pass

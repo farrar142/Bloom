@@ -367,7 +367,7 @@ app = Application("myapp").scan(__name__).ready()
 
 ## 주의사항
 
-1. **풀은 SINGLETON**: `DbConnectionPool`은 반드시 SINGLETON(기본값)이어야 합니다. PROTOTYPE이나 REQUEST로 하면 매번 새 풀이 생성됩니다.
+1. **풀은 SINGLETON**: `DbConnectionPool`은 반드시 SINGLETON(기본값)이어야 합니다. CALL이나 REQUEST로 하면 매번 새 풀이 생성됩니다.
 
 2. **커넥션은 REQUEST**: `DbConnection`은 REQUEST 스코프로 요청당 하나만 생성됩니다.
 
