@@ -223,15 +223,31 @@ class Application:
         모듈들을 스캔하여 컴포넌트 수집
 
         Args:
-            *modules: 스캔할 모듈들
+            *modules: 스캔할 모듈들 또는 모듈 리스트를 반환하는 callable
 
         Returns:
             self (메서드 체이닝 지원)
+
+        Example:
+            # 모듈 직접 전달
+            app.scan(module1, module2)
+
+            # configure 함수 전달 (자동 호출)
+            app.scan(configure)  # configure()가 [module1, module2]를 반환
         """
         # 스캔 중 현재 매니저 설정
         set_current_manager(self.manager)
         for module in modules:
-            self.manager.scan(module)
+            # callable이면 호출하여 모듈 리스트 획득
+            if callable(module) and not isinstance(module, type):
+                result = module()
+                if isinstance(result, (list, tuple)):
+                    for m in result:
+                        self.manager.scan(m)
+                else:
+                    self.manager.scan(result)
+            else:
+                self.manager.scan(module)
         return self
 
     async def ready_async(self, parallel: bool = False) -> "Application":
