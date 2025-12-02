@@ -244,23 +244,30 @@ app.ready()  # 동기 @PostConstruct 실행
 │  │  └───────────────────────┬─────────────────────────────┘ │               │
 │  │                          ▼                               │               │
 │  │  ┌─────────────────────────────────────────────────────┐ │               │
-│  │  │  Parameter Injection                                 │ │               │
+│  │  │  Parameter Injection (resolve_parameters_cached)     │ │               │
 │  │  │  - @Body → request body 파싱                        │ │               │
 │  │  │  - @Query → query string 파싱                       │ │               │
 │  │  │  - @Path → path parameter 추출                      │ │               │
 │  │  │  - @Header → header 값 추출                         │ │               │
 │  │  │  - 타입 변환 및 검증                                 │ │               │
+│  │  │  ※ 미들웨어 컨텍스트 안에서 실행됨                   │ │               │
 │  │  └───────────────────────┬─────────────────────────────┘ │               │
 │  │                          ▼                               │               │
 │  │  ┌─────────────────────────────────────────────────────┐ │               │
-│  │  │  Handler Execution (with call_scope)                 │ │               │
+│  │  │  Handler Execution (MethodProxy)                     │ │               │
+│  │  │  ※ handler()는 DI 시점에 MethodProxy로 래핑됨       │ │               │
 │  │  │  ┌───────────────────────────────────────────────┐  │ │               │
-│  │  │  │  async with call_scope(controller, method):   │  │ │               │
-│  │  │  │      result = await handler(**params)         │  │ │               │
+│  │  │  │  MethodInvocationManager.invoke():            │  │ │               │
 │  │  │  │                                               │  │ │               │
-│  │  │  │  • CALL_SCOPED 인스턴스 __enter__ 호출        │  │ │               │
-│  │  │  │  • 실제 핸들러 로직 실행                       │  │ │               │
-│  │  │  │  • CALL_SCOPED 인스턴스 __exit__ 호출         │  │ │               │
+│  │  │  │  1. CallStackTraceAdvice.before()             │  │ │               │
+│  │  │  │       → push_frame(controller, method)        │  │ │               │
+│  │  │  │       → CALL_SCOPED 인스턴스 __enter__ 호출   │  │ │               │
+│  │  │  │                                               │  │ │               │
+│  │  │  │  2. result = await original_handler(**params) │  │ │               │
+│  │  │  │                                               │  │ │               │
+│  │  │  │  3. CallStackTraceAdvice.after()              │  │ │               │
+│  │  │  │       → pop_frame()                           │  │ │               │
+│  │  │  │       → CALL_SCOPED 인스턴스 __exit__ 호출    │  │ │               │
 │  │  │  └───────────────────────────────────────────────┘  │ │               │
 │  │  └───────────────────────┬─────────────────────────────┘ │               │
 │  │                          ▼                               │               │
@@ -486,7 +493,8 @@ app.ready()  # 동기 @PostConstruct 실행
 │  │                     │Instance1│                       │Instance2│     │  │
 │  │                     └─────────┘                       └─────────┘     │  │
 │  │                                                                       │  │
-│  │  ※ @PreDestroy: 스코프 종료 시 호출 (call_scope 사용 시)              │  │
+│  │  ※ @PreDestroy: 스코프 종료 시 호출 (CallStackTraceAdvice에 의해)     │  │
+│  │  ※ 테스트 시 call_scope/async_call_scope로 수동 관리 가능             │  │
 │  │                                                                       │  │
 │  │  사용 예: 일회용 객체, 상태 있는 빌더                                  │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
@@ -494,8 +502,10 @@ app.ready()  # 동기 @PostConstruct 실행
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │  PROTOTYPE + CALL_SCOPED                                              │  │
 │  │                                                                       │  │
-│  │  ┌─────────────────── call_scope (핸들러 1회 호출) ──────────────────┐│  │
+│  │  ┌─────────────────── CallStackTraceAdvice 관리 ─────────────────────┐│  │
 │  │  │                                                                   ││  │
+│  │  │  CallStackTraceAdvice.before() → push_frame()                     ││  │
+│  │  │       │                                                           ││  │
 │  │  │  Service      Repository1      Repository2                        ││  │
 │  │  │     │              │               │                              ││  │
 │  │  │     └──────► session ◄─────────────┘   ←── 같은 인스턴스 공유     ││  │
@@ -509,10 +519,12 @@ app.ready()  # 동기 @PostConstruct 실행
 │  │  │  │__enter__│◄───┘    │__exit__ │  ←── 컨텍스트 매니저 자동 호출   ││  │
 │  │  │  │ (시작)  │         │(종료)   │                                  ││  │
 │  │  │  └──────────┘         └──────────┘                                ││  │
+│  │  │       │                                                           ││  │
+│  │  │  CallStackTraceAdvice.after() → pop_frame()                       ││  │
 │  │  │                                                                   ││  │
 │  │  └───────────────────────────────────────────────────────────────────┘│  │
 │  │                                                                       │  │
-│  │  ┌─────────────────── call_scope (핸들러 2회 호출) ──────────────────┐│  │
+│  │  ┌─────────────────── 다음 핸들러 호출 (새 frame) ────────────────────┐│  │
 │  │  │                                                                   ││  │
 │  │  │             ┌─────────┐                                           ││  │
 │  │  │             │ Session │  ←── 새로운 인스턴스 (id: 2)              ││  │
@@ -520,6 +532,9 @@ app.ready()  # 동기 @PostConstruct 실행
 │  │  │             └─────────┘                                           ││  │
 │  │  │                                                                   ││  │
 │  │  └───────────────────────────────────────────────────────────────────┘│  │
+│  │                                                                       │  │
+│  │  ※ CallStackTraceAdvice가 자동으로 push_frame/pop_frame 호출         │  │
+│  │  ※ 테스트 시: call_scope/async_call_scope로 수동 시뮬레이션 가능      │  │
 │  │                                                                       │  │
 │  │  사용 예: DatabaseSession, Transaction, UnitOfWork                    │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
@@ -557,7 +572,7 @@ app.ready()  # 동기 @PostConstruct 실행
 │         │                                                                   │
 │         ▼                                                                   │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  async with call_scope(controller, "get_user"):                      │   │
+│  │  CallStackTraceAdvice.before() - push_frame()                        │   │
 │  │       │                                                              │   │
 │  │       │  ┌─────────────────────────────────────────────────────┐    │   │
 │  │       ├─►│ 1. UserService 주입                                  │    │   │
@@ -585,7 +600,7 @@ app.ready()  # 동기 @PostConstruct 실행
 │  │       │  └─────────────────────────────────────────────────────┘    │   │
 │  │       │                                                              │   │
 │  │       ▼                                                              │   │
-│  │  call_scope 종료 (pop_frame)                                         │   │
+│  │  CallStackTraceAdvice.after() - pop_frame()                          │   │
 │  │       │                                                              │   │
 │  │       │  ┌─────────────────────────────────────────────────────┐    │   │
 │  │       └─►│ 4. 캐시 정리                                         │    │   │
@@ -596,6 +611,72 @@ app.ready()  # 동기 @PostConstruct 실행
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### HTTP 요청 처리 순서 요약
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       HTTP REQUEST EXECUTION ORDER                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  router.py: dispatch() 메서드 기준                                           │
+│                                                                             │
+│  1. Route Matching                                                          │
+│     handler = self._route_manager.find_handler(method, path)                │
+│                                                                             │
+│  2. Middleware Chain 시작                                                    │
+│     async with middleware_chain.process(request, handler) as ctx:           │
+│     ├─ 미들웨어 요청 단계 실행 (yield 전)                                    │
+│     └─ generator들 일시 정지                                                 │
+│                                                                             │
+│  3. Parameter Resolution (미들웨어 컨텍스트 안에서)                          │
+│     resolved_params = await resolve_parameters_cached(                      │
+│         id(handler), type_hints, request, path_params                       │
+│     )                                                                       │
+│     ├─ @Body, @Query, @Path, @Header 처리                                   │
+│     └─ 타입 변환 및 검증                                                     │
+│                                                                             │
+│  4. Pending @PostConstruct 실행                                             │
+│     await lifecycle.run_pending_request_init()                              │
+│                                                                             │
+│  5. Handler 호출 (MethodProxy 통해)                                         │
+│     result = await handler(**resolved_params)                               │
+│     │                                                                       │
+│     └─ MethodProxy.__call__() 트리거                                        │
+│        │                                                                    │
+│        └─ MethodInvocationManager.invoke()                                  │
+│           │                                                                 │
+│           ├─ 5a. CallStackTraceAdvice.before()                              │
+│           │      push_frame(owner_cls, method)                              │
+│           │                                                                 │
+│           ├─ 5b. 원본 핸들러 실행                                            │
+│           │      original_handler(**params)                                 │
+│           │                                                                 │
+│           └─ 5c. CallStackTraceAdvice.after()                               │
+│                  pop_frame()                                                │
+│                  → CALL_SCOPED 인스턴스 __exit__ 호출                       │
+│                                                                             │
+│  6. Response 생성                                                            │
+│     ctx.set_response(HttpResponse.ok(result))                               │
+│                                                                             │
+│  7. Middleware Chain 종료                                                    │
+│     async with 블록 종료 시:                                                │
+│     ├─ 미들웨어 응답 단계 실행 (yield 후, 역순)                              │
+│     └─ 최종 응답 반환                                                       │
+│                                                                             │
+│  8. Request Context 정리                                                     │
+│     await lifecycle.end_request_async()                                     │
+│     ├─ REQUEST 스코프 @PreDestroy 호출                                      │
+│     └─ RequestContext 정리                                                  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+핵심 포인트:
+- Middleware는 handler 호출을 감싸지만, MethodAdvice는 그 안에서 실행됨
+- Parameter Resolution은 middleware 컨텍스트 안에서 먼저 실행됨
+- CallStackTraceAdvice는 handler() 호출 시점에 MethodProxy를 통해 실행됨
+- CALL_SCOPED 인스턴스의 __enter__/__exit__는 push_frame/pop_frame에서 관리됨
 ```
 
 ---
