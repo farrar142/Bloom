@@ -46,6 +46,19 @@ from .migrations import (
     CreateIndex,
     DropIndex,
 )
+from .transaction import (
+    Propagation,
+    TransactionError,
+    TransactionRequiredError,
+    TransactionNotAllowedError,
+    TransactionalElement,
+    Transactional,
+    TransactionContext,
+    TransactionAdvice,
+    create_transaction_method_advice,
+    get_current_transaction,
+    has_active_transaction,
+)
 
 __all__ = [
     # Expressions
@@ -98,4 +111,16 @@ __all__ = [
     "AlterColumn",
     "CreateIndex",
     "DropIndex",
+    # Transaction
+    "Propagation",
+    "TransactionError",
+    "TransactionRequiredError",
+    "TransactionNotAllowedError",
+    "TransactionalElement",
+    "Transactional",
+    "TransactionContext",
+    "TransactionAdvice",
+    "create_transaction_method_advice",
+    "get_current_transaction",
+    "has_active_transaction",
 ]
