@@ -265,7 +265,7 @@ def migrate(ctx: DBContext, target: str | None, fake: bool, check: bool):
             return
 
     click.echo("\nDone.")
-    
+
     # 마이그레이션 후 스키마 검사 (--check 옵션 또는 기본 동작)
     if check or pending:  # 마이그레이션이 있었으면 항상 검사
         _check_schema_drift(ctx, session_factory)
@@ -405,7 +405,7 @@ def rollback(ctx: DBContext, steps: int, fake: bool):
             return
 
     click.echo("\nDone.")
-    
+
     # 롤백 후 스키마 검사
     _check_schema_drift(ctx, session_factory)
 
@@ -456,7 +456,7 @@ def status(ctx: DBContext):
         click.echo("\n⏳ Pending migrations:")
         for m in pending:
             click.echo(f"    [ ] {m.name}")
-    
+
     # 스키마 차이 검사
     _check_schema_drift(ctx, session_factory)
 

@@ -207,7 +207,7 @@ class Application:
 
             if not module_name:
                 continue
-            
+
             # 숫자로 시작하는 모듈은 Python에서 import 불가 - 건너뛰기
             parts = module_name.split(".")
             if any(part[0].isdigit() for part in parts if part):

@@ -183,6 +183,9 @@ def db(
     Module-based usage (legacy):
         bloom db --entities=myapp.entities makemigrations
     """
+    import asyncio
+    import warnings
+
     # 설정 로드
     config = load_config()
 
@@ -191,43 +194,47 @@ def db(
     app_module: Any = None
     app_path = application or config.get("application", "application:application")
 
-    try:
-        app, app_module = load_application(app_path)
-        # ready_async() 호출하여 DI 초기화
-        if not app._is_ready:
-            import asyncio
+    # Application 로드 및 초기화 중 import 경고 숨기기
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
 
-            click.echo(f"Initializing application: {app.name}")
-            asyncio.run(app.ready_async())
-        click.echo(f"Using application: {app.name}")
-    except (ImportError, AttributeError, click.ClickException) as e:
-        # application 모듈을 찾을 수 없는 경우
-        if application:
-            # 명시적으로 지정한 경우 에러
-            raise click.ClickException(f"Failed to load application '{app_path}': {e}")
+        try:
+            app, app_module = load_application(app_path)
+            # ready_async() 호출하여 DI 초기화
+            if not app._is_ready:
+                click.echo(f"Initializing application: {app.name}")
+                asyncio.run(app.ready_async())
+            click.echo(f"Using application: {app.name}")
+        except (ImportError, AttributeError, click.ClickException) as e:
+            # application 모듈을 찾을 수 없는 경우
+            if application:
+                # 명시적으로 지정한 경우 에러
+                raise click.ClickException(
+                    f"Failed to load application '{app_path}': {e}"
+                )
 
-        # 기본값 사용 시, --entities가 있으면 fallback
-        if entities:
-            click.echo(f"Note: Using --entities mode (no application found)")
-        else:
-            # --entities도 없으면 친절한 에러 메시지
-            raise click.ClickException(
-                f"Could not import default application.\n\n"
-                f"Make sure you have 'application.py' with:\n\n"
-                f"  from bloom import Application\n"
-                f"  from bloom.db import SessionFactory, SQLiteDialect\n"
-                f"  from bloom.core import Component, Factory\n\n"
-                f"  application = Application('myapp')\n\n"
-                f"  @Component\n"
-                f"  class DatabaseConfig:\n"
-                f"      @Factory\n"
-                f"      def session_factory(self) -> SessionFactory:\n"
-                f"          return SessionFactory('db.sqlite3', SQLiteDialect())\n\n"
-                f"Or specify explicitly:\n"
-                f"  bloom db --application=mymodule:app makemigrations\n\n"
-                f"Or use legacy mode:\n"
-                f"  bloom db --entities=myapp.entities --database=sqlite:///db.sqlite3 makemigrations"
-            )
+            # 기본값 사용 시, --entities가 있으면 fallback
+            if entities:
+                click.echo(f"Note: Using --entities mode (no application found)")
+            else:
+                # --entities도 없으면 친절한 에러 메시지
+                raise click.ClickException(
+                    f"Could not import default application.\n\n"
+                    f"Make sure you have 'application.py' with:\n\n"
+                    f"  from bloom import Application\n"
+                    f"  from bloom.db import SessionFactory, SQLiteDialect\n"
+                    f"  from bloom.core import Component, Factory\n\n"
+                    f"  application = Application('myapp')\n\n"
+                    f"  @Component\n"
+                    f"  class DatabaseConfig:\n"
+                    f"      @Factory\n"
+                    f"      def session_factory(self) -> SessionFactory:\n"
+                    f"          return SessionFactory('db.sqlite3', SQLiteDialect())\n\n"
+                    f"Or specify explicitly:\n"
+                    f"  bloom db --application=mymodule:app makemigrations\n\n"
+                    f"Or use legacy mode:\n"
+                    f"  bloom db --entities=myapp.entities --database=sqlite:///db.sqlite3 makemigrations"
+                )
 
     # 옵션 우선, 없으면 설정 파일, 없으면 기본값
     mig_dir = migrations_dir or Path(config.get("migrations_dir", "migrations"))
