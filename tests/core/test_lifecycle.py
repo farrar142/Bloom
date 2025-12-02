@@ -456,7 +456,7 @@ class TestAsyncLifecycleInSyncContext:
 
         app = Application("test")
         app.scan(AsyncService, SyncService)
-        app.ready()  # run_async_init=False (기본값)
+        app.ready(run_async_init=False)  # 명시적으로 False
 
         # 동기만 실행됨
         assert "sync_init" in call_log
@@ -531,3 +531,95 @@ class TestAsyncLifecycleInSyncContext:
         assert "sync_first" in call_log
         assert "sync_third" in call_log
         assert "async_second" in call_log
+
+    def test_async_post_construct_actually_awaits(self, reset_container_manager):
+        """비동기 @PostConstruct가 실제로 await됨 (asyncio.sleep 포함)"""
+        import asyncio
+
+        result = {"value": None, "counter": 0}
+
+        @Component
+        class AsyncService:
+            @PostConstruct
+            async def init(self):
+                # 실제 비동기 작업 시뮬레이션
+                await asyncio.sleep(0.01)
+                result["counter"] += 1
+                result["value"] = "completed"
+
+        app = Application("test")
+        app.scan(AsyncService)
+        app.ready(run_async_init=True)
+
+        # await가 완료되어야 값이 설정됨
+        assert result["value"] == "completed"
+        assert result["counter"] == 1
+
+    def test_multiple_async_post_construct_all_await(self, reset_container_manager):
+        """여러 비동기 @PostConstruct가 모두 await됨"""
+        import asyncio
+
+        results = []
+
+        @Component
+        class ServiceA:
+            @PostConstruct
+            async def init(self):
+                await asyncio.sleep(0.01)
+                results.append("A")
+
+        @Component
+        class ServiceB:
+            a: ServiceA
+
+            @PostConstruct
+            async def init(self):
+                await asyncio.sleep(0.01)
+                results.append("B")
+
+        @Component
+        class ServiceC:
+            b: ServiceB
+
+            @PostConstruct
+            async def init(self):
+                await asyncio.sleep(0.01)
+                results.append("C")
+
+        app = Application("test")
+        app.scan(ServiceA, ServiceB, ServiceC)
+        app.ready(run_async_init=True)
+
+        # 모든 비동기 초기화가 완료됨
+        assert results == ["A", "B", "C"]
+
+    def test_async_post_construct_with_async_dependency_setup(
+        self, reset_container_manager
+    ):
+        """비동기 @PostConstruct에서 설정한 값을 다른 컴포넌트가 사용"""
+        import asyncio
+
+        @Component
+        class DatabasePool:
+            connection_string: str | None = None
+
+            @PostConstruct
+            async def connect(self):
+                # 비동기 연결 시뮬레이션
+                await asyncio.sleep(0.01)
+                self.connection_string = "postgresql://localhost/test"
+
+        @Component
+        class Repository:
+            pool: DatabasePool
+
+            def get_connection_info(self) -> str | None:
+                return self.pool.connection_string
+
+        app = Application("test")
+        app.scan(DatabasePool, Repository)
+        app.ready(run_async_init=True)
+
+        repo = app.manager.get_instance(Repository)
+        # 비동기 초기화가 완료되어야 connection_string이 설정됨
+        assert repo.get_connection_info() == "postgresql://localhost/test"

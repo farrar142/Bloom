@@ -232,7 +232,7 @@ class Application:
         return self
 
     def ready(
-        self, parallel: bool = False, run_async_init: bool = False
+        self, parallel: bool = False, run_async_init: bool = True
     ) -> "Application":
         """
         애플리케이션 초기화 완료
@@ -244,9 +244,9 @@ class Application:
         Args:
             parallel: True면 의존성 레벨별로 병렬 초기화 수행
                      같은 레벨의 컨테이너들을 동시에 초기화하여 시작 시간 단축
-            run_async_init: True면 비동기 @PostConstruct도 즉시 실행
-                           CLI, 배치 작업 등 비-ASGI 환경에서 사용
-                           (ASGI 환경에서는 lifespan에서 자동 호출됨)
+            run_async_init: True면 비동기 @PostConstruct도 즉시 실행 (기본값)
+                           이벤트 루프가 이미 실행 중이면 자동으로 스킵됨
+                           (ASGI 환경에서는 lifespan의 start_async()에서 실행)
 
         Returns:
             self (메서드 체이닝 지원)
@@ -291,22 +291,15 @@ class Application:
         """
         동기 컨텍스트에서 비동기 @PostConstruct 실행
 
-        이벤트 루프가 이미 실행 중이면 경고를 출력하고 스킵합니다.
+        이벤트 루프가 이미 실행 중이면 조용히 스킵합니다.
         (ASGI 환경에서는 lifespan에서 start_async()가 호출됨)
         """
         import asyncio
 
         try:
             asyncio.get_running_loop()
-            # 이미 루프가 있음 - ASGI 환경이거나 이미 async 컨텍스트
-            import warnings
-
-            warnings.warn(
-                "run_async_init=True but event loop already running. "
-                "Async @PostConstruct will be executed via start_async() instead.",
-                RuntimeWarning,
-                stacklevel=3,
-            )
+            # 이미 루프가 있음 - ASGI 환경에서는 lifespan에서 start_async() 호출됨
+            # 조용히 스킵 (정상 동작)
         except RuntimeError:
             # 루프 없음 - 직접 실행
             asyncio.run(self.start_async())
