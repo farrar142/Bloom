@@ -1,0 +1,45 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bloom-dev
+    volumes:
+      # 소스 코드 마운트 (실시간 반영)
+      - .:/workspace:cached
+      # Python 캐시 분리 (성능 향상)
+      - bloom-venv:/workspace/.venv
+      - bloom-uv-cache:/root/.cache/uv
+      - ~/.ssh:/root/.ssh
+    ports:
+      - "8000:8000" # 웹 서버
+    environment:
+      - PYTHONPATH=/workspace
+      - BLOOM_ENV=development
+    stdin_open: true
+    tty: true
+    command: sleep infinity
+
+  # Redis (분산 태스크/메시징 테스트용)
+  redis:
+    image: redis:7-alpine
+    container_name: bloom-redis
+    volumes:
+      - bloom-redis-data:/data
+
+  # PostgreSQL (데이터베이스 테스트용)
+  postgres:
+    image: postgres:16-alpine
+    container_name: bloom-postgres
+    environment:
+      POSTGRES_USER: bloom
+      POSTGRES_PASSWORD: bloom
+      POSTGRES_DB: bloom_dev
+    volumes:
+      - bloom-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  bloom-venv:
+  bloom-uv-cache:
+  bloom-redis-data:
+  bloom-postgres-data:
