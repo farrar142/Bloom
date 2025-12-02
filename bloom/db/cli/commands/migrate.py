@@ -129,13 +129,7 @@ def _check_schema_drift(ctx: DBContext, session_factory) -> bool:
 
 
 @db.command()
-@click.option(
-    "--target",
-    "-t",
-    type=str,
-    default=None,
-    help="Target migration name (or 'zero' to rollback all)",
-)
+@click.argument("target", required=False, default=None)
 @click.option("--fake", is_flag=True, help="Mark migrations as run without executing")
 @click.option("--check", is_flag=True, help="Check for schema drift before migrating")
 @pass_context
@@ -147,14 +141,14 @@ def migrate(ctx: DBContext, target: str | None, fake: bool, check: bool):
         # 모든 마이그레이션 적용
         bloom db migrate
 
-        # 특정 마이그레이션까지만 적용
-        bloom db migrate --target 0002_add_email
+        # 특정 마이그레이션까지만 적용 (argument)
+        bloom db migrate 0002
 
         # 특정 마이그레이션까지 롤백 (해당 마이그레이션은 유지)
-        bloom db migrate --target 0001_initial
+        bloom db migrate 0001
 
         # 모든 마이그레이션 롤백
-        bloom db migrate --target zero
+        bloom db migrate zero
 
         # 스키마 차이 검사 포함
         bloom db migrate --check
