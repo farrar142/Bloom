@@ -118,11 +118,22 @@ class MigrationRegistry:
                 # Migration 클래스 찾기
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
+                    # 이미 Migration 인스턴스인 경우
                     if isinstance(attr, Migration):
                         self.register(attr)
-                    elif isinstance(attr, type) and attr_name.startswith("Migration_"):
-                        migration = attr()
-                        if isinstance(migration, Migration):
+                    # Migration을 상속받은 클래스인 경우 (Migration 자체는 제외)
+                    elif (
+                        isinstance(attr, type) 
+                        and issubclass(attr, Migration) 
+                        and attr is not Migration
+                    ):
+                        # 클래스에서 name과 operations가 정의되어 있으면 인스턴스화
+                        if hasattr(attr, 'name') and hasattr(attr, 'operations'):
+                            migration = Migration(
+                                name=attr.name,
+                                dependencies=getattr(attr, 'dependencies', []),
+                                operations=attr.operations,
+                            )
                             self.register(migration)
 
 

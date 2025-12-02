@@ -77,8 +77,9 @@ class MigrationGenerator:
             if not operations:
                 return None
 
-            # 마이그레이션 이름 생성
-            migration_name = name or self._generate_migration_name(operations)
+            # 마이그레이션 이름 생성 (항상 넘버링 포함)
+            base_name = name or self._generate_migration_name(operations)
+            migration_name = self._add_number_prefix(base_name)
 
             return Migration(
                 name=migration_name,
@@ -132,12 +133,34 @@ class MigrationGenerator:
 
         return operations
 
+    def _get_next_number(self) -> int:
+        """다음 마이그레이션 번호 계산"""
+        import re
+        existing = list(self._migrations_dir.glob("*.py"))
+        existing = [f for f in existing if f.name != "__init__.py"]
+        
+        # 기존 마이그레이션에서 가장 큰 번호 찾기
+        max_num = 0
+        for f in existing:
+            match = re.match(r"^(\d{4})_", f.stem)
+            if match:
+                num = int(match.group(1))
+                max_num = max(max_num, num)
+        
+        return max_num + 1
+
+    def _add_number_prefix(self, name: str) -> str:
+        """이름에 넘버링 추가 (이미 있으면 그대로)"""
+        import re
+        # 이미 넘버링이 있으면 그대로 반환
+        if re.match(r"^\d{4}_", name):
+            return name
+        
+        next_num = self._get_next_number()
+        return f"{next_num:04d}_{name}"
+
     def _generate_migration_name(self, operations: list) -> str:
         """마이그레이션 이름 생성"""
-        # 기존 마이그레이션 수 확인
-        existing = list(self._migrations_dir.glob("*.py"))
-        next_num = len(existing) + 1
-
         # 연산 요약
         if operations:
             first_op = operations[0]
@@ -152,11 +175,12 @@ class MigrationGenerator:
         else:
             suffix = "auto"
 
-        return f"{next_num:04d}_{suffix}"
+        return suffix
 
     def _get_latest_migration(self) -> list[str]:
         """최신 마이그레이션 의존성"""
         files = sorted(self._migrations_dir.glob("*.py"))
+        files = [f for f in files if f.name != "__init__.py"]
         if files:
             # 파일명에서 마이그레이션 이름 추출
             last_file = files[-1]
