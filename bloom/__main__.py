@@ -451,6 +451,38 @@ def _copy_app_template(
 # =============================================================================
 
 
+class LazyMultiCommand(click.Group):
+    """Lazy 로드되는 Group/MultiCommand의 플레이스홀더"""
+
+    def __init__(self, name: str, import_path: str, short_help: str):
+        super().__init__(name, help=short_help)
+        self._import_path = import_path
+        self.short_help = short_help
+        self._real_command: click.MultiCommand | None = None
+
+    def _load(self) -> click.MultiCommand:
+        if self._real_command is None:
+            module_path, attr_name = self._import_path.rsplit(":", 1)
+            module = importlib.import_module(module_path)
+            self._real_command = getattr(module, attr_name)
+        return self._real_command
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return self._load().list_commands(ctx)
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        return self._load().get_command(ctx, cmd_name)
+
+    def invoke(self, ctx: click.Context):
+        return self._load().invoke(ctx)
+
+    def get_help(self, ctx: click.Context) -> str:
+        return self._load().get_help(ctx)
+
+    def get_params(self, ctx: click.Context) -> list:
+        return self._load().get_params(ctx)
+
+
 class LazyCommand(click.Command):
     """Lazy 로드되는 커맨드의 플레이스홀더"""
 
@@ -483,26 +515,29 @@ class LazyGroup(click.Group):
     def __init__(
         self,
         *args,
-        lazy_subcommands: dict[str, tuple[str, str]] | None = None,
+        lazy_subcommands: dict[str, tuple[str, str, bool]] | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        # lazy_subcommands: {name: (import_path, short_help)}
+        # lazy_subcommands: {name: (import_path, short_help, is_group)}
         self._lazy_subcommands = lazy_subcommands or {}
 
-        # LazyCommand 플레이스홀더 등록
-        for cmd_name, (import_path, short_help) in self._lazy_subcommands.items():
-            lazy_cmd = LazyCommand(cmd_name, import_path, short_help)
+        # Lazy 플레이스홀더 등록
+        for cmd_name, (import_path, short_help, is_group) in self._lazy_subcommands.items():
+            if is_group:
+                lazy_cmd = LazyMultiCommand(cmd_name, import_path, short_help)
+            else:
+                lazy_cmd = LazyCommand(cmd_name, import_path, short_help)
             self.add_command(lazy_cmd, cmd_name)
 
 
 # 기존 cli 그룹을 LazyGroup으로 교체
-# 무거운 서브커맨드는 lazy로 로드 (short_help 포함)
+# 무거운 서브커맨드는 lazy로 로드 (short_help, is_group 포함)
 _lazy_subcommands = {
-    "db": ("bloom.db.cli:db", "Database management commands"),
-    "task": ("bloom.task.cli:task", "Task management commands"),
-    "tests": ("bloom.tests.cli:tests", "Run tests with pytest"),
-    "run": ("bloom.scripts.cli:run", "Run custom scripts"),
+    "db": ("bloom.db.cli:db", "Database management commands", True),
+    "task": ("bloom.task.cli:task", "Task management commands", True),
+    "tests": ("bloom.tests.cli:tests", "Run tests with pytest", False),
+    "run": ("bloom.scripts.cli:run", "Run custom scripts", False),
 }
 
 # cli 그룹 재정의 (LazyGroup 사용)
