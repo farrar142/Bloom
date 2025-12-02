@@ -44,7 +44,7 @@ def makemigrations(
 
         if not entities:
             click.echo("No entity classes found. Use --entities to specify module.")
-            click.echo("Example: bloom db makemigrations --entities myapp.models")
+            click.echo("Example: bloom db makemigrations --entities myapp.entities")
             return
 
         click.echo(f"Found {len(entities)} entities: {[e.__name__ for e in entities]}")

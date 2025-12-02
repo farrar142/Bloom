@@ -156,7 +156,7 @@ def load_application(app_path: str) -> tuple["Application", Any]:
     "-e",
     type=str,
     default=None,
-    help="Entities module path (e.g., 'myapp.models') - fallback if no --application",
+    help="Entities module path (e.g., 'myapp.entities') - fallback if no --application",
 )
 @click.option(
     "--database",
@@ -181,7 +181,7 @@ def db(
 
     \b
     Module-based usage (legacy):
-        bloom db --entities=myapp.models makemigrations
+        bloom db --entities=myapp.entities makemigrations
     """
     # 설정 로드
     config = load_config()
@@ -225,7 +225,7 @@ def db(
                 f"Or specify explicitly:\n"
                 f"  bloom db --application=mymodule:app makemigrations\n\n"
                 f"Or use legacy mode:\n"
-                f"  bloom db --entities=myapp.models --database=sqlite:///db.sqlite3 makemigrations"
+                f"  bloom db --entities=myapp.entities --database=sqlite:///db.sqlite3 makemigrations"
             )
 
     # 옵션 우선, 없으면 설정 파일, 없으면 기본값
