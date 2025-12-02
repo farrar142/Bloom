@@ -5,13 +5,13 @@
 
 from bloom.tests import TestCase
 
-from . import {{app_name_pascal}}Controller, {{app_name_pascal}}Service
+from application import application
 
 
 class Test{{app_name_pascal}}Controller(TestCase):
     """{{app_name_pascal}} 컨트롤러 테스트"""
 
-    components = [{{app_name_pascal}}Controller, {{app_name_pascal}}Service]
+    app_module = application
 
     def test_list(self):
         """GET /{{app_name}}/ 테스트"""
@@ -27,3 +27,4 @@ class Test{{app_name_pascal}}Controller(TestCase):
         """DELETE /{{app_name}}/{id} - 존재하지 않는 ID"""
         response = self.delete("/{{app_name}}/999")
         self.assert_status(response, 404)
+

@@ -57,8 +57,9 @@ class TestCase(UnitTestCase):
     Django의 TestCase처럼 모든 테스트 기능을 하나의 클래스에 제공합니다.
 
     클래스 속성:
+        app_module: 전체 Application 인스턴스 (권장, 전체 DI 컨텍스트 사용)
         app_name: Application 이름 (기본: "test")
-        components: 스캔할 컴포넌트 리스트
+        components: 스캔할 컴포넌트 리스트 (격리된 테스트용)
         config: 설정 딕셔너리
         auto_ready: True면 setUp에서 자동으로 ready() 호출
 
@@ -67,9 +68,29 @@ class TestCase(UnitTestCase):
         - 인스턴스 조회: get_instance(), get_instances()
         - Mock: override(), override_factory()
         - Assertion: assert_instance_of(), assert_injected(), assert_status()
+    
+    사용 예시:
+        # 방법 1: app_module 사용 (권장 - 전체 DI 컨텍스트)
+        from application import application
+        
+        class TestUserController(TestCase):
+            app_module = application
+            
+            def test_list(self):
+                response = self.get("/users/")
+                self.assert_status(response, 200)
+        
+        # 방법 2: components 사용 (격리된 테스트)
+        class TestUserService(TestCase):
+            components = [UserService]
+            
+            def test_get_users(self):
+                service = self.get_instance(UserService)
+                ...
     """
 
     # 클래스 레벨 설정
+    app_module: Application | None = None  # 전체 Application 사용 (권장)
     app_name: str = "test"
     components: list[type] = []
     config: dict[str, Any] | None = None
@@ -86,22 +107,27 @@ class TestCase(UnitTestCase):
         """테스트 설정 - 각 테스트 전에 호출됨"""
         super().setUp()
 
-        # Application 생성
-        self.app = Application(self.app_name)
-        self.manager = self.app.manager
-        self.manager.clear()
+        # app_module이 지정되면 해당 Application 사용
+        if self.app_module is not None:
+            self.app = self.app_module
+            self.manager = self.app.manager
+        else:
+            # 새 Application 생성 (components 방식)
+            self.app = Application(self.app_name)
+            self.manager = self.app.manager
+            self.manager.clear()
 
-        # 설정 로드
-        if self.config:
-            self.app.load_config(self.config, source_type="dict")
+            # 설정 로드
+            if self.config:
+                self.app.load_config(self.config, source_type="dict")
 
-        # 컴포넌트 스캔
-        for component in self.components:
-            self.app.scan(component)
+            # 컴포넌트 스캔
+            for component in self.components:
+                self.app.scan(component)
 
-        # ready() 호출
-        if self.auto_ready and self.components:
-            self.app.ready()
+            # ready() 호출
+            if self.auto_ready and self.components:
+                self.app.ready()
 
         # TestClient 생성
         self.client = TestClient(self.app)
@@ -120,11 +146,12 @@ class TestCase(UnitTestCase):
         if self._loop and not self._loop.is_running():
             self._loop.close()
 
-        # ContainerManager 정리 (인스턴스 레지스트리 초기화)
-        if hasattr(self, 'manager') and self.manager:
-            self.manager.clear()
-
-        set_current_manager(None)
+        # components 방식인 경우에만 ContainerManager 정리
+        # app_module 방식은 전역 Application이므로 정리하지 않음
+        if self.app_module is None:
+            if hasattr(self, 'manager') and self.manager:
+                self.manager.clear()
+            set_current_manager(None)
 
     # === 이벤트 루프 ===
 
