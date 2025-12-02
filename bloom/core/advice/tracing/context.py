@@ -164,6 +164,53 @@ def clear_stack() -> None:
     _scoped_prototype_cache.set({})
 
 
+class call_scope:
+    """콜스택 컨텍스트 매니저
+    
+    with 문을 사용해 핸들러 호출 컨텍스트를 시뮬레이션합니다.
+    CALL_SCOPED 프로토타입 인스턴스가 같은 컨텍스트 내에서 공유됩니다.
+    
+    사용법:
+        with call_scope(instance, "method_name"):
+            # 이 블록 내에서 CALL_SCOPED 인스턴스가 공유됨
+            result = instance.method_name()
+        
+        # 또는 trace_id 지정
+        with call_scope(instance, "method_name", trace_id="test-123"):
+            ...
+            
+        # 테스트에서 간단히 사용
+        with call_scope():
+            # 익명 컨텍스트 - CALL_SCOPED 공유만 필요할 때
+            repo1.get()
+            repo2.get()  # 같은 Session 공유
+    """
+    
+    def __init__(
+        self,
+        instance: Any = None,
+        method_name: str = "anonymous",
+        trace_id: str | None = None,
+    ):
+        self.instance = instance or object()
+        self.method_name = method_name
+        self.trace_id = trace_id
+        self._frame: CallFrame | None = None
+    
+    def __enter__(self) -> "call_scope":
+        if self.trace_id:
+            set_trace_id(self.trace_id)
+        elif not get_trace_id():
+            set_trace_id()  # 자동 생성
+        
+        self._frame = push_frame(self.instance, self.method_name)
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        pop_frame()
+        return None  # 예외 전파
+
+
 # =============================================================================
 # PROTOTYPE 인스턴스 자동 정리
 # =============================================================================

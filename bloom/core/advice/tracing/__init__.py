@@ -43,6 +43,7 @@ from .context import (
     get_prototype_count_at_depth,
     get_scoped_prototype,
     set_scoped_prototype,
+    call_scope,
 )
 from .advice import CallStackTraceAdvice
 
@@ -61,5 +62,6 @@ __all__ = [
     "get_prototype_count_at_depth",
     "get_scoped_prototype",
     "set_scoped_prototype",
+    "call_scope",
     "CallStackTraceAdvice",
 ]

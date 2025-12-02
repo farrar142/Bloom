@@ -114,27 +114,19 @@ class TestFactoryCallScopedMode:
 
         service = app.manager.get_instance(UserService)
 
-        # 핸들러 컨텍스트 시뮬레이션
-        from bloom.core.advice.tracing import push_frame, pop_frame, set_trace_id
+        # 핸들러 컨텍스트 시뮬레이션 with call_scope
+        from bloom.core.advice.tracing import call_scope
         
         # 첫 번째 호출 - 핸들러 컨텍스트 내에서 같은 session 공유
-        set_trace_id("test-1")
-        push_frame(service, "get_both_session_ids")
-        try:
+        with call_scope(service, "get_both_session_ids", trace_id="test-1"):
             id1, id2 = service.get_both_session_ids()
             assert id1 == id2, "같은 호출 스택 내에서는 같은 Session을 공유해야 함"
-        finally:
-            pop_frame()
 
         # 두 번째 호출 - 새로운 핸들러 컨텍스트
-        set_trace_id("test-2")
-        push_frame(service, "get_both_session_ids")
-        try:
+        with call_scope(service, "get_both_session_ids", trace_id="test-2"):
             id3, id4 = service.get_both_session_ids()
             assert id3 == id4, "같은 호출 스택 내에서는 같은 Session을 공유해야 함"
             assert id1 != id3, "새로운 호출에서는 새로운 Session을 생성해야 함"
-        finally:
-            pop_frame()
 
     def test_call_scoped_releases_after_call_ends(self):
         """CALL_SCOPED 인스턴스는 호출 종료 후 해제되어야 함"""
