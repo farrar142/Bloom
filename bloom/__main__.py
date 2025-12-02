@@ -541,7 +541,7 @@ _lazy_subcommands = {
     "db": ("bloom.db.cli:db", "Database management commands", True),
     "task": ("bloom.task.cli:task", "Task management commands", False),
     "tests": ("bloom.tests.cli:tests", "Run tests with pytest", False),
-    "run": ("bloom.scripts.cli:run", "Run custom scripts", False),
+    "run": ("bloom.scripts.cli:run", "Run custom scripts", True),
 }
 
 # cli 그룹 재정의 (LazyGroup 사용)

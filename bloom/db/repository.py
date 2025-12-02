@@ -70,12 +70,12 @@ class Repository(ABC, Generic[T, ID]):
         @Component
         class DatabaseConfig:
             session_factory: SessionFactory
-            
+
             @Factory
             @Scope(Scope.CALL, PrototypeMode.CALL_SCOPED)
             def session(self) -> Session:
                 return self.session_factory.create()
-            
+
             @Factory
             @Scope(Scope.CALL, PrototypeMode.CALL_SCOPED)
             async def async_session(self) -> AsyncSession:
@@ -84,10 +84,10 @@ class Repository(ABC, Generic[T, ID]):
         # 2. Repository 정의
         class UserRepository(CrudRepository[User, int]):
             # session, async_session은 자동 주입됨
-            
+
             def find_by_email(self, email: str) -> User | None:
                 return self.find_one_by(email=email)
-            
+
             async def find_by_email_async(self, email: str) -> User | None:
                 return await self.find_one_by_async(email=email)
     """
@@ -99,13 +99,14 @@ class Repository(ABC, Generic[T, ID]):
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Repository를 상속하면 자동으로 @Component로 등록"""
         super().__init_subclass__(**kwargs)
-        
+
         # ABC를 직접 상속한 경우 (Repository 자체)는 스킵
         if cls.__name__ == "Repository":
             return
-            
+
         # @Component 데코레이터 적용
         from bloom.core.decorators import Component
+
         Component(cls)
 
     # 지연 초기화 캐시
