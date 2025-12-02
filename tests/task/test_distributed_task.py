@@ -310,7 +310,7 @@ class TestTaskRegistry:
             def custom(self) -> str:
                 return "custom"
 
-        app = Application("test-registry").scan(TaskService).ready()
+        app = await Application("test-registry").scan(TaskService).ready_async()
 
         registry = TaskRegistry()
         registry.scan(app.manager)
@@ -339,6 +339,8 @@ class TestTaskRegistry:
         )
 
         info = registry.get("Calculator.add")
+        if not info:
+            pytest.fail("TaskInfo not found")
         result = info.execute(3, 5)
 
         assert result == 8
@@ -376,7 +378,7 @@ class TestDistributedTaskBackendWithMemory:
             def multiply(self, a: int, b: int) -> int:
                 return a * b
 
-        app = Application("test-submit").scan(MathService).ready()
+        app = await Application("test-submit").scan(MathService).ready_async()
 
         await backend.start()
 
@@ -427,7 +429,7 @@ class TestDistributedTaskBackendWithMemory:
                     raise ValueError(f"Attempt {attempt_count} failed")
                 return "success"
 
-        app = Application("test-retry").scan(FailingService).ready()
+        app = await Application("test-retry").scan(FailingService).ready_async()
 
         await backend.start()
         worker_task = asyncio.create_task(backend.start_worker(app.manager))
@@ -545,7 +547,9 @@ class TestDistributedTaskBackendWithRedis:
             def compute(self, x: int, y: int) -> int:
                 return x + y
 
-        app = Application("test-distributed").scan(DistributedService).ready()
+        app = (
+            await Application("test-distributed").scan(DistributedService).ready_async()
+        )
 
         # 워커 시작
         worker_task = asyncio.create_task(backend.start_worker(app.manager))

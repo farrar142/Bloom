@@ -65,6 +65,22 @@ class AbstractTaskResult[T](ABC):
         """
         ...
 
+    # def get(self, timeout: float | None = None) -> T:
+    #     """
+    #     결과를 반환합니다. 완료될 때까지 대기합니다.
+
+    #     Args:
+    #         timeout: 대기 시간 (초). None이면 무한 대기
+
+    #     Returns:
+    #         태스크 결과
+
+    #     Raises:
+    #         TimeoutError: timeout 초과 시
+    #         Exception: 태스크 실행 중 발생한 예외
+    #     """
+    #     ...
+
 
 class TaskResult[T](AbstractTaskResult[T]):
     """

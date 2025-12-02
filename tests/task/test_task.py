@@ -888,10 +888,10 @@ class TestTaskApplicationIntegration:
                 return registry
 
         # Application 초기화
-        app = (
+        app = await (
             Application("test_task_integration")
             .scan(NotificationService, TaskConfig)
-            .ready()
+            .ready_async()
         )
 
         # 서비스 인스턴스 가져오기
@@ -946,10 +946,10 @@ class TestTaskApplicationIntegration:
                 return registry
 
         # Application 초기화
-        app = (
+        app = await (
             Application("test_di_task")
             .scan(EmailRepository, EmailService, TaskConfig)
-            .ready()
+            .ready_async()
         )
 
         # 서비스와 리포지토리 가져오기
@@ -1003,8 +1003,10 @@ class TestTaskApplicationIntegration:
                 return registry
 
         # Application 초기화
-        app = (
-            Application("test_async_task").scan(AsyncDataProcessor, TaskConfig).ready()
+        app = await (
+            Application("test_async_task")
+            .scan(AsyncDataProcessor, TaskConfig)
+            .ready_async()
         )
 
         processor = app.manager.get_instance(AsyncDataProcessor)
@@ -1049,10 +1051,10 @@ class TestTaskApplicationIntegration:
                 return registry
 
         # Application 초기화
-        app = (
+        app = await (
             Application("test_scheduled_task")
             .scan(MetricsCollector, TaskConfig)
-            .ready()
+            .ready_async()
         )
 
         # 백엔드 시작 (스케줄러 활성화)
@@ -1119,7 +1121,11 @@ class TestTaskApplicationIntegration:
                 registry.register(TaskMethodAdvice(backend))
                 return registry
 
-        app = Application("test_multi_task").scan(OrderService, TaskConfig).ready()
+        app = (
+            await Application("test_multi_task")
+            .scan(OrderService, TaskConfig)
+            .ready_async()
+        )
 
         service = app.manager.get_instance(OrderService)
 
@@ -1174,10 +1180,10 @@ class TestTaskApplicationIntegration:
                 registry.register(TaskMethodAdvice(backend))
                 return registry
 
-        app = (
+        app = await (
             Application("test_controller_task")
             .scan(BackgroundJobService, JobController, TaskConfig)
-            .ready()
+            .ready_async()
         )
 
         # Controller에서 서비스 사용
@@ -1221,7 +1227,11 @@ class TestTaskApplicationIntegration:
                 return registry
                 return registry
 
-        app = Application("test_task_error").scan(FailingService, TaskConfig).ready()
+        app = (
+            await Application("test_task_error")
+            .scan(FailingService, TaskConfig)
+            .ready_async()
+        )
 
         service = app.manager.get_instance(FailingService)
 

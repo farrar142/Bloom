@@ -14,7 +14,7 @@ from bloom.task import (
 
 
 @pytest.fixture
-def app_with_queue(reset_container_manager):
+async def app_with_queue(reset_container_manager):
     """QueueApplication이 설정된 앱"""
 
     @Component
@@ -36,7 +36,7 @@ def app_with_queue(reset_container_manager):
 
     app = Application("test_queue")
     app.scan(__name__)
-    app.ready()
+    await app.ready_async()
 
     return app
 
@@ -150,7 +150,7 @@ class TestQueueApplicationWithoutBackend:
 
         app = Application("test_no_backend")
         app.scan(__name__)
-        app.ready()
+        await app.ready_async()
 
         queue = app.queue
 
@@ -167,7 +167,7 @@ class TestQueueApplicationWithoutBackend:
 
         app = Application("test_no_backend")
         app.scan(__name__)
-        app.ready()
+        await app.ready_async()
 
         queue = app.queue
 
