@@ -28,6 +28,65 @@ _T = TypeVar("_T")
 
 
 # =============================================================================
+# Target Resolution Helper
+# =============================================================================
+
+
+def _resolve_string_target(
+    target: type[_T] | str | None,
+    owner: type | None,
+    field_name: str,
+    relation_type: str,
+) -> type[_T]:
+    """문자열 타겟을 실제 클래스로 resolve하는 공통 헬퍼
+
+    Args:
+        target: 대상 클래스 또는 문자열 (순환 참조 방지용)
+        owner: 소유 클래스 (같은 모듈 내 resolve용)
+        field_name: 필드명 (에러 메시지용)
+        relation_type: 관계 타입 이름 (에러 메시지용, 예: "ManyToOne", "OneToMany")
+
+    Returns:
+        resolve된 클래스
+
+    Raises:
+        ValueError: target이 None이거나 resolve 실패 시
+    """
+    import sys
+    import importlib
+
+    if isinstance(target, type):
+        return target
+
+    if target is None:
+        owner_name = owner.__name__ if owner else "Unknown"
+        raise ValueError(
+            f"{relation_type} target not specified for {owner_name}.{field_name}"
+        )
+
+    # 문자열인 경우 resolve
+    target_str = target
+    resolved: type[_T] | None = None
+
+    # "module.ClassName" 형태
+    if "." in target_str:
+        module_path, class_name = target_str.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        resolved = getattr(module, class_name)
+    else:
+        # 같은 모듈 내 클래스 - owner의 모듈에서 찾기
+        if owner is not None:
+            module = sys.modules.get(owner.__module__)
+            if module and hasattr(module, target_str):
+                resolved = getattr(module, target_str)
+
+    if resolved is None:
+        raise ValueError(f"Cannot resolve {relation_type} target: {target_str}")
+
+    return resolved
+
+
+# =============================================================================
 # TrackedList - OneToMany 관계를 위한 추적 리스트
 # =============================================================================
 
@@ -134,7 +193,6 @@ class FetchType(Enum):
 
 if TYPE_CHECKING:
     from .tracker import DirtyTracker
-    from .session import Session
     from .query import Query
 
 
@@ -553,37 +611,9 @@ class ManyToOne[T]:
         if self._resolved_target is not None:
             return self._resolved_target
 
-        if isinstance(self._target, type):
-            self._resolved_target = self._target
-            return self._resolved_target
-
-        if self._target is None:
-            raise ValueError(
-                f"ManyToOne target not specified for {self._owner.__name__}.{self._field_name}"
-            )
-
-        # 문자열인 경우 resolve
-        target_str = self._target
-
-        # "module.ClassName" 형태
-        if "." in target_str:
-            module_path, class_name = target_str.rsplit(".", 1)
-            import importlib
-
-            module = importlib.import_module(module_path)
-            self._resolved_target = getattr(module, class_name)
-        else:
-            # 같은 모듈 내 클래스
-            if self._owner is not None:
-                import sys
-
-                module = sys.modules.get(self._owner.__module__)
-                if module and hasattr(module, target_str):
-                    self._resolved_target = getattr(module, target_str)
-
-        if self._resolved_target is None:
-            raise ValueError(f"Cannot resolve ManyToOne target: {target_str}")
-
+        self._resolved_target = _resolve_string_target(
+            self._target, self._owner, self._field_name, "ManyToOne"
+        )
         return self._resolved_target
 
     @property
@@ -718,28 +748,35 @@ class ManyToOne[T]:
         old_fk_value = self._fk_values.get(obj)
 
         if value is None:
-            # None 설정 - FK 값도 None으로
-            self._fk_values[obj] = None
-            self._cache[obj] = None
+            self._set_none(obj, old_fk_value)
+        elif isinstance(value, int):
+            self._set_fk_value_directly(obj, value, old_fk_value)
+        else:
+            self._set_relation_object(obj, value, old_fk_value)
 
-            # dirty tracking
-            if hasattr(obj, "__bloom_tracker__"):
-                obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, None)
-            return
+    def _set_none(self, obj: object, old_fk_value: Any) -> None:
+        """None 설정 - FK 값도 None으로"""
+        self._fk_values[obj] = None
+        self._cache[obj] = None
 
-        # FK 값(int)을 직접 설정하는 경우 (TrackedList에서 사용)
-        if isinstance(value, int):
-            self._fk_values[obj] = value
-            # 캐시 무효화 (다음 접근 시 lazy load)
-            if obj in self._cache:
-                del self._cache[obj]
+        if hasattr(obj, "__bloom_tracker__"):
+            obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, None)
 
-            # dirty tracking
-            if hasattr(obj, "__bloom_tracker__"):
-                obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, value)
-            return
+    def _set_fk_value_directly(
+        self, obj: object, value: int, old_fk_value: Any
+    ) -> None:
+        """FK 값(int)을 직접 설정 (TrackedList에서 사용)"""
+        self._fk_values[obj] = value
 
-        # 관계 객체 설정
+        # 캐시 무효화 (다음 접근 시 lazy load)
+        if obj in self._cache:
+            del self._cache[obj]
+
+        if hasattr(obj, "__bloom_tracker__"):
+            obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, value)
+
+    def _set_relation_object(self, obj: object, value: T, old_fk_value: Any) -> None:
+        """관계 객체 설정"""
         target_cls = self._resolve_target()
 
         if not isinstance(value, target_cls):
@@ -747,11 +784,9 @@ class ManyToOne[T]:
                 f"Expected {target_cls.__name__} or int (FK value), got {type(value).__name__}"
             )
 
-        # FK 값 추출
+        # FK 값 추출 및 저장
         pk_field = getattr(target_cls, "__bloom_pk__", "id")
         fk_value = getattr(value, pk_field, None)
-
-        # FK 값 저장
         self._fk_values[obj] = fk_value
 
         # 캐시에 객체 저장
@@ -979,31 +1014,10 @@ class OneToMany[T]:
         if self._resolved_target is not None:
             return self._resolved_target
 
-        if isinstance(self._target, type):
-            self._resolved_target = self._target
-            return self._resolved_target
-
-        # 문자열인 경우 resolve
-        target_str = self._target
-
-        # "module.ClassName" 형식
-        if "." in target_str:
-            module_path, class_name = target_str.rsplit(".", 1)
-            import importlib
-
-            module = importlib.import_module(module_path)
-            self._resolved_target = getattr(module, class_name)
-        else:
-            # 같은 모듈 내 클래스 - owner의 모듈에서 찾기
-            if self._owner is not None:
-                module = __import__(self._owner.__module__, fromlist=[target_str])
-                self._resolved_target = getattr(module, target_str)
-            else:
-                raise ValueError(
-                    f"Cannot resolve target '{target_str}' without owner class"
-                )
-
-        return self._resolved_target  # type: ignore
+        self._resolved_target = _resolve_string_target(
+            self._target, self._owner, self._field_name, "OneToMany"
+        )
+        return self._resolved_target
 
     @property
     def fetch(self) -> FetchType:
