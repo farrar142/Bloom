@@ -9,7 +9,7 @@ import os
 from bloom import Component
 from bloom.core import ScopeEnum, PrototypeMode
 from bloom.core.decorators import Factory, Scope
-from bloom.db import AsyncSession, SessionFactory
+from bloom.db import Session, AsyncSession, SessionFactory
 from bloom.db.backends import get_backend
 
 # =============================================================================
@@ -36,20 +36,40 @@ class DatabaseConfig:
 
     @Factory
     @Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
-    async def session(self, session_factory: SessionFactory) -> AsyncSession:
+    def session(self, session_factory: SessionFactory) -> Session:
+        """동기 세션 - CALL 스코프 + CALL_SCOPED로 핸들러 내 동일 세션 공유
+
+        Usage:
+            @Component
+            class UserRepository:
+                session: Session  # 요청 내 동일 세션 주입
+
+                def find_by_id(self, user_id: int) -> User | None:
+                    return self.session.get(User, user_id)
+
+                def save(self, user: User) -> User:
+                    self.session.add(user)
+                    self.session.commit()
+                    return user
+        """
+        return session_factory.create()
+
+    @Factory
+    @Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
+    async def async_session(self, session_factory: SessionFactory) -> AsyncSession:
         """비동기 세션 - CALL 스코프 + CALL_SCOPED로 핸들러 내 동일 세션 공유
 
         Usage:
             @Component
             class UserRepository:
-                session: AsyncSession  # 요청 내 동일 세션 주입
+                async_session: AsyncSession  # 요청 내 동일 세션 주입
 
                 async def find_by_id(self, user_id: int) -> User | None:
-                    return await self.session.get(User, user_id)
+                    return await self.async_session.get(User, user_id)
 
                 async def save(self, user: User) -> User:
-                    self.session.add(user)
-                    await self.session.commit()
+                    self.async_session.add(user)
+                    await self.async_session.commit()
                     return user
         """
         return await session_factory.create_async()

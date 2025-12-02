@@ -12,17 +12,32 @@ from .entities import {{app_name_pascal}}
 class {{app_name_pascal}}Repository(CrudRepository[{{app_name_pascal}}, int]):
     """{{app_name_pascal}} 레포지토리
 
-    CrudRepository 기본 메서드:
+    CrudRepository 기본 메서드 (동기):
       - find_by_id(id) -> Entity | None
       - find_all() -> list[Entity]
-      - find_one(condition) -> Entity | None
+      - find_one_by(**kwargs) -> Entity | None
+      - find_by(**kwargs) -> list[Entity]
       - save(entity) -> Entity
       - delete(entity) -> None
       - delete_by_id(id) -> bool
       - count() -> int
-    
+
+    CrudRepository 기본 메서드 (비동기):
+      - find_by_id_async(id) -> Entity | None
+      - find_all_async() -> list[Entity]
+      - find_one_by_async(**kwargs) -> Entity | None
+      - find_by_async(**kwargs) -> list[Entity]
+      - save_async(entity) -> Entity
+      - delete_async(entity) -> None
+      - delete_by_id_async(id) -> bool
+      - count_async() -> int
+
     커스텀 메서드 예시:
         def find_by_name(self, name: str) -> {{app_name_pascal}} | None:
-            return self.find_one({{app_name_pascal}}.name == name)
+            return self.find_one_by(name=name)
+
+        async def find_by_name_async(self, name: str) -> {{app_name_pascal}} | None:
+            return await self.find_one_by_async(name=name)
     """
+
     pass

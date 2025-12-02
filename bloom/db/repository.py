@@ -15,7 +15,7 @@ from typing import (
 
 from .entity import get_entity_meta, get_entity_pk, get_pk_value, EntityMeta
 from .query import Query
-from .session import Session, SessionFactory
+from .session import Session, AsyncSession, SessionFactory
 from .expressions import Condition, ConditionGroup, OrderBy
 
 if TYPE_CHECKING:
@@ -61,6 +61,10 @@ class Repository(ABC, Generic[T, ID]):
     이렇게 하면 같은 요청 내에서는 같은 Session을 공유하고,
     요청이 끝나면 자동으로 close됩니다.
 
+    동기/비동기 메서드 모두 지원합니다:
+    - 동기: session 필드 사용, find_by_id(), save() 등
+    - 비동기: async_session 필드 사용, find_by_id_async(), save_async() 등
+
     사용법:
         # 1. Session Factory 정의 (settings/database.py 등)
         @Component
@@ -71,17 +75,26 @@ class Repository(ABC, Generic[T, ID]):
             @Scope(Scope.CALL, PrototypeMode.CALL_SCOPED)
             def session(self) -> Session:
                 return self.session_factory.create()
+            
+            @Factory
+            @Scope(Scope.CALL, PrototypeMode.CALL_SCOPED)
+            async def async_session(self) -> AsyncSession:
+                return await self.session_factory.create_async()
 
         # 2. Repository 정의
         class UserRepository(CrudRepository[User, int]):
-            # session은 자동 주입됨
+            # session, async_session은 자동 주입됨
             
             def find_by_email(self, email: str) -> User | None:
                 return self.find_one_by(email=email)
+            
+            async def find_by_email_async(self, email: str) -> User | None:
+                return await self.find_one_by_async(email=email)
     """
 
-    # 필드 주입용 - Session은 Factory로 주입됨
+    # 필드 주입용 - Session/AsyncSession은 Factory로 주입됨
     session: "Session"
+    async_session: "AsyncSession"
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Repository를 상속하면 자동으로 @Component로 등록"""
@@ -123,6 +136,10 @@ class Repository(ABC, Generic[T, ID]):
     def _get_session(self) -> Session:
         """Session 반환 (DI로 주입됨)"""
         return self.session
+
+    def _get_async_session(self) -> AsyncSession:
+        """AsyncSession 반환 (DI로 주입됨)"""
+        return self.async_session
 
     def _get_entity_class(self) -> type[T]:
         """Entity 클래스 반환 (지연 초기화)"""
@@ -291,6 +308,217 @@ class Repository(ABC, Generic[T, ID]):
 
     def __len__(self) -> int:
         return self.count()
+
+    # =========================================================================
+    # Async CRUD Operations
+    # =========================================================================
+
+    async def find_by_id_async(self, id: ID) -> T | None:
+        """ID로 엔티티 조회 (비동기)"""
+        return await self._get_async_session().get(self._get_entity_class(), id)
+
+    async def find_all_async(self) -> list[T]:
+        """모든 엔티티 조회 (비동기)"""
+        entity_cls = self._get_entity_class()
+        meta = self._get_meta()
+        session = self._get_async_session()
+
+        sql = session.dialect.select_sql(meta)
+        rows = [row async for row in session.execute(sql)]
+
+        from .entity import dict_to_entity
+
+        return [dict_to_entity(entity_cls, dict(row)) for row in rows]
+
+    async def find_all_by_id_async(self, ids: list[ID]) -> list[T]:
+        """여러 ID로 엔티티 조회 (비동기)"""
+        if not ids:
+            return []
+
+        entity_cls = self._get_entity_class()
+        pk_name = get_entity_pk(entity_cls)
+        if pk_name is None:
+            raise ValueError(f"{entity_cls.__name__} has no primary key")
+
+        meta = self._get_meta()
+        session = self._get_async_session()
+
+        # IN 조건 생성
+        placeholders = ", ".join(f":id{i}" for i in range(len(ids)))
+        where = f'"{pk_name}" IN ({placeholders})'
+        params = {f"id{i}": id_val for i, id_val in enumerate(ids)}
+
+        sql = session.dialect.select_sql(meta, where=where)
+        rows = [row async for row in session.execute(sql, params)]
+
+        from .entity import dict_to_entity
+
+        return [dict_to_entity(entity_cls, dict(row)) for row in rows]
+
+    async def save_async(self, entity: T) -> T:
+        """엔티티 저장 (비동기)
+
+        새 엔티티면 INSERT, 기존이면 UPDATE
+        """
+        pk = get_pk_value(entity)
+        session = self._get_async_session()
+
+        if pk is None:
+            session.add(entity)
+        else:
+            entity = await session.merge(entity)
+
+        await session.flush()
+        return entity
+
+    async def save_all_async(self, entities: list[T]) -> list[T]:
+        """여러 엔티티 저장 (비동기)"""
+        return [await self.save_async(e) for e in entities]
+
+    async def delete_async(self, entity: T) -> None:
+        """엔티티 삭제 (비동기)"""
+        session = self._get_async_session()
+        session.delete(entity)
+        await session.flush()
+
+    async def delete_by_id_async(self, id: ID) -> bool:
+        """ID로 삭제 (비동기)"""
+        entity = await self.find_by_id_async(id)
+        if entity is None:
+            return False
+        await self.delete_async(entity)
+        return True
+
+    async def delete_all_async(self, entities: list[T] | None = None) -> None:
+        """여러 엔티티 삭제 (비동기)"""
+        if entities is None:
+            # 전체 삭제
+            meta = self._get_meta()
+            session = self._get_async_session()
+            sql = f'DELETE FROM "{meta.table_name}"'
+            await session.execute_update(sql)
+        else:
+            for entity in entities:
+                await self.delete_async(entity)
+
+    async def delete_all_by_id_async(self, ids: list[ID]) -> None:
+        """여러 ID로 삭제 (비동기)"""
+        if not ids:
+            return
+
+        entity_cls = self._get_entity_class()
+        pk_name = get_entity_pk(entity_cls)
+        if pk_name is None:
+            raise ValueError(f"{entity_cls.__name__} has no primary key")
+
+        meta = self._get_meta()
+        session = self._get_async_session()
+
+        placeholders = ", ".join(f":id{i}" for i in range(len(ids)))
+        sql = f'DELETE FROM "{meta.table_name}" WHERE "{pk_name}" IN ({placeholders})'
+        params = {f"id{i}": id_val for i, id_val in enumerate(ids)}
+
+        await session.execute_update(sql, params)
+
+    async def exists_by_id_async(self, id: ID) -> bool:
+        """ID 존재 여부 (비동기)"""
+        entity_cls = self._get_entity_class()
+        pk_name = get_entity_pk(entity_cls)
+        if pk_name is None:
+            raise ValueError(f"{entity_cls.__name__} has no primary key")
+
+        meta = self._get_meta()
+        session = self._get_async_session()
+
+        sql = f'SELECT 1 FROM "{meta.table_name}" WHERE "{pk_name}" = :pk LIMIT 1'
+        rows = [row async for row in session.execute(sql, {"pk": id})]
+        return len(rows) > 0
+
+    async def count_async(self) -> int:
+        """전체 개수 (비동기)"""
+        meta = self._get_meta()
+        session = self._get_async_session()
+
+        sql = f'SELECT COUNT(*) as cnt FROM "{meta.table_name}"'
+        rows = [row async for row in session.execute(sql)]
+        if rows:
+            return rows[0].get("cnt", 0)
+        return 0
+
+    # -------------------------------------------------------------------------
+    # Async Extended Query Methods
+    # -------------------------------------------------------------------------
+
+    async def find_by_async(self, **kwargs: Any) -> list[T]:
+        """필드 조건으로 조회 (비동기)
+
+        Examples:
+            await repo.find_by_async(name="alice", status="active")
+        """
+        if not kwargs:
+            return await self.find_all_async()
+
+        entity_cls = self._get_entity_class()
+        meta = self._get_meta()
+        session = self._get_async_session()
+
+        # WHERE 조건 생성
+        conditions = [f'"{k}" = :{k}' for k in kwargs.keys()]
+        where = " AND ".join(conditions)
+
+        sql = session.dialect.select_sql(meta, where=where)
+        rows = [row async for row in session.execute(sql, kwargs)]
+
+        from .entity import dict_to_entity
+
+        return [dict_to_entity(entity_cls, dict(row)) for row in rows]
+
+    async def find_one_by_async(self, **kwargs: Any) -> T | None:
+        """필드 조건으로 단일 조회 (비동기)"""
+        results = await self.find_by_async(**kwargs)
+        return results[0] if results else None
+
+    async def find_all_ordered_async(self, *orders: OrderBy) -> list[T]:
+        """정렬하여 전체 조회 (비동기)"""
+        entity_cls = self._get_entity_class()
+        meta = self._get_meta()
+        session = self._get_async_session()
+
+        # ORDER BY 생성
+        order_clauses = []
+        for order in orders:
+            direction = "DESC" if order.desc else "ASC"
+            order_clauses.append(f'"{order.field}" {direction}')
+
+        order_by = ", ".join(order_clauses) if order_clauses else None
+        sql = session.dialect.select_sql(meta, order_by=order_by)
+        rows = [row async for row in session.execute(sql)]
+
+        from .entity import dict_to_entity
+
+        return [dict_to_entity(entity_cls, dict(row)) for row in rows]
+
+    async def find_page_async(self, page: int, size: int) -> list[T]:
+        """페이지네이션 조회 (비동기)
+
+        Args:
+            page: 페이지 번호 (0부터 시작)
+            size: 페이지 크기
+        """
+        return await self.find_slice_async(page * size, size)
+
+    async def find_slice_async(self, offset: int, limit: int) -> list[T]:
+        """슬라이스 조회 (비동기)"""
+        entity_cls = self._get_entity_class()
+        meta = self._get_meta()
+        session = self._get_async_session()
+
+        sql = session.dialect.select_sql(meta, limit=limit, offset=offset)
+        rows = [row async for row in session.execute(sql)]
+
+        from .entity import dict_to_entity
+
+        return [dict_to_entity(entity_cls, dict(row)) for row in rows]
 
 
 # Alias for backward compatibility
