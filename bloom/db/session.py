@@ -28,68 +28,38 @@ T = TypeVar("T")
 
 
 # =============================================================================
-# Session (Unit of Work)
+# Session Mixin - 공통 로직
 # =============================================================================
 
 
-class Session:
-    """세션 - Unit of Work 패턴 구현
+class SessionMixin:
+    """Session과 AsyncSession의 공통 로직을 담은 Mixin
 
-    AutoCloseable 프로토콜을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
-    CALL 스코프로 사용 시 메서드 종료 시 자동으로 close()가 호출됩니다.
-
-    엔티티의 생명주기를 관리하고, 변경 사항을 추적하여
-    flush 시점에 DB에 반영합니다.
-
-    Examples:
-        # Context Manager 사용 (권장)
-        with session_factory.create() as session:
-            user = User(name="alice")
-            session.add(user)
-            session.commit()
-
-        # DI로 주입받아 사용 (CALL + CALL_SCOPED 권장)
-        @Component
-        class UserService:
-            session: Session  # 자동으로 정리됨
-
-            def create_user(self, name: str) -> User:
-                user = User(name=name)
-                self.session.add(user)
-                self.session.commit()
-                return user
+    동기/비동기 세션에서 공유하는 메서드들을 제공합니다.
+    - 엔티티 추가/삭제
+    - TrackedList 바인딩
+    - 의존성 정렬
+    - FK 동기화
     """
 
-    def __init__(self, connection: Connection, autoflush: bool = True):
-        self._connection = connection
-        self._dialect = connection.dialect
-        self._autoflush = autoflush
+    # 서브클래스에서 정의해야 하는 속성들
+    _new: set[Any]
+    _dirty: set[Any]
+    _deleted: set[Any]
+    _identity_map: dict[tuple[type, Any], Any]
+    _closed: bool
 
-        # Identity Map - 같은 PK를 가진 엔티티는 동일 인스턴스
-        self._identity_map: dict[tuple[type, Any], Any] = {}
+    def _check_closed(self) -> None:
+        """세션이 닫혔는지 확인"""
+        if self._closed:
+            raise RuntimeError("Session is closed")
 
-        # 변경 추적
-        self._new: set[Any] = set()  # 새로 추가된 엔티티
-        self._dirty: set[Any] = set()  # 변경된 엔티티
-        self._deleted: set[Any] = set()  # 삭제 예정 엔티티
-
-        self._closed = False
-
-    @property
-    def dialect(self) -> Dialect:
-        return self._dialect
-
-    def query(self, entity_cls: type[T]) -> Query[T]:
-        """쿼리 빌더 생성"""
-        return Query(entity_cls).with_session(self)
-
-    def query_builder(self) -> QueryBuilder:
-        """쿼리 빌더 팩토리 반환"""
-        return QueryBuilder(self)
-
-    # -------------------------------------------------------------------------
-    # CRUD Operations
-    # -------------------------------------------------------------------------
+    def _clear_state(self) -> None:
+        """세션 상태 초기화"""
+        self._new.clear()
+        self._dirty.clear()
+        self._deleted.clear()
+        self._identity_map.clear()
 
     def add(self, entity: T) -> T:
         """엔티티 추가 (INSERT 예약)
@@ -159,6 +129,131 @@ class Session:
         else:
             self._deleted.add(entity)
             self._dirty.discard(entity)
+
+    def _sort_by_dependency(self, entities: list[Any]) -> tuple[list[Any], list[Any]]:
+        """엔티티를 부모/자식으로 분류
+
+        TrackedList에 포함된 엔티티는 자식으로 분류됩니다.
+        """
+        from .columns import OneToMany, TrackedList
+
+        children_set: set[int] = set()  # id()로 추적
+
+        # TrackedList에 있는 엔티티들을 자식으로 표시
+        for entity in entities:
+            relations = getattr(type(entity), "__bloom_relations__", {})
+            for name, relation in relations.items():
+                if isinstance(relation, OneToMany):
+                    if entity in relation._cache:
+                        tracked_list = relation._cache[entity]
+                        if isinstance(tracked_list, TrackedList):
+                            for child in tracked_list:
+                                children_set.add(id(child))
+
+        parents = []
+        children = []
+        for entity in entities:
+            if id(entity) in children_set:
+                children.append(entity)
+            else:
+                parents.append(entity)
+
+        return parents, children
+
+    def _sync_tracked_list_fk_before_insert(self, entity: Any) -> None:
+        """부모 INSERT 후, 자식 INSERT 전에 FK 동기화
+
+        부모의 PK가 할당된 후 호출되어, TrackedList의 자식들에게 FK를 설정합니다.
+        """
+        from .columns import OneToMany, TrackedList
+
+        relations = getattr(type(entity), "__bloom_relations__", {})
+        pk_value = get_pk_value(entity)
+
+        if pk_value is None:
+            return
+
+        for name, relation in relations.items():
+            if isinstance(relation, OneToMany):
+                if entity not in relation._cache:
+                    continue
+
+                tracked_list = relation._cache[entity]
+                if not isinstance(tracked_list, TrackedList):
+                    continue
+
+                fk_field_name = tracked_list._fk_field_name
+                if not fk_field_name:
+                    continue
+
+                # 자식들의 FK 설정
+                for child in tracked_list:
+                    setattr(child, fk_field_name, pk_value)
+
+
+# =============================================================================
+# Session (Unit of Work)
+# =============================================================================
+
+
+class Session(SessionMixin):
+    """세션 - Unit of Work 패턴 구현
+
+    AutoCloseable 프로토콜을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
+    CALL 스코프로 사용 시 메서드 종료 시 자동으로 close()가 호출됩니다.
+
+    엔티티의 생명주기를 관리하고, 변경 사항을 추적하여
+    flush 시점에 DB에 반영합니다.
+
+    Examples:
+        # Context Manager 사용 (권장)
+        with session_factory.create() as session:
+            user = User(name="alice")
+            session.add(user)
+            session.commit()
+
+        # DI로 주입받아 사용 (CALL + CALL_SCOPED 권장)
+        @Component
+        class UserService:
+            session: Session  # 자동으로 정리됨
+
+            def create_user(self, name: str) -> User:
+                user = User(name=name)
+                self.session.add(user)
+                self.session.commit()
+                return user
+    """
+
+    def __init__(self, connection: Connection, autoflush: bool = True):
+        self._connection = connection
+        self._dialect = connection.dialect
+        self._autoflush = autoflush
+
+        # Identity Map - 같은 PK를 가진 엔티티는 동일 인스턴스
+        self._identity_map: dict[tuple[type, Any], Any] = {}
+
+        # 변경 추적
+        self._new: set[Any] = set()  # 새로 추가된 엔티티
+        self._dirty: set[Any] = set()  # 변경된 엔티티
+        self._deleted: set[Any] = set()  # 삭제 예정 엔티티
+
+        self._closed = False
+
+    @property
+    def dialect(self) -> Dialect:
+        return self._dialect
+
+    def query(self, entity_cls: type[T]) -> Query[T]:
+        """쿼리 빌더 생성"""
+        return Query(entity_cls).with_session(self)
+
+    def query_builder(self) -> QueryBuilder:
+        """쿼리 빌더 팩토리 반환"""
+        return QueryBuilder(self)
+
+    # -------------------------------------------------------------------------
+    # CRUD Operations (get, refresh, merge는 Session 고유)
+    # -------------------------------------------------------------------------
 
     def get(self, entity_cls: type[T], pk: Any) -> T | None:
         """PK로 엔티티 조회"""
@@ -308,133 +403,6 @@ class Session:
             self._do_delete(entity)
         self._deleted.clear()
 
-    def _sort_by_dependency(
-        self, entities: list[Any]
-    ) -> tuple[list[Any], list[Any]]:
-        """엔티티를 부모/자식으로 분류
-
-        TrackedList에 포함된 엔티티는 자식으로 분류됩니다.
-        """
-        from .columns import OneToMany, TrackedList
-
-        children_set: set[int] = set()  # id()로 추적
-
-        # TrackedList에 있는 엔티티들을 자식으로 표시
-        for entity in entities:
-            relations = getattr(type(entity), "__bloom_relations__", {})
-            for name, relation in relations.items():
-                if isinstance(relation, OneToMany):
-                    if entity in relation._cache:
-                        tracked_list = relation._cache[entity]
-                        if isinstance(tracked_list, TrackedList):
-                            for child in tracked_list:
-                                children_set.add(id(child))
-
-        parents = []
-        children = []
-        for entity in entities:
-            if id(entity) in children_set:
-                children.append(entity)
-            else:
-                parents.append(entity)
-
-        return parents, children
-
-    def _sync_tracked_list_fk_before_insert(self, entity: Any) -> None:
-        """부모 INSERT 후, 자식 INSERT 전에 FK 동기화
-
-        부모의 PK가 할당된 후 호출되어, TrackedList의 자식들에게 FK를 설정합니다.
-        """
-        from .columns import OneToMany, TrackedList
-
-        relations = getattr(type(entity), "__bloom_relations__", {})
-        pk_value = get_pk_value(entity)
-
-        if pk_value is None:
-            return
-
-        for name, relation in relations.items():
-            if isinstance(relation, OneToMany):
-                if entity not in relation._cache:
-                    continue
-
-                tracked_list = relation._cache[entity]
-                if not isinstance(tracked_list, TrackedList):
-                    continue
-
-                fk_field_name = tracked_list._fk_field_name
-                if not fk_field_name:
-                    continue
-
-                # 자식들의 FK 설정
-                for child in tracked_list:
-                    setattr(child, fk_field_name, pk_value)
-
-    def _sync_and_update_tracked_list_fk(self, entity: Any) -> None:
-        """엔티티의 TrackedList에 있는 자식들의 FK 값 동기화 및 UPDATE
-
-        entity가 insert되어 PK가 할당된 후 호출됩니다.
-        TrackedList에 append된 자식 엔티티들의 FK를 entity의 PK로 업데이트하고,
-        이미 insert된 자식은 UPDATE 쿼리로 FK를 설정합니다.
-        """
-        from .columns import OneToMany, TrackedList
-
-        relations = getattr(type(entity), "__bloom_relations__", {})
-        pk_value = get_pk_value(entity)
-
-        if pk_value is None:
-            return  # PK가 없으면 skip
-
-        for name, relation in relations.items():
-            if isinstance(relation, OneToMany):
-                # 캐시에서 TrackedList 가져오기
-                if entity not in relation._cache:
-                    continue
-
-                tracked_list = relation._cache[entity]
-                if not isinstance(tracked_list, TrackedList):
-                    continue
-
-                # FK 필드명 가져오기
-                fk_field_name = tracked_list._fk_field_name
-                if not fk_field_name:
-                    continue
-
-                # 각 자식의 FK 동기화
-                for child in tracked_list:
-                    current_fk = getattr(child, fk_field_name, None)
-                    if current_fk is None:
-                        # FK가 None인 경우 설정
-                        setattr(child, fk_field_name, pk_value)
-
-                        # 이미 insert된 자식이면 UPDATE
-                        child_pk = get_pk_value(child)
-                        if child_pk is not None:
-                            self._do_fk_update(child, fk_field_name, pk_value)
-
-    def _do_fk_update(self, entity: Any, fk_field: str, fk_value: Any) -> None:
-        """자식 엔티티의 FK만 UPDATE"""
-        entity_cls = type(entity)
-        meta = get_entity_meta(entity_cls)
-        if meta is None:
-            return
-
-        pk_col = meta.primary_key
-        pk_value = get_pk_value(entity)
-
-        if pk_col is None or pk_value is None:
-            return
-
-        # FK 필드의 db_name 찾기
-        fk_column = meta.columns.get(fk_field)
-        if fk_column is None:
-            return
-
-        fk_db_name = getattr(fk_column, "db_name", fk_field)
-
-        sql = f'UPDATE "{meta.table_name}" SET "{fk_db_name}" = :fk_value WHERE "{pk_col}" = :pk_value'
-        self._connection.execute(sql, {"fk_value": fk_value, "pk_value": pk_value})
-
     def commit(self) -> None:
         """변경 사항 커밋"""
         self._check_closed()
@@ -445,25 +413,13 @@ class Session:
         """변경 사항 롤백"""
         self._check_closed()
         self._connection.rollback()
-
-        # 상태 초기화
-        self._new.clear()
-        self._dirty.clear()
-        self._deleted.clear()
-        self._identity_map.clear()
+        self._clear_state()
 
     def close(self) -> None:
         """세션 닫기"""
         if not self._closed:
-            self._new.clear()
-            self._dirty.clear()
-            self._deleted.clear()
-            self._identity_map.clear()
+            self._clear_state()
             self._closed = True
-
-    def _check_closed(self) -> None:
-        if self._closed:
-            raise RuntimeError("Session is closed")
 
     # -------------------------------------------------------------------------
     # Internal Operations
@@ -574,7 +530,7 @@ class Session:
 # =============================================================================
 
 
-class AsyncSession:
+class AsyncSession(SessionMixin):
     """비동기 세션 - Unit of Work 패턴 구현 (Async)
 
     AsyncConnection을 사용하여 비동기 DB 작업을 지원합니다.
@@ -626,76 +582,8 @@ class AsyncSession:
         return Query(entity_cls).with_session(self)
 
     # -------------------------------------------------------------------------
-    # CRUD Operations
+    # CRUD Operations (add, add_all, delete inherited from SessionMixin)
     # -------------------------------------------------------------------------
-
-    def add(self, entity: T) -> T:
-        """엔티티 추가 (INSERT 예약)
-
-        OneToMany 관계의 자식 엔티티들도 재귀적으로 추가됩니다.
-        """
-        self._check_closed()
-
-        # 이미 추가된 엔티티면 스킵 (재귀 방지)
-        if entity in self._new or entity in self._identity_map.values():
-            return entity
-
-        tracker: DirtyTracker | None = getattr(entity, "__bloom_tracker__", None)
-        if tracker is None:
-            tracker = DirtyTracker()
-            object.__setattr__(entity, "__bloom_tracker__", tracker)
-
-        tracker.state = EntityState.MANAGED
-
-        # 세션 바인딩 (OneToMany lazy loading에 필요)
-        object.__setattr__(entity, "__bloom_session__", self)
-
-        # OneToMany의 캐시된 TrackedList에도 세션 바인딩
-        self._bind_session_to_tracked_lists(entity)
-
-        self._new.add(entity)
-        return entity
-
-    def _bind_session_to_tracked_lists(self, entity: Any) -> None:
-        """엔티티의 OneToMany TrackedList에 세션 바인딩 및 기존 아이템 추가
-
-        session.add(parent) 호출 시:
-        1. TrackedList에 세션 바인딩
-        2. 이미 append된 자식 엔티티들도 세션에 추가 (cascade)
-        """
-        from .columns import OneToMany, TrackedList
-
-        relations = getattr(type(entity), "__bloom_relations__", {})
-        for name, relation in relations.items():
-            if isinstance(relation, OneToMany):
-                # 캐시에서 TrackedList 가져오기 (이미 생성된 경우)
-                if entity in relation._cache:
-                    tracked_list = relation._cache[entity]
-                    if isinstance(tracked_list, TrackedList):
-                        tracked_list._session = self
-                        # 이미 append된 아이템들도 세션에 추가 (cascade)
-                        for item in tracked_list:
-                            self.add(item)  # 재귀 - 이미 추가된 건 스킵됨
-
-    def add_all(self, entities: list[T]) -> list[T]:
-        """여러 엔티티 추가"""
-        for entity in entities:
-            self.add(entity)
-        return entities
-
-    def delete(self, entity: Any) -> None:
-        """엔티티 삭제 (DELETE 예약)"""
-        self._check_closed()
-
-        tracker: DirtyTracker | None = getattr(entity, "__bloom_tracker__", None)
-        if tracker:
-            tracker.mark_deleted()
-
-        if entity in self._new:
-            self._new.discard(entity)
-        else:
-            self._deleted.add(entity)
-            self._dirty.discard(entity)
 
     async def get(self, entity_cls: type[T], pk: Any) -> T | None:
         """PK로 엔티티 조회"""
@@ -853,68 +741,6 @@ class AsyncSession:
             await self._do_delete(entity)
         self._deleted.clear()
 
-    def _sort_by_dependency(
-        self, entities: list[Any]
-    ) -> tuple[list[Any], list[Any]]:
-        """엔티티를 부모/자식으로 분류
-
-        TrackedList에 포함된 엔티티는 자식으로 분류됩니다.
-        """
-        from .columns import OneToMany, TrackedList
-
-        children_set: set[int] = set()  # id()로 추적
-
-        # TrackedList에 있는 엔티티들을 자식으로 표시
-        for entity in entities:
-            relations = getattr(type(entity), "__bloom_relations__", {})
-            for name, relation in relations.items():
-                if isinstance(relation, OneToMany):
-                    if entity in relation._cache:
-                        tracked_list = relation._cache[entity]
-                        if isinstance(tracked_list, TrackedList):
-                            for child in tracked_list:
-                                children_set.add(id(child))
-
-        parents = []
-        children = []
-        for entity in entities:
-            if id(entity) in children_set:
-                children.append(entity)
-            else:
-                parents.append(entity)
-
-        return parents, children
-
-    def _sync_tracked_list_fk_before_insert(self, entity: Any) -> None:
-        """부모 INSERT 후, 자식 INSERT 전에 FK 동기화
-
-        부모의 PK가 할당된 후 호출되어, TrackedList의 자식들에게 FK를 설정합니다.
-        """
-        from .columns import OneToMany, TrackedList
-
-        relations = getattr(type(entity), "__bloom_relations__", {})
-        pk_value = get_pk_value(entity)
-
-        if pk_value is None:
-            return
-
-        for name, relation in relations.items():
-            if isinstance(relation, OneToMany):
-                if entity not in relation._cache:
-                    continue
-
-                tracked_list = relation._cache[entity]
-                if not isinstance(tracked_list, TrackedList):
-                    continue
-
-                fk_field_name = tracked_list._fk_field_name
-                if not fk_field_name:
-                    continue
-
-                # 자식들의 FK 설정
-                for child in tracked_list:
-                    setattr(child, fk_field_name, pk_value)
-
     async def commit(self) -> None:
         """변경 사항 커밋"""
         self._check_closed()
@@ -926,25 +752,15 @@ class AsyncSession:
         self._check_closed()
         await self._connection.rollback()
 
-        self._new.clear()
-        self._dirty.clear()
-        self._deleted.clear()
-        self._identity_map.clear()
+        self._clear_state()
 
     async def close(self) -> None:
         """세션 닫기 및 연결 반환"""
         if not self._closed:
-            self._new.clear()
-            self._dirty.clear()
-            self._deleted.clear()
-            self._identity_map.clear()
+            self._clear_state()
             # 연결을 풀에 반환
             await self._pool.release_async(self._connection)
             self._closed = True
-
-    def _check_closed(self) -> None:
-        if self._closed:
-            raise RuntimeError("Session is closed")
 
     # -------------------------------------------------------------------------
     # Internal Operations
