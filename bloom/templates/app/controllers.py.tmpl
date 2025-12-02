@@ -4,7 +4,7 @@ HTTP 엔드포인트를 정의합니다.
 """
 
 from bloom import Controller, Get, Post, Put, Delete, RequestMapping
-from bloom.web import HttpResponse
+from bloom.core.exceptions import NotFoundError
 
 from .services import {{app_name_pascal}}Service
 
@@ -24,17 +24,17 @@ class {{app_name_pascal}}Controller:
         return [{"id": item.id} for item in items]
 
     @Get("/{id}")
-    async def get(self, id: int) -> dict | HttpResponse:
+    async def get(self, id: int) -> dict:
         """단일 조회"""
         item = self.service.get_by_id(id)
         if item is None:
-            return HttpResponse.not_found()
+            raise NotFoundError()
         return {"id": item.id}
 
     @Delete("/{id}")
-    async def delete(self, id: int) -> dict | HttpResponse:
+    async def delete(self, id: int) -> dict:
         """삭제"""
         success = self.service.delete(id)
         if not success:
-            return HttpResponse.not_found()
+            raise NotFoundError()
         return {"message": "Deleted"}
