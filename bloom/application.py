@@ -231,7 +231,9 @@ class Application:
             self.manager.scan(module)
         return self
 
-    def ready(self, parallel: bool = False) -> "Application":
+    def ready(
+        self, parallel: bool = False, run_async_init: bool = False
+    ) -> "Application":
         """
         애플리케이션 초기화 완료
 
@@ -242,6 +244,9 @@ class Application:
         Args:
             parallel: True면 의존성 레벨별로 병렬 초기화 수행
                      같은 레벨의 컨테이너들을 동시에 초기화하여 시작 시간 단축
+            run_async_init: True면 비동기 @PostConstruct도 즉시 실행
+                           CLI, 배치 작업 등 비-ASGI 환경에서 사용
+                           (ASGI 환경에서는 lifespan에서 자동 호출됨)
 
         Returns:
             self (메서드 체이닝 지원)
@@ -275,7 +280,36 @@ class Application:
         self._initialize_websocket()
 
         self._is_ready = True
+
+        # 8. 비동기 초기화 실행 (옵션)
+        if run_async_init:
+            self._run_async_init_sync()
+
         return self
+
+    def _run_async_init_sync(self) -> None:
+        """
+        동기 컨텍스트에서 비동기 @PostConstruct 실행
+
+        이벤트 루프가 이미 실행 중이면 경고를 출력하고 스킵합니다.
+        (ASGI 환경에서는 lifespan에서 start_async()가 호출됨)
+        """
+        import asyncio
+
+        try:
+            asyncio.get_running_loop()
+            # 이미 루프가 있음 - ASGI 환경이거나 이미 async 컨텍스트
+            import warnings
+
+            warnings.warn(
+                "run_async_init=True but event loop already running. "
+                "Async @PostConstruct will be executed via start_async() instead.",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+        except RuntimeError:
+            # 루프 없음 - 직접 실행
+            asyncio.run(self.start_async())
 
     def _register_event_buses(self) -> None:
         """이벤트 버스들을 DI 컨테이너에 등록 (사용자 정의가 없는 경우에만)"""

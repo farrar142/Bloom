@@ -143,7 +143,7 @@ class DatabaseService:
         """비동기 초기화 - start_async()에서 실행"""
         await self.pool.connect()
         print("DB Connected")
-    
+
     @PreDestroy
     async def disconnect(self):
         """비동기 정리 - shutdown_async()에서 실행"""
@@ -157,7 +157,7 @@ class CacheService:
         """동기 초기화 - ready()에서 실행"""
         self.cache = {}
         print("Cache Initialized")
-    
+
     @PreDestroy
     def clear_cache(self):
         """동기 정리 - shutdown_async()에서 실행"""

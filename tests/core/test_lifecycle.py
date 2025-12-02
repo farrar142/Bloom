@@ -409,3 +409,125 @@ class TestPrototypePostConstruct:
         assert "singleton_cleanup" in call_log
         # PROTOTYPE cleanup은 호출되지 않음
         assert "prototype_cleanup" not in call_log
+
+
+class TestAsyncLifecycleInSyncContext:
+    """동기 컨텍스트에서 비동기 라이프사이클 테스트"""
+
+    def test_async_post_construct_with_run_async_init(self, reset_container_manager):
+        """run_async_init=True 시 비동기 @PostConstruct가 실행됨"""
+        call_log = []
+
+        @Component
+        class AsyncService:
+            @PostConstruct
+            async def init(self):
+                call_log.append("async_init")
+
+        @Component
+        class SyncService:
+            @PostConstruct
+            def init(self):
+                call_log.append("sync_init")
+
+        app = Application("test")
+        app.scan(AsyncService, SyncService)
+        app.ready(run_async_init=True)
+
+        assert "sync_init" in call_log
+        assert "async_init" in call_log
+        assert len(call_log) == 2
+
+    def test_async_post_construct_without_run_async_init(self, reset_container_manager):
+        """run_async_init=False 시 비동기 @PostConstruct는 지연됨"""
+        call_log = []
+
+        @Component
+        class AsyncService:
+            @PostConstruct
+            async def init(self):
+                call_log.append("async_init")
+
+        @Component
+        class SyncService:
+            @PostConstruct
+            def init(self):
+                call_log.append("sync_init")
+
+        app = Application("test")
+        app.scan(AsyncService, SyncService)
+        app.ready()  # run_async_init=False (기본값)
+
+        # 동기만 실행됨
+        assert "sync_init" in call_log
+        assert "async_init" not in call_log
+        assert len(call_log) == 1
+
+    def test_async_post_construct_order_preserved(self, reset_container_manager):
+        """비동기 @PostConstruct 실행 순서가 보존됨"""
+        call_log = []
+
+        @Component
+        class First:
+            @PostConstruct
+            async def init(self):
+                call_log.append("first")
+
+        @Component
+        class Second:
+            first: First
+
+            @PostConstruct
+            async def init(self):
+                call_log.append("second")
+
+        @Component
+        class Third:
+            second: Second
+
+            @PostConstruct
+            async def init(self):
+                call_log.append("third")
+
+        app = Application("test")
+        app.scan(First, Second, Third)
+        app.ready(run_async_init=True)
+
+        # 의존성 순서대로 실행
+        assert call_log == ["first", "second", "third"]
+
+    def test_mixed_sync_async_post_construct_order(self, reset_container_manager):
+        """동기/비동기 @PostConstruct 혼합 시 올바른 순서로 실행"""
+        call_log = []
+
+        @Component
+        class SyncFirst:
+            @PostConstruct
+            def init(self):
+                call_log.append("sync_first")
+
+        @Component
+        class AsyncSecond:
+            first: SyncFirst
+
+            @PostConstruct
+            async def init(self):
+                call_log.append("async_second")
+
+        @Component
+        class SyncThird:
+            second: AsyncSecond
+
+            @PostConstruct
+            def init(self):
+                call_log.append("sync_third")
+
+        app = Application("test")
+        app.scan(SyncFirst, AsyncSecond, SyncThird)
+        app.ready(run_async_init=True)
+
+        # 동기가 먼저 실행되고, 비동기가 나중에 실행됨
+        # (동기: ready() 시점, 비동기: start_async() 시점)
+        assert "sync_first" in call_log
+        assert "sync_third" in call_log
+        assert "async_second" in call_log
