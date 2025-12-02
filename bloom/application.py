@@ -264,8 +264,11 @@ class Application:
         self._bind_configuration_properties()
 
         # 3. 컨테이너 초기화 (Orchestrator 사용)
+        #    run_async_init이 True면 비동기 @PostConstruct도 실행
         orchestrator = ContainerOrchestrator(self.manager)
-        self._initialized_containers = orchestrator.initialize(parallel=parallel)
+        self._initialized_containers = orchestrator.initialize(
+            parallel=parallel, run_async_init=run_async_init
+        )
 
         # 4. @EventListener 바인딩
         self._bind_event_listeners()
@@ -281,28 +284,7 @@ class Application:
 
         self._is_ready = True
 
-        # 8. 비동기 초기화 실행 (옵션)
-        if run_async_init:
-            self._run_async_init_sync()
-
         return self
-
-    def _run_async_init_sync(self) -> None:
-        """
-        동기 컨텍스트에서 비동기 @PostConstruct 실행
-
-        이벤트 루프가 이미 실행 중이면 조용히 스킵합니다.
-        (ASGI 환경에서는 lifespan에서 start_async()가 호출됨)
-        """
-        import asyncio
-
-        try:
-            asyncio.get_running_loop()
-            # 이미 루프가 있음 - ASGI 환경에서는 lifespan에서 start_async() 호출됨
-            # 조용히 스킵 (정상 동작)
-        except RuntimeError:
-            # 루프 없음 - 직접 실행
-            asyncio.run(self.start_async())
 
     def _register_event_buses(self) -> None:
         """이벤트 버스들을 DI 컨테이너에 등록 (사용자 정의가 없는 경우에만)"""

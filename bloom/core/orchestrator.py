@@ -1,5 +1,6 @@
 """Container Orchestrator - 컨테이너 초기화 오케스트레이션"""
 
+import asyncio
 import concurrent.futures
 from typing import TYPE_CHECKING, Any
 
@@ -17,18 +18,26 @@ class ContainerOrchestrator:
 
     컨테이너들을 토폴로지컬 순서로 정렬하고 초기화합니다.
     Factory Chain 검증, 순환 의존성 감지, 병렬 초기화를 지원합니다.
+    
+    SINGLETON 스코프의 비동기 @PostConstruct 처리:
+    - run_async_init=True (기본): 이벤트 루프가 없으면 asyncio.run()으로 실행
+    - ASGI 환경: 이벤트 루프가 이미 있으면 스킵 (lifespan에서 start_async() 호출)
     """
 
     def __init__(self, manager: "ContainerManager"):
         self.manager = manager
         self.initialized_containers: list["Container"] = []
 
-    def initialize(self, parallel: bool = False) -> list["Container"]:
+    def initialize(
+        self, parallel: bool = False, run_async_init: bool = True
+    ) -> list["Container"]:
         """
         모든 컨테이너를 초기화
 
         Args:
             parallel: True면 의존성 레벨별로 병렬 초기화 수행
+            run_async_init: True면 비동기 @PostConstruct도 즉시 실행 (기본값)
+                           이벤트 루프가 이미 실행 중이면 자동으로 스킵됨
 
         Returns:
             초기화된 컨테이너 목록 (PreDestroy 역순 호출용)
@@ -39,6 +48,27 @@ class ContainerOrchestrator:
             self._initialize_parallel()
         else:
             self._initialize_sequential()
+
+        # 비동기 @PostConstruct 실행 (옵션)
+        if run_async_init:
+            self._run_async_init_sync()
+
+        return self.initialized_containers
+
+    def _run_async_init_sync(self) -> None:
+        """
+        동기 컨텍스트에서 비동기 @PostConstruct 실행
+
+        이벤트 루프가 이미 실행 중이면 조용히 스킵합니다.
+        (ASGI 환경에서는 lifespan에서 start_async()가 호출됨)
+        """
+        try:
+            asyncio.get_running_loop()
+            # 이미 루프가 있음 - ASGI 환경에서는 lifespan에서 start_async() 호출됨
+            # 조용히 스킵 (정상 동작)
+        except RuntimeError:
+            # 루프 없음 - 직접 실행
+            asyncio.run(self.manager.lifecycle.start_async())
 
         return self.initialized_containers
 
