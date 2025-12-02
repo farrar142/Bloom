@@ -30,7 +30,7 @@ from .tracker import DirtyTracker
 from .entity import Entity, EntityMeta, create
 from .dialect import Dialect, SQLiteDialect, PostgreSQLDialect, MySQLDialect
 from .query import QueryBuilder, Query
-from .session import Session, SessionFactory
+from .session import Session, AsyncSession, SessionFactory
 from .repository import CrudRepository, Repository
 from .migrations import (
     Migration,
@@ -78,6 +78,7 @@ __all__ = [
     "Query",
     # Session
     "Session",
+    "AsyncSession",
     "SessionFactory",
     # Repository
     "CrudRepository",

@@ -1,8 +1,8 @@
 """SQLite Backend"""
 
 from __future__ import annotations
-from typing import Any, Iterator
-from contextlib import contextmanager
+from typing import Any, Iterator, AsyncIterator, TYPE_CHECKING
+from contextlib import contextmanager, asynccontextmanager
 import sqlite3
 import threading
 from queue import Queue, Empty
@@ -15,6 +15,9 @@ from .base import (
     ConnectionConfig,
 )
 from ..dialect import SQLiteDialect, Dialect
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 
 class SQLiteConnection(Connection):
@@ -84,6 +87,72 @@ class SQLiteConnection(Connection):
         return self._cursor.rowcount
 
 
+class AiosqliteConnection(AsyncConnection):
+    """SQLite 비동기 연결 래퍼 (aiosqlite)"""
+
+    def __init__(self, conn: "aiosqlite.Connection", dialect: Dialect):
+        self._conn = conn
+        self._cursor: Any = None
+        self._dialect = dialect
+        self._rowcount: int = 0
+        self._lastrowid: int | None = None
+
+    @property
+    def raw(self) -> Any:
+        return self._conn
+
+    @property
+    def dialect(self) -> Dialect:
+        return self._dialect
+
+    async def execute(
+        self, sql: str, params: dict[str, Any] | None = None
+    ) -> "AiosqliteConnection":
+        self._cursor = await self._conn.execute(sql, params or {})
+        self._rowcount = self._cursor.rowcount
+        self._lastrowid = self._cursor.lastrowid
+        return self
+
+    async def executemany(
+        self, sql: str, params_list: list[dict[str, Any]]
+    ) -> "AiosqliteConnection":
+        self._cursor = await self._conn.executemany(sql, params_list)
+        self._rowcount = self._cursor.rowcount
+        return self
+
+    async def fetchone(self) -> dict[str, Any] | None:
+        if self._cursor is None:
+            return None
+        row = await self._cursor.fetchone()
+        if row is None:
+            return None
+        # aiosqlite uses sqlite3.Row
+        return dict(row)
+
+    async def fetchall(self) -> list[dict[str, Any]]:
+        if self._cursor is None:
+            return []
+        rows = await self._cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def commit(self) -> None:
+        await self._conn.commit()
+
+    async def rollback(self) -> None:
+        await self._conn.rollback()
+
+    async def close(self) -> None:
+        await self._conn.close()
+
+    @property
+    def lastrowid(self) -> int | None:
+        return self._lastrowid
+
+    @property
+    def rowcount(self) -> int:
+        return self._rowcount
+
+
 class SQLiteConnectionPool(ConnectionPool):
     """SQLite 커넥션 풀
 
@@ -104,6 +173,13 @@ class SQLiteConnectionPool(ConnectionPool):
         # 파일 DB는 풀 사용
         self._pool: Queue[sqlite3.Connection] = Queue(maxsize=self._size)
         self._connections: list[sqlite3.Connection] = []
+
+        # Async 연결 관리
+        self._async_connections: list[Any] = []
+        self._shared_async_conn: Any = None  # aiosqlite Connection
+        import asyncio
+
+        self._async_lock = asyncio.Lock()
 
     def _create_connection(self) -> sqlite3.Connection:
         """새 연결 생성"""
@@ -148,14 +224,46 @@ class SQLiteConnectionPool(ConnectionPool):
             # 풀이 가득 차면 연결 닫기
             raw.close()
 
-    async def acquire_async(self) -> AsyncConnection:
-        # SQLite는 동기 연결만 지원, aiosqlite 필요
-        raise NotImplementedError(
-            "SQLite async requires aiosqlite. " "Install it with: pip install aiosqlite"
-        )
+    async def acquire_async(self) -> AiosqliteConnection:
+        """aiosqlite 연결 획득"""
+        try:
+            import aiosqlite
+        except ImportError:
+            raise ImportError(
+                "aiosqlite is required for async SQLite. "
+                "Install it with: pip install aiosqlite"
+            )
+
+        if self._is_memory:
+            async with self._async_lock:
+                if self._shared_async_conn is None:
+                    self._shared_async_conn = await aiosqlite.connect(
+                        self._db_path, check_same_thread=False
+                    )
+                    self._shared_async_conn.row_factory = aiosqlite.Row
+                    await self._shared_async_conn.execute("PRAGMA foreign_keys = ON")
+                return AiosqliteConnection(self._shared_async_conn, self._dialect)
+
+        # 파일 DB: 새 연결 생성
+        conn = await aiosqlite.connect(self._db_path, **self.config.options)
+        conn.row_factory = aiosqlite.Row
+        await conn.execute("PRAGMA foreign_keys = ON")
+        self._async_connections.append(conn)
+        return AiosqliteConnection(conn, self._dialect)
 
     async def release_async(self, conn: AsyncConnection) -> None:
-        raise NotImplementedError("Use aiosqlite for async SQLite")
+        """aiosqlite 연결 반환"""
+        if self._is_memory:
+            # :memory: DB는 연결 유지
+            return
+
+        raw = conn.raw
+        try:
+            if raw in self._async_connections:
+                self._async_connections.remove(raw)
+            await raw.close()
+        except:
+            pass
 
     def close_all(self) -> None:
         if self._shared_conn:
@@ -178,7 +286,23 @@ class SQLiteConnectionPool(ConnectionPool):
                 break
 
     async def close_all_async(self) -> None:
+        """모든 연결 닫기 (비동기)"""
         self.close_all()
+
+        # Async 연결 닫기
+        for conn in self._async_connections:
+            try:
+                await conn.close()
+            except:
+                pass
+        self._async_connections.clear()
+
+        if self._shared_async_conn:
+            try:
+                await self._shared_async_conn.close()
+            except:
+                pass
+            self._shared_async_conn = None
 
 
 class SQLiteBackend(DatabaseBackend):
