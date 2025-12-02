@@ -177,14 +177,14 @@ user_id: int = ForeignKey(
 `OneToMany`는 DB에 컬럼을 생성하지 않고 역참조 관계를 제공합니다. 순환 임포트 방지를 위해 문자열로 타겟 클래스를 지정할 수 있습니다.
 
 ```python
-from bloom.db import Entity, PrimaryKey, ForeignKey, StringColumn, OneToMany
+from bloom.db import Entity, PrimaryKey, ForeignKey, StringColumn, OneToMany, FetchType
 
 @Entity(table_name="users")
 class User:
     id = PrimaryKey[int](auto_increment=True)
     name = StringColumn(max_length=100)
 
-    # 역참조 관계 - DB 컬럼 없음
+    # 역참조 관계 - DB 컬럼 없음 (기본 LAZY)
     posts: "OneToMany[Post]" = OneToMany("Post", foreign_key="user_id")
 
 @Entity(table_name="posts")
@@ -194,44 +194,47 @@ class Post:
     user_id = ForeignKey[int]("users.id")  # 실제 FK 컬럼
 ```
 
-#### QueryDSL 스타일 체이닝
+#### FetchType (Lazy vs Eager)
 
-`OneToMany` 접근 시 `OneToManyQuery`가 반환되며, QueryDSL 스타일로 체이닝할 수 있습니다:
+`OneToMany`는 `FetchType.LAZY`(기본값)와 `FetchType.EAGER`를 지원합니다:
 
 ```python
-# 기본 조회
-posts = user.posts.with_session(session).all()
+from bloom.db import OneToMany, FetchType
 
-# 필터 + 정렬 + 페이지네이션
-recent_posts = (
-    user.posts
-    .filter(Post.published == True)
-    .order_by(Post.created_at.desc())
-    .limit(10)
-    .with_session(session)
-    .all()
-)
+@Entity(table_name="users")
+class User:
+    id = PrimaryKey[int](auto_increment=True)
+    name = StringColumn(max_length=100)
 
-# 첫 번째 결과
-first_post = user.posts.with_session(session).first()
+    # LAZY (기본값): 접근 시 쿼리 실행
+    posts: "OneToMany[Post]" = OneToMany("Post", foreign_key="user_id")
 
-# 존재 여부
-has_posts = user.posts.with_session(session).exists()
+    # EAGER: 부모 로드 시 함께 로드
+    comments: "OneToMany[Comment]" = OneToMany(
+        "Comment", 
+        foreign_key="user_id", 
+        fetch=FetchType.EAGER
+    )
 ```
 
-#### OneToManyQuery 메서드
+#### 사용 예시
 
-| 메서드                       | 설명           | 반환 타입         |
-| ---------------------------- | -------------- | ----------------- |
-| `filter(*conditions)`        | WHERE 조건 추가 | `OneToManyQuery[T]` |
-| `order_by(*clauses)`         | ORDER BY 추가   | `OneToManyQuery[T]` |
-| `limit(n)`                   | LIMIT 설정      | `OneToManyQuery[T]` |
-| `offset(n)`                  | OFFSET 설정     | `OneToManyQuery[T]` |
-| `with_session(session)`      | Session 주입    | `OneToManyQuery[T]` |
-| `all()`                      | 전체 결과       | `list[T]`          |
-| `first()`                    | 첫 번째 결과    | `T \| None`        |
-| `count()`                    | 결과 수         | `int`              |
-| `exists()`                   | 존재 여부       | `bool`             |
+`OneToMany` 접근 시 `list[T]`가 바로 반환됩니다. Session에서 엔티티를 조회하면 자동으로 Session이 바인딩됩니다:
+
+```python
+with session_factory.session() as session:
+    # Session에서 조회한 엔티티는 Session이 자동 바인딩됨
+    user = session.query(User).filter(User.id == 1).first()
+    
+    # posts 접근 시 자동으로 쿼리 실행 (LAZY)
+    posts = user.posts  # list[Post] 반환
+    
+    for post in posts:
+        print(post.title)
+    
+    # 두 번째 접근 시 캐시된 결과 반환 (추가 쿼리 없음)
+    same_posts = user.posts
+```
 
 #### 문자열 타겟
 
@@ -243,6 +246,7 @@ posts: "OneToMany[Post]" = OneToMany("Post", foreign_key="user_id")
 
 # 다른 모듈의 클래스
 posts: "OneToMany[Post]" = OneToMany("myapp.models.Post", foreign_key="user_id")
+```
 
 ## 쿼리 빌더 (QueryDSL 스타일)
 
@@ -261,7 +265,7 @@ with session_factory.session() as session:
         User.is_active == True,
         User.age >= 18
     ).all()
-```
+````
 
 ### 비교 연산자
 

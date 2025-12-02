@@ -1,13 +1,31 @@
 """Column descriptors - Column, PrimaryKey, ForeignKey, and typed columns"""
 
 from __future__ import annotations
-from typing import Any, overload, TYPE_CHECKING, Callable, Self
+from typing import Any, overload, TYPE_CHECKING, Callable, Self, Literal
 from weakref import WeakKeyDictionary
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 import json
 
 from .expressions import FieldExpression
+
+
+# =============================================================================
+# Fetch Type (Lazy/Eager)
+# =============================================================================
+
+
+class FetchType(Enum):
+    """관계 로딩 전략
+
+    LAZY: 접근 시점에 쿼리 실행 (기본값)
+    EAGER: 부모 엔티티 로드 시 함께 로드
+    """
+
+    LAZY = "lazy"
+    EAGER = "eager"
+
 
 if TYPE_CHECKING:
     from .tracker import DirtyTracker
@@ -375,27 +393,29 @@ class OneToMany[T]:
     """OneToMany 관계 디스크립터 (역참조)
 
     ForeignKey의 반대 방향 관계를 정의합니다.
-    DB에 컬럼을 생성하지 않고, 쿼리 빌더를 반환합니다.
+    DB에 컬럼을 생성하지 않고, 관련 엔티티 리스트를 반환합니다.
 
     순환 임포트를 피하기 위해 문자열로 엔티티를 참조할 수 있습니다:
     - "Post": 같은 모듈 내 클래스
     - "posts.Post": 다른 모듈의 클래스 (app.Entity 형식)
 
+    로딩 전략:
+    - LAZY (기본): 접근 시점에 쿼리 실행하여 로드
+    - EAGER: 부모 엔티티 로드 시 함께 로드
+
     Examples:
-        # User 입장에서 Post 역참조
         @Entity
         class User:
             id = PrimaryKey[int](auto_increment=True)
-            name = StringColumn(max_length=255)
             posts = OneToMany["Post"](foreign_key="user_id")
 
-        # 사용
-        user = session.get(User, 1)
-        posts_query = user.posts  # Query[Post] 반환
-        posts = posts_query.all()  # 실제 쿼리 실행
+        # 접근 시 자동으로 쿼리 실행
+        user.posts  # list[Post] 반환
+        for post in user.posts:
+            print(post.title)
 
-        # 체이닝 가능
-        recent_posts = user.posts.order_by(Post.created_at.desc()).limit(10).all()
+        # 추가 필터링이 필요하면 Query 사용
+        Query(Post).filter(Post.user_id == user.id, Post.published == True).all()
     """
 
     def __init__(
@@ -403,17 +423,22 @@ class OneToMany[T]:
         target: type[T] | str,
         *,
         foreign_key: str,
+        fetch: FetchType = FetchType.LAZY,
     ):
         """
         Args:
             target: 대상 엔티티 클래스 또는 문자열 (순환 임포트 방지)
             foreign_key: 대상 엔티티의 ForeignKey 필드명
+            fetch: 로딩 전략 (LAZY 또는 EAGER, 기본값: LAZY)
         """
         self._target = target
         self._foreign_key = foreign_key
+        self._fetch = fetch
         self._field_name: str = ""
         self._owner: type | None = None
         self._resolved_target: type[T] | None = None
+        # 로딩된 데이터 캐시 (Lazy/Eager 모두 사용)
+        self._cache: WeakKeyDictionary[Any, list[T]] = WeakKeyDictionary()
 
     def __set_name__(self, owner: type, name: str) -> None:
         self._field_name = name
@@ -456,12 +481,31 @@ class OneToMany[T]:
 
         return self._resolved_target  # type: ignore
 
-    def __get__(self, obj: object | None, objtype: type) -> "OneToManyQuery[T]":
+    @property
+    def fetch(self) -> FetchType:
+        """로딩 전략"""
+        return self._fetch
+
+    @property
+    def is_lazy(self) -> bool:
+        """Lazy 로딩 여부"""
+        return self._fetch == FetchType.LAZY
+
+    @property
+    def is_eager(self) -> bool:
+        """Eager 로딩 여부"""
+        return self._fetch == FetchType.EAGER
+
+    def __get__(self, obj: object | None, objtype: type) -> "list[T]":
         if obj is None:
             # 클래스 레벨 접근 - 디스크립터 자체 반환
             return self  # type: ignore
 
-        # 인스턴스 레벨 접근 - OneToManyQuery 반환
+        # 캐시에 있으면 반환
+        if obj in self._cache:
+            return self._cache[obj]
+
+        # 인스턴스 레벨 접근
         target_cls = self._resolve_target()
         owner_pk = getattr(objtype, "__bloom_pk__", "id")
         pk_value = getattr(obj, owner_pk, None)
@@ -471,142 +515,47 @@ class OneToMany[T]:
                 f"Cannot access OneToMany relation: {objtype.__name__}.{owner_pk} is None"
             )
 
-        return OneToManyQuery(
-            target_cls=target_cls,
-            foreign_key=self._foreign_key,
-            foreign_value=pk_value,
-        )
+        # Eager 모드: 아직 로드되지 않았으면 빈 리스트 (Session에서 채워짐)
+        if self._fetch == FetchType.EAGER:
+            return []
+
+        # Lazy 모드: 즉시 쿼리 실행
+        from .query import Query
+
+        fk_column = getattr(target_cls, self._foreign_key, None)
+        if fk_column is None:
+            raise ValueError(
+                f"Foreign key '{self._foreign_key}' not found in {target_cls.__name__}"
+            )
+
+        # Session 가져오기 (엔티티에 바인딩된 세션)
+        session: Session | None = getattr(obj, "__bloom_session__", None)
+        if session is None:
+            raise ValueError(
+                f"Cannot lazy load OneToMany: {objtype.__name__} has no bound session. "
+                "Load the entity through a Session first."
+            )
+
+        # 쿼리 실행
+        query = Query(target_cls).filter(fk_column == pk_value).with_session(session)
+        result = query.all()
+
+        # 캐시에 저장
+        self._cache[obj] = result
+        return result
+
+    def set_loaded_data(self, obj: object, data: list[T]) -> None:
+        """로딩된 데이터 설정 (Session에서 호출)"""
+        self._cache[obj] = data
+
+    def clear_cache(self, obj: object) -> None:
+        """캐시 클리어 (refresh 시)"""
+        if obj in self._cache:
+            del self._cache[obj]
 
     def __repr__(self) -> str:
         target_name = (
             self._target if isinstance(self._target, str) else self._target.__name__
         )
-        return f"OneToMany({self._field_name!r} -> {target_name}, fk={self._foreign_key!r})"
-
-
-class OneToManyQuery[T]:
-    """OneToMany 관계를 위한 쿼리 래퍼
-
-    Query 객체처럼 동작하며, Session이 주입되면 실제 쿼리를 실행합니다.
-    """
-
-    def __init__(
-        self,
-        target_cls: type[T],
-        foreign_key: str,
-        foreign_value: Any,
-    ):
-        self._target_cls = target_cls
-        self._foreign_key = foreign_key
-        self._foreign_value = foreign_value
-        self._session: "Session | None" = None
-
-        # Query 옵션들
-        self._conditions: list[Any] = []
-        self._order_by_clauses: list[Any] = []
-        self._limit_value: int | None = None
-        self._offset_value: int | None = None
-
-    def with_session(self, session: "Session") -> Self:
-        """세션 주입"""
-        self._session = session
-        return self
-
-    def filter(self, *conditions: Any) -> Self:
-        """추가 필터 조건"""
-        new_query = self._copy()
-        new_query._conditions.extend(conditions)
-        return new_query
-
-    def order_by(self, *clauses: Any) -> Self:
-        """정렬"""
-        new_query = self._copy()
-        new_query._order_by_clauses.extend(clauses)
-        return new_query
-
-    def limit(self, n: int) -> Self:
-        """제한"""
-        new_query = self._copy()
-        new_query._limit_value = n
-        return new_query
-
-    def offset(self, n: int) -> Self:
-        """오프셋"""
-        new_query = self._copy()
-        new_query._offset_value = n
-        return new_query
-
-    def _copy(self) -> Self:
-        """복사본 생성"""
-        new_query = OneToManyQuery(
-            target_cls=self._target_cls,
-            foreign_key=self._foreign_key,
-            foreign_value=self._foreign_value,
-        )
-        new_query._session = self._session
-        new_query._conditions = list(self._conditions)
-        new_query._order_by_clauses = list(self._order_by_clauses)
-        new_query._limit_value = self._limit_value
-        new_query._offset_value = self._offset_value
-        return new_query  # type: ignore
-
-    def _build_query(self) -> "Query[T]":
-        """Query 객체 생성"""
-        from .query import Query
-
-        # 기본 FK 조건
-        fk_column = getattr(self._target_cls, self._foreign_key, None)
-        if fk_column is None:
-            raise ValueError(
-                f"Foreign key '{self._foreign_key}' not found in {self._target_cls.__name__}"
-            )
-
-        query = Query(self._target_cls).filter(fk_column == self._foreign_value)
-
-        # 추가 조건
-        for cond in self._conditions:
-            query = query.filter(cond)
-
-        # 정렬
-        for clause in self._order_by_clauses:
-            query = query.order_by(clause)
-
-        # 제한/오프셋
-        if self._limit_value is not None:
-            query = query.limit(self._limit_value)
-        if self._offset_value is not None:
-            query = query.offset(self._offset_value)
-
-        # 세션 주입
-        if self._session is not None:
-            query = query.with_session(self._session)
-
-        return query
-
-    def all(self) -> list[T]:
-        """모든 결과 반환"""
-        return self._build_query().all()
-
-    def first(self) -> T | None:
-        """첫 번째 결과"""
-        return self._build_query().first()
-
-    def count(self) -> int:
-        """결과 수"""
-        return len(self.all())
-
-    def exists(self) -> bool:
-        """결과 존재 여부"""
-        return self.first() is not None
-
-    def __iter__(self):
-        return iter(self.all())
-
-    def __len__(self) -> int:
-        return self.count()
-
-    def __repr__(self) -> str:
-        return (
-            f"OneToManyQuery({self._target_cls.__name__}, "
-            f"{self._foreign_key}={self._foreign_value})"
-        )
+        fetch_str = "eager" if self._fetch == FetchType.EAGER else "lazy"
+        return f"OneToMany({self._field_name!r} -> {target_name}, fk={self._foreign_key!r}, fetch={fetch_str})"
