@@ -123,15 +123,15 @@ class MigrationRegistry:
                         self.register(attr)
                     # Migration을 상속받은 클래스인 경우 (Migration 자체는 제외)
                     elif (
-                        isinstance(attr, type) 
-                        and issubclass(attr, Migration) 
+                        isinstance(attr, type)
+                        and issubclass(attr, Migration)
                         and attr is not Migration
                     ):
                         # 클래스에서 name과 operations가 정의되어 있으면 인스턴스화
-                        if hasattr(attr, 'name') and hasattr(attr, 'operations'):
+                        if hasattr(attr, "name") and hasattr(attr, "operations"):
                             migration = Migration(
                                 name=attr.name,
-                                dependencies=getattr(attr, 'dependencies', []),
+                                dependencies=getattr(attr, "dependencies", []),
                                 operations=attr.operations,
                             )
                             self.register(migration)

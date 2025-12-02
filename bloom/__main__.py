@@ -523,7 +523,11 @@ class LazyGroup(click.Group):
         self._lazy_subcommands = lazy_subcommands or {}
 
         # Lazy 플레이스홀더 등록
-        for cmd_name, (import_path, short_help, is_group) in self._lazy_subcommands.items():
+        for cmd_name, (
+            import_path,
+            short_help,
+            is_group,
+        ) in self._lazy_subcommands.items():
             if is_group:
                 lazy_cmd = LazyMultiCommand(cmd_name, import_path, short_help)
             else:

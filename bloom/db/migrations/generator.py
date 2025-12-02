@@ -136,9 +136,10 @@ class MigrationGenerator:
     def _get_next_number(self) -> int:
         """다음 마이그레이션 번호 계산"""
         import re
+
         existing = list(self._migrations_dir.glob("*.py"))
         existing = [f for f in existing if f.name != "__init__.py"]
-        
+
         # 기존 마이그레이션에서 가장 큰 번호 찾기
         max_num = 0
         for f in existing:
@@ -146,16 +147,17 @@ class MigrationGenerator:
             if match:
                 num = int(match.group(1))
                 max_num = max(max_num, num)
-        
+
         return max_num + 1
 
     def _add_number_prefix(self, name: str) -> str:
         """이름에 넘버링 추가 (이미 있으면 그대로)"""
         import re
+
         # 이미 넘버링이 있으면 그대로 반환
         if re.match(r"^\d{4}_", name):
             return name
-        
+
         next_num = self._get_next_number()
         return f"{next_num:04d}_{name}"
 

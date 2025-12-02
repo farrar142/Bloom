@@ -58,7 +58,7 @@ class DBContext:
 
         # 2. Application에서 스캔된 모든 모듈에서 엔티티 찾기
         if self.application:
-            for module in getattr(self.application, '_scanned_modules', []):
+            for module in getattr(self.application, "_scanned_modules", []):
                 for name in dir(module):
                     try:
                         obj = getattr(module, name)

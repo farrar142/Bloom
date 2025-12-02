@@ -196,6 +196,7 @@ def db(
         # ready_async() 호출하여 DI 초기화
         if not app._is_ready:
             import asyncio
+
             click.echo(f"Initializing application: {app.name}")
             asyncio.run(app.ready_async())
         click.echo(f"Using application: {app.name}")
