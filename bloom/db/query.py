@@ -39,10 +39,70 @@ class QueryResult(Generic[T]):
         if not self._executed:
             rows = self._session.execute(self._sql, self._params)
             self._results = [
-                dict_to_entity(self._entity_cls, dict(row)) for row in rows
+                self._bind_session(dict_to_entity(self._entity_cls, dict(row)))
+                for row in rows
             ]
+            # Eager 로딩 처리
+            self._load_eager_relations()
             self._executed = True
         return self._results or []
+
+    def _bind_session(self, entity: T) -> T:
+        """엔티티에 Session 바인딩"""
+        object.__setattr__(entity, "__bloom_session__", self._session)
+        return entity
+
+    def _load_eager_relations(self) -> None:
+        """Eager 관계 로딩"""
+        if not self._results:
+            return
+
+        from .columns import OneToMany, FetchType
+
+        # __bloom_relations__ 확인
+        relations = getattr(self._entity_cls, "__bloom_relations__", {})
+        for rel_name, descriptor in relations.items():
+            if isinstance(descriptor, OneToMany) and descriptor.is_eager:
+                self._load_one_to_many_eager(descriptor, rel_name)
+
+    def _load_one_to_many_eager(self, descriptor: Any, rel_name: str) -> None:
+        """OneToMany Eager 로딩
+
+        N+1 문제를 방지하기 위해 IN 쿼리로 한 번에 로딩
+        """
+        if not self._results:
+            return
+
+        from .columns import OneToMany
+
+        # 부모 PK 수집
+        pk_name = getattr(self._entity_cls, "__bloom_pk__", "id")
+        pk_values = [getattr(entity, pk_name) for entity in self._results if getattr(entity, pk_name, None) is not None]
+
+        if not pk_values:
+            return
+
+        # 타겟 클래스 resolve
+        target_cls = descriptor._resolve_target()
+        fk_column = getattr(target_cls, descriptor._foreign_key, None)
+        if fk_column is None:
+            return
+
+        # IN 쿼리로 모든 자식 한 번에 조회
+        children = Query(target_cls).filter(fk_column.in_(pk_values)).with_session(self._session).all()
+
+        # 부모별로 그룹핑
+        children_by_parent: dict[Any, list[Any]] = {pk: [] for pk in pk_values}
+        for child in children:
+            parent_pk = getattr(child, descriptor._foreign_key, None)
+            if parent_pk in children_by_parent:
+                children_by_parent[parent_pk].append(child)
+
+        # 각 부모에 자식 데이터 설정
+        for entity in self._results:
+            pk = getattr(entity, pk_name, None)
+            if pk is not None:
+                descriptor.set_loaded_data(entity, children_by_parent.get(pk, []))
 
     def all(self) -> list[T]:
         """모든 결과 반환"""
@@ -260,7 +320,73 @@ class Query(Generic[T]):
         session = self._ensure_session()
         sql, params = self.build()
         rows = session.execute(sql, params)
-        return [dict_to_entity(self.entity_cls, dict(row)) for row in rows]
+        results = [
+            self._bind_session(dict_to_entity(self.entity_cls, dict(row)), session)
+            for row in rows
+        ]
+        # Eager 로딩 처리
+        self._load_eager_relations(results, session)
+        return results
+
+    def _bind_session(self, entity: T, session: Session) -> T:
+        """엔티티에 Session 바인딩"""
+        object.__setattr__(entity, "__bloom_session__", session)
+        return entity
+
+    def _load_eager_relations(self, results: list[T], session: Session) -> None:
+        """Eager 관계 로딩"""
+        if not results:
+            return
+
+        from .columns import OneToMany
+
+        # __bloom_relations__ 확인
+        relations = getattr(self.entity_cls, "__bloom_relations__", {})
+        for rel_name, descriptor in relations.items():
+            if isinstance(descriptor, OneToMany) and descriptor.is_eager:
+                self._load_one_to_many_eager(descriptor, results, session)
+
+    def _load_one_to_many_eager(
+        self, descriptor: Any, results: list[T], session: Session
+    ) -> None:
+        """OneToMany Eager 로딩 (N+1 방지를 위해 IN 쿼리 사용)"""
+        if not results:
+            return
+
+        # 부모 PK 수집
+        pk_name = getattr(self.entity_cls, "__bloom_pk__", "id")
+        pk_values = [
+            getattr(entity, pk_name)
+            for entity in results
+            if getattr(entity, pk_name, None) is not None
+        ]
+
+        if not pk_values:
+            return
+
+        # 타겟 클래스 resolve
+        target_cls = descriptor._resolve_target()
+        fk_column = getattr(target_cls, descriptor._foreign_key, None)
+        if fk_column is None:
+            return
+
+        # IN 쿼리로 모든 자식 한 번에 조회
+        children = (
+            Query(target_cls).filter(fk_column.in_(pk_values)).with_session(session).all()
+        )
+
+        # 부모별로 그룹핑
+        children_by_parent: dict[Any, list[Any]] = {pk: [] for pk in pk_values}
+        for child in children:
+            parent_pk = getattr(child, descriptor._foreign_key, None)
+            if parent_pk in children_by_parent:
+                children_by_parent[parent_pk].append(child)
+
+        # 각 부모에 자식 데이터 설정
+        for entity in results:
+            pk = getattr(entity, pk_name, None)
+            if pk is not None:
+                descriptor.set_loaded_data(entity, children_by_parent.get(pk, []))
 
     def first(self) -> T | None:
         """첫 번째 결과"""

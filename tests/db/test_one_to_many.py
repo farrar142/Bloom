@@ -177,3 +177,129 @@ class TestOneToManyStringTarget:
         descriptor = Publisher.__dict__["authors"]
         resolved = descriptor._resolve_target()
         assert resolved is Author
+
+
+# =============================================================================
+# Session 통합 테스트
+# =============================================================================
+
+
+class TestOneToManyWithSession:
+    """실제 Session과 함께 OneToMany 테스트"""
+
+    @pytest.fixture
+    def session(self):
+        """인메모리 SQLite 세션"""
+        from bloom.db import SessionFactory
+        from bloom.db.backends import SQLiteBackend
+
+        backend = SQLiteBackend(":memory:")
+        factory = SessionFactory(backend)
+
+        with factory.session() as session:
+            # 테이블 생성
+            session._connection.execute(
+                """
+                CREATE TABLE authors (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(100)
+                )
+            """
+            )
+            session._connection.execute(
+                """
+                CREATE TABLE eager_authors (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(100)
+                )
+            """
+            )
+            session._connection.execute(
+                """
+                CREATE TABLE books (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title VARCHAR(200),
+                    author_id INTEGER,
+                    published BOOLEAN DEFAULT 0,
+                    year INTEGER DEFAULT 2024
+                )
+            """
+            )
+            yield session
+
+    def test_lazy_loading_with_session(self, session):
+        """LAZY 모드 - Session으로 조회 후 관계 접근"""
+        # 데이터 추가
+        session._connection.execute(
+            "INSERT INTO authors (name) VALUES (:name)", {"name": "Jane Doe"}
+        )
+        session._connection.execute(
+            "INSERT INTO books (title, author_id) VALUES (:title, :author_id)",
+            {"title": "Book 1", "author_id": 1},
+        )
+        session._connection.execute(
+            "INSERT INTO books (title, author_id) VALUES (:title, :author_id)",
+            {"title": "Book 2", "author_id": 1},
+        )
+        session.commit()
+
+        # Session으로 조회
+        author = session.query(Author).filter(Author.id == 1).first()
+        assert author is not None
+        assert author.name == "Jane Doe"
+
+        # Session이 바인딩되어 있어야 함
+        assert hasattr(author, "__bloom_session__")
+        assert author.__bloom_session__ is session
+
+        # Lazy 로딩 - 접근 시 쿼리 실행
+        books = author.books
+        assert isinstance(books, list)
+        assert len(books) == 2
+        assert books[0].title in ["Book 1", "Book 2"]
+
+    def test_eager_loading_with_session(self, session):
+        """EAGER 모드 - 부모 조회 시 자식도 함께 로드"""
+        # 데이터 추가
+        session._connection.execute(
+            "INSERT INTO eager_authors (name) VALUES (:name)", {"name": "John Smith"}
+        )
+        session._connection.execute(
+            "INSERT INTO books (title, author_id) VALUES (:title, :author_id)",
+            {"title": "Eager Book 1", "author_id": 1},
+        )
+        session._connection.execute(
+            "INSERT INTO books (title, author_id) VALUES (:title, :author_id)",
+            {"title": "Eager Book 2", "author_id": 1},
+        )
+        session.commit()
+
+        # Session으로 조회 - Eager 로딩으로 자식도 함께 로드됨
+        author = session.query(EagerAuthor).filter(EagerAuthor.id == 1).first()
+        assert author is not None
+
+        # 이미 로드되어 있어야 함 (추가 쿼리 없이)
+        books = author.books
+        assert isinstance(books, list)
+        assert len(books) == 2
+
+    def test_lazy_caching(self, session):
+        """LAZY 모드 - 캐싱 동작 확인"""
+        session._connection.execute(
+            "INSERT INTO authors (name) VALUES (:name)", {"name": "Cache Test"}
+        )
+        session._connection.execute(
+            "INSERT INTO books (title, author_id) VALUES (:title, :author_id)",
+            {"title": "Cached Book", "author_id": 1},
+        )
+        session.commit()
+
+        author = session.query(Author).filter(Author.id == 1).first()
+
+        # 첫 접근 - 쿼리 실행
+        books1 = author.books
+        # 두 번째 접근 - 캐시 반환
+        books2 = author.books
+
+        # 같은 리스트 객체여야 함
+        assert books1 is books2
