@@ -539,7 +539,7 @@ class LazyGroup(click.Group):
 # 무거운 서브커맨드는 lazy로 로드 (short_help, is_group 포함)
 _lazy_subcommands = {
     "db": ("bloom.db.cli:db", "Database management commands", True),
-    "task": ("bloom.task.cli:task", "Task management commands", True),
+    "task": ("bloom.task.cli:task", "Task management commands", False),
     "tests": ("bloom.tests.cli:tests", "Run tests with pytest", False),
     "run": ("bloom.scripts.cli:run", "Run custom scripts", False),
 }
