@@ -346,6 +346,7 @@ def startapp(name: str, directory: str | None):
       - repositories.py  (데이터 접근)
       - entities.py      (ORM 엔티티)
       - schemas.py       (요청/응답 스키마)
+      - tests.py         (테스트)
 
     \b
     Examples:
