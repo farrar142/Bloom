@@ -8,6 +8,41 @@ from bloom.db.cli import db, pass_context
 from bloom.db.cli.context import DBContext
 
 
+def _resolve_migration_name(target: str, all_names: list[str]) -> str | None:
+    """부분 문자열로 마이그레이션 이름 찾기
+    
+    Args:
+        target: 사용자가 입력한 타겟 (예: "0001", "0001_create", "0001_create_users")
+        all_names: 전체 마이그레이션 이름 목록
+        
+    Returns:
+        매칭된 전체 마이그레이션 이름 또는 None
+    """
+    # 정확히 일치하면 그대로 반환
+    if target in all_names:
+        return target
+    
+    # 부분 매칭 시도 (앞부분 prefix 매칭)
+    matches = [name for name in all_names if name.startswith(target)]
+    
+    if len(matches) == 1:
+        return matches[0]
+    elif len(matches) > 1:
+        click.echo(f"Ambiguous target '{target}'. Matches: {', '.join(matches)}")
+        return None
+    
+    # prefix 매칭 실패시 contains 매칭
+    matches = [name for name in all_names if target in name]
+    
+    if len(matches) == 1:
+        return matches[0]
+    elif len(matches) > 1:
+        click.echo(f"Ambiguous target '{target}'. Matches: {', '.join(matches)}")
+        return None
+    
+    return None
+
+
 @db.command()
 @click.option("--target", "-t", type=str, default=None, help="Target migration name (or 'zero' to rollback all)")
 @click.option("--fake", is_flag=True, help="Mark migrations as run without executing")
@@ -59,6 +94,18 @@ def migrate(ctx: DBContext, target: str | None, fake: bool):
         if rolled_back:
             click.echo(f"\n✓ Rolled back {len(rolled_back)} migration(s).")
         return
+    
+    # target 이름 resolve (부분 매칭 지원)
+    resolved_target = None
+    if target:
+        resolved_target = _resolve_migration_name(target, all_names)
+        if resolved_target is None:
+            click.echo(f"Error: Migration '{target}' not found.")
+            click.echo(f"Available migrations: {', '.join(all_names)}")
+            return
+        if resolved_target != target:
+            click.echo(f"Resolved '{target}' -> '{resolved_target}'")
+        target = resolved_target
     
     # target이 이미 적용된 마이그레이션보다 이전이면 롤백
     if target and target in applied:
