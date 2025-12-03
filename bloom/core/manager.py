@@ -113,6 +113,19 @@ class ContainerManager:
         if isinstance(module, type):
             if container := BaseContainer.get_container(module):
                 self.register_container(container)
+            # 클래스의 메서드들도 스캔하고 owner_cls 주입
+            for method_name in dir(module):
+                try:
+                    method = getattr(module, method_name, None)
+                    if method is None:
+                        continue
+                    child_container = BaseContainer.get_container(method)
+                except Exception:
+                    continue
+                if child_container:
+                    child_container.owner_cls = module  # owner 클래스 주입
+                    self.register_container(child_container)
+            return  # 클래스 스캔 완료 시 반환
 
         for attr_name in dir(module):
             try:
@@ -167,7 +180,7 @@ class ContainerManager:
     def get_factory_container(self, target: type) -> "FactoryContainer | None":
         """특정 타입을 반환하는 FactoryContainer 조회"""
         from .container import FactoryContainer
-        
+
         for containers in self.container_registry.values():
             for container in containers:
                 if isinstance(container, FactoryContainer):
@@ -180,14 +193,14 @@ class ContainerManager:
 
     def get_container_scope(self, container: "Container") -> tuple:
         """컨테이너의 스코프와 프로토타입 모드 반환
-        
+
         Container는 Element를 담기만 하고, 해석은 Manager에서 합니다.
-        
+
         Returns:
             (Scope, PrototypeMode) 튜플. 기본값: (SINGLETON, DEFAULT)
         """
         from .container.element import Scope, ScopeElement, PrototypeMode
-        
+
         for elem in container.elements:
             if isinstance(elem, ScopeElement):
                 return (elem.scope, elem.prototype_mode)
