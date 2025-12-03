@@ -309,6 +309,11 @@ class TaskDescriptor[T, **P, R](ProxyableDescriptor):
 
     클래스 속성 접근 시 BoundTask를 반환합니다.
     ProxyableDescriptor를 상속하여 Application에서 프록시 적용 가능.
+    
+    @Decorator와 함께 사용 시, DecoratorElement에서 wrapper를 읽어 적용합니다:
+        @Task
+        @Decorator(my_wrapper)
+        def my_task(self): ...
     """
 
     def __init__(
@@ -318,11 +323,36 @@ class TaskDescriptor[T, **P, R](ProxyableDescriptor):
     ):
         self._handler = handler
         self._element = element
+        self._wrapped_handler: Callable[Concatenate[T, P], R] | None = None
         functools.update_wrapper(self, handler)  # type:ignore
 
     def get_original_handler(self) -> Callable[Concatenate[T, P], R]:
         """ProxyableDescriptor: 원본 핸들러 반환"""
         return self._handler
+
+    def _get_wrapped_handler(self) -> Callable[Concatenate[T, P], R]:
+        """Container의 DecoratorElement에서 wrapper를 읽어 적용된 handler 반환"""
+        if self._wrapped_handler is not None:
+            return self._wrapped_handler
+
+        from bloom.core.container import Container, DecoratorElement
+        from bloom.core.manager import try_get_current_manager
+
+        container = Container.get_container(self._handler)
+        if container is None:
+            self._wrapped_handler = self._handler
+            return self._wrapped_handler
+
+        # DecoratorElement들을 찾아서 wrapper 적용
+        manager = try_get_current_manager()
+        wrapped = self._handler
+        
+        for elem in container.elements:
+            if isinstance(elem, DecoratorElement):
+                wrapped = elem.apply_wrapper(wrapped, manager)
+
+        self._wrapped_handler = wrapped
+        return self._wrapped_handler
 
     def apply_proxy(self, instance: Any, proxy: Any) -> BoundTask[T, P, R]:
         """ProxyableDescriptor: 프록시를 적용하고 BoundTask 반환"""
@@ -346,8 +376,11 @@ class TaskDescriptor[T, **P, R](ProxyableDescriptor):
         # 인스턴스에서 백엔드 가져오기 시도
         backend = getattr(instance, "_task_backend", None)
 
+        # @Decorator wrapper가 적용된 handler 사용
+        handler = self._get_wrapped_handler()
+
         return BoundTask(
-            handler=self._handler,
+            handler=handler,
             instance=instance,
             backend=backend,
             element=self._element,

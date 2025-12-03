@@ -28,7 +28,9 @@ class HandlerContainer[**P, R](CallableContainer[P, R]):
     호출 시: container(...) 또는 container.invoke(...) 로 실제 메서드 실행
     """
 
-    _default_priority: int = 30
+    @classmethod
+    def _get_default_priority(cls) -> int:
+        return 30
 
     def __init__(self, handler_method: Callable[P, R]):
         self._resolved_hints: dict | None = None

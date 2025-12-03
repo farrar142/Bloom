@@ -27,17 +27,19 @@ class CallableContainer[**P, R](Container[Callable[P, R]]):
     SINGLETON 스코프에서만 사용 가능한 핸들러는 SingletonOnlyElement를 추가합니다.
     """
 
-    # 서브클래스에서 오버라이드할 priority (기본값 10)
-    _default_priority: int = 10
-
     def __init__(self, callable_target: Callable[P, R]):
         self.callable_target = callable_target
         self.owner_cls: type | None = None  # scan 시 주입됨
         self._bound_method: Callable[P, R] | None = None
         self._is_coroutine: bool | None = None  # 캐싱된 코루틴 여부
         super().__init__(callable_target)  # type: ignore
-        # PriorityElement 설정
-        self._set_priority(self._default_priority)
+        # PriorityElement 설정 (서브클래스에서 오버라이드 가능)
+        self._set_priority(self._get_default_priority())
+
+    @classmethod
+    def _get_default_priority(cls) -> int:
+        """기본 priority 반환 (서브클래스에서 오버라이드)"""
+        return 10
 
     def _set_priority(self, priority: int) -> None:
         """PriorityElement 설정 (기존 제거 후 새로 추가)"""

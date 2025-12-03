@@ -18,6 +18,63 @@ def _resolve_types(manager: "ContainerManager", types: list[type]) -> list:
     return [manager.get_instance(t) for t in types]
 
 
+class DecoratorElement(Element):
+    """@Decorator 정보를 저장하는 Element
+    
+    wrapper와 inject_types를 저장하고, 
+    다른 컨테이너(Task, Factory 등)에서 resolved wrapper를 가져올 수 있게 합니다.
+    
+    여러 @Decorator가 적용될 수 있으므로 allow_multiple=True입니다.
+    """
+    
+    key = "decorator"
+    allow_multiple = True  # 여러 @Decorator 허용
+    
+    def __init__(
+        self,
+        wrapper: Callable,
+        inject_types: list[type] | None = None,
+    ):
+        super().__init__()
+        self.metadata["wrapper"] = wrapper
+        self.metadata["inject_types"] = inject_types or []
+    
+    @property
+    def wrapper(self) -> Callable:
+        return self.metadata["wrapper"]
+    
+    @property
+    def inject_types(self) -> list[type]:
+        return self.metadata.get("inject_types", [])
+    
+    def apply_wrapper(
+        self,
+        fn: Callable,
+        manager: "ContainerManager | None" = None,
+    ) -> Callable:
+        """wrapper를 fn에 적용하여 반환
+        
+        Args:
+            fn: 감쌀 원본 함수
+            manager: 의존성 주입용 ContainerManager (inject_types가 있을 때 필요)
+            
+        Returns:
+            wrapper가 적용된 함수
+        """
+        wrapper = self.wrapper
+        inject_types = self.inject_types
+        
+        if not inject_types:
+            return wrapper(fn)
+        
+        if manager is None:
+            # manager가 없으면 원본 반환
+            return fn
+            
+        deps = _resolve_types(manager, inject_types)
+        return wrapper(fn, *deps)
+
+
 class DecoratorContainer[**P, R](CallableContainer[P, R]):
     """
     원본 컨테이너나 함수를 데코레이션하는 컨테이너.
@@ -45,7 +102,9 @@ class DecoratorContainer[**P, R](CallableContainer[P, R]):
             pass
     """
 
-    _default_priority: int = 20
+    @classmethod
+    def _get_default_priority(cls) -> int:
+        return 20
 
     def __init__(
         self,
@@ -78,11 +137,8 @@ class DecoratorContainer[**P, R](CallableContainer[P, R]):
                 wrapper, inject_types
             )
 
-        # decoration 정보를 담은 Element 추가
-        decoration_element = Element()
-        decoration_element.metadata["wrapper"] = wrapper
-        decoration_element.metadata["inject_types"] = inject_types
-        self.add_element(decoration_element)
+        # DecoratorElement로 wrapper 정보 저장 (다른 컨테이너에서 사용 가능)
+        self.add_element(DecoratorElement(wrapper, inject_types))
 
     def _create_injectable_wrapper(
         self,
@@ -129,6 +185,9 @@ class DecoratorContainer[**P, R](CallableContainer[P, R]):
 
             self._resolved_wrapper = combined_wrapper
 
+        # 새 wrapper도 DecoratorElement로 저장 (다른 컨테이너에서 사용 가능)
+        self.add_element(DecoratorElement(wrapper, inject_types))
+        
         self._bound_method = None  # 캐시 무효화
 
     def _bind_method(self) -> Callable[P, R]:

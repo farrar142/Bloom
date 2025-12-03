@@ -52,7 +52,9 @@ class HttpMethodHandlerContainer[**P, R](HandlerContainer[P, R]):
             return HttpResponse.created({"id": 1})
     """
 
-    _default_priority: int = 40
+    @classmethod
+    def _get_default_priority(cls) -> int:
+        return 40
 
     def __repr__(self) -> str:
         response_type = self.get_metadata("response_type")

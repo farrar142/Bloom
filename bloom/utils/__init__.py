@@ -7,6 +7,7 @@ from .typing import (
     extract_parameter_types,
 )
 from .resolver import DependencyResolver, ResolvedDependencies
+from .injector import FieldInjector
 
 __all__ = [
     "generate_graph",
@@ -18,4 +19,5 @@ __all__ = [
     "extract_parameter_types",
     "DependencyResolver",
     "ResolvedDependencies",
+    "FieldInjector",
 ]

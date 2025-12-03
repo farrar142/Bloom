@@ -11,7 +11,7 @@ from .element import (
 from .base import Container
 from .callable import CallableContainer
 from .component import ComponentContainer
-from .decorator import DecoratorContainer
+from .decorator import DecoratorContainer, DecoratorElement
 from .factory import FactoryContainer
 from .handler import HandlerContainer
 
@@ -26,6 +26,7 @@ __all__ = [
     "CallableContainer",
     "ComponentContainer",
     "DecoratorContainer",
+    "DecoratorElement",
     "FactoryContainer",
     "HandlerContainer",
 ]

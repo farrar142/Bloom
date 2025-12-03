@@ -125,206 +125,10 @@ class Container[T]:
 
     def _inject_dependencies(self, annotations: dict[str, type]) -> dict[str, Any]:
         """어노테이션 기반으로 의존성을 주입하여 kwargs 반환"""
-        from typing import ForwardRef, get_type_hints
-        from ..lazy import (
-            LazyFieldProxy,
-            is_lazy_wrapper_type,
-            get_lazy_inner_type,
-        )
-        from ...config.env import is_env_type, resolve_env_value
+        from ...utils.injector import FieldInjector
 
-        manager = self._get_manager()
-        kwargs = {}
-        for name, dep_type in annotations.items():
-            if name == "return":
-                continue
-            # 환경변수 타입 처리 (Env[Literal["KEY"]])
-            if is_env_type(dep_type):
-                env_value = resolve_env_value(dep_type)
-                if env_value is not None:
-                    kwargs[name] = env_value
-                continue
-
-            # Lazy[T] 필드 타입 처리 - 명시적 Lazy 선언
-            if is_lazy_wrapper_type(dep_type):
-                inner_type = get_lazy_inner_type(dep_type)
-                if inner_type is not None:
-                    # ForwardRef 해결 (문자열 타입 참조)
-                    if isinstance(inner_type, ForwardRef):
-                        # __forward_arg__가 문자열 타입 이름
-                        type_name = inner_type.__forward_arg__
-                        # 현재 등록된 모든 컨테이너에서 타입 이름으로 검색
-                        resolved_type = None
-                        for t in manager.container_registry.keys():
-                            if t.__name__ == type_name:
-                                resolved_type = t
-                                break
-                        if resolved_type is None:
-                            raise Exception(
-                                f"Cannot resolve Lazy['{type_name}']: type not found in registry"
-                            )
-                        inner_type = resolved_type
-
-                    # LazyFieldProxy 생성 - 투명 프록시로 동작
-                    from .element import Scope as ScopeEnum, ScopeElement
-
-                    # 컨테이너에서 Scope 정보 가져오기
-                    inner_scope = ScopeEnum.SINGLETON
-                    if inner_container := manager.get_container(inner_type):
-                        for elem in inner_container.elements:
-                            if isinstance(elem, ScopeElement):
-                                inner_scope = elem.scope
-                                break
-
-                    def make_resolver(m: "ContainerManager", t: type, s: ScopeEnum):
-                        def resolver():
-                            # CALL/REQUEST는 항상 새 인스턴스 생성
-                            if s == ScopeEnum.CALL or s == ScopeEnum.REQUEST:
-                                if container := m.get_container(t):
-                                    return container._create_instance()
-                                raise Exception(
-                                    f"Cannot resolve {t.__name__}: no container found"
-                                )
-
-                            # SINGLETON: 캐시 확인
-                            instance = m.get_instance(t, raise_exception=False)
-                            if instance is not None:
-                                return instance
-                            if container := m.get_container(t):
-                                return container.initialize_instance()
-                            raise Exception(
-                                f"Cannot resolve Lazy[{t.__name__}]: no container found"
-                            )
-
-                        return resolver
-
-                    # CALL/REQUEST인 경우 container 전달 (라이프사이클 관리용)
-                    lifecycle_container = (
-                        inner_container
-                        if inner_scope in (ScopeEnum.CALL, ScopeEnum.REQUEST)
-                        else None
-                    )
-                    # prototype_mode 정보 가져오기
-                    from .element import PrototypeMode
-
-                    inner_prototype_mode = PrototypeMode.DEFAULT
-                    for elem in inner_container.elements if inner_container else []:
-                        if isinstance(elem, ScopeElement):
-                            inner_prototype_mode = elem.prototype_mode
-                            break
-                    kwargs[name] = LazyFieldProxy(
-                        make_resolver(manager, inner_type, inner_scope),
-                        inner_type,
-                        inner_scope,
-                        lifecycle_container,
-                        inner_prototype_mode,
-                    )
-                continue
-
-            # 모든 필드는 기본적으로 LazyFieldProxy로 주입 (기본 Lazy 동작)
-            if dep_container := manager.get_container(dep_type):
-                from .element import Scope as ScopeEnum, ScopeElement, PrototypeMode
-
-                scope = ScopeEnum.SINGLETON  # 기본값
-                prototype_mode = PrototypeMode.DEFAULT  # 기본값
-                for elem in dep_container.elements:
-                    if isinstance(elem, ScopeElement):
-                        scope = elem.scope
-                        prototype_mode = elem.prototype_mode
-                        break
-
-                # SINGLETON만 캐시된 인스턴스 사용 (CALL/REQUEST는 LazyFieldProxy에서 처리)
-                if scope == ScopeEnum.SINGLETON:
-                    existing_instance = manager.get_instance(
-                        dep_type, raise_exception=False
-                    )
-                    if existing_instance is not None:
-                        kwargs[name] = existing_instance
-                        continue
-
-                # LazyFieldProxy로 주입 (기본 Lazy 동작)
-                # CALL: 매번 새 인스턴스 생성
-                # REQUEST: 요청마다 새 인스턴스 (RequestContext에서 캐시)
-                # SINGLETON: 캐시 확인 후 없으면 생성
-                def make_default_resolver(m: "ContainerManager", t: type, s: ScopeEnum):
-                    def resolver():
-                        # CALL/REQUEST는 항상 새 인스턴스 생성
-                        # (REQUEST는 LazyFieldProxy에서 RequestContext 캐시를 확인)
-                        if s == ScopeEnum.CALL or s == ScopeEnum.REQUEST:
-                            if container := m.get_container(t):
-                                return container._create_instance()
-                            raise Exception(
-                                f"Cannot resolve {t.__name__}: no container found"
-                            )
-
-                        # SINGLETON은 캐시 확인
-                        instance = m.get_instance(t, raise_exception=False)
-                        if instance is not None:
-                            return instance
-                        if container := m.get_container(t):
-                            return container.initialize_instance()
-                        raise Exception(
-                            f"Cannot resolve {t.__name__}: no container found"
-                        )
-
-                    return resolver
-
-                # CALL/REQUEST인 경우 container 전달 (라이프사이클 관리용)
-                lifecycle_container = (
-                    dep_container
-                    if scope in (ScopeEnum.CALL, ScopeEnum.REQUEST)
-                    else None
-                )
-                kwargs[name] = LazyFieldProxy(
-                    make_default_resolver(manager, dep_type, scope),
-                    dep_type,
-                    scope,
-                    lifecycle_container,
-                    prototype_mode,
-                )
-            else:
-                # 컨테이너가 없으면 Factory 확인
-                factory_container = manager.get_factory_container(dep_type)
-                if factory_container:
-                    from .element import Scope as ScopeEnum
-
-                    scope, prototype_mode = manager.get_container_scope(
-                        factory_container
-                    )
-
-                    # SINGLETON Factory인 경우 기존 인스턴스 사용
-                    if scope == ScopeEnum.SINGLETON:
-                        existing_instance = manager.get_instance(
-                            dep_type, raise_exception=False
-                        )
-                        if existing_instance is not None:
-                            kwargs[name] = existing_instance
-                            continue
-
-                    # CALL Factory - LazyFieldProxy로 주입
-                    def make_factory_resolver(
-                        fc: "FactoryContainer", m: "ContainerManager"
-                    ):
-                        def resolver():
-                            return fc.initialize_instance()
-
-                        return resolver
-
-                    kwargs[name] = LazyFieldProxy(
-                        make_factory_resolver(factory_container, manager),
-                        dep_type,
-                        scope,
-                        factory_container,  # lifecycle container
-                        prototype_mode,
-                    )
-                else:
-                    # Factory도 없으면 기존 인스턴스 확인
-                    existing_instance = manager.get_instance(
-                        dep_type, raise_exception=False
-                    )
-                    if existing_instance is not None:
-                        kwargs[name] = existing_instance
-        return kwargs
+        injector = FieldInjector(self._get_manager())
+        return injector.inject(annotations)
 
     def _create_instance(self) -> T:
         """실제 인스턴스 생성 로직"""
@@ -360,12 +164,16 @@ class Container[T]:
 
         기본 Element 타입이면서 metadata가 있는 경우 항상 이전합니다.
         서브클래스 Element는 타입으로 중복 체크합니다.
+        단, allow_multiple=True인 Element는 항상 이전합니다.
         """
         for element in self.elements:
             elem_type = type(element)
 
             # 기본 Element 타입이면서 metadata가 있으면 항상 이전
             if elem_type is Element and element.metadata:
+                target_container.add_element(element)
+            # allow_multiple=True인 Element는 항상 이전
+            elif getattr(elem_type, "allow_multiple", False):
                 target_container.add_element(element)
             # 서브클래스 Element는 타입으로 중복 체크
             elif not target_container.has_element(elem_type):
@@ -398,18 +206,16 @@ class Container[T]:
     @staticmethod
     def _get_container_priority(container: "Container") -> int:
         """
-        컨테이너의 priority를 Element에서 가져옴
+        컨테이너의 priority를 PriorityElement에서 가져옴
 
-        여러 PriorityElement가 있으면 가장 높은 값 반환
         PriorityElement가 없으면 0 반환
         """
         from .element import PriorityElement
 
-        max_priority = 0
         for element in container.elements:
             if isinstance(element, PriorityElement):
-                max_priority = max(max_priority, element.priority)
-        return max_priority
+                return element.priority
+        return 0
 
     @classmethod
     def _apply_override_rules(
