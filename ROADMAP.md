@@ -1,355 +1,173 @@
-# bloom 프로젝트 로드맵
+# Bloom Framework Roadmap
 
-## 📊 현재 상태 (v0.1.0)
+## Phase 1: Core DI System ✅
 
-### ✅ 완료된 기능
+### 1.1 기본 DI 컨테이너 ✅
 
-#### Core DI Container
+- [x] `@Component`, `@Service`, `@Repository` 데코레이터
+- [x] `Container`, `ContainerManager` 구현
+- [x] 의존성 분석 및 주입 (`DependencyInfo`, `DependencyResolver`)
+- [x] `LazyProxy`를 통한 순환 참조 해결
+- [x] `@Factory` 메서드 지원
 
-| 기능                             | 상태 | 설명                              |
-| -------------------------------- | ---- | --------------------------------- |
-| `@Component`                     | ✅   | 클래스 컴포넌트 등록              |
-| `@Factory`                       | ✅   | 메서드 기반 인스턴스 생성         |
-| `@Handler`                       | ✅   | 키 기반 핸들러 등록               |
-| 필드 주입                        | ✅   | 타입 어노테이션 기반 DI           |
-| 토폴로지컬 정렬                  | ✅   | 순환 의존성 감지                  |
-| `@PostConstruct` / `@PreDestroy` | ✅   | 라이프사이클 훅                   |
-| `LifecycleManager`               | ✅   | 컨테이너 라이프사이클 관리        |
-| ContextVar 기반 매니저           | ✅   | 스레드 안전한 컨테이너 관리       |
-| `Lazy[T]`                        | ✅   | 순환 의존성 해결용 지연 주입      |
-| 의존성 그래프 초기화             | ✅   | DAG 기반 병렬 초기화              |
-| Factory Chain                    | ✅   | 동일 타입 Factory 체이닝          |
-| `@Scope(SINGLETON)`              | ✅   | 싱글톤 스코프 (기본값)            |
-| `@Scope(CALL)`                   | ✅   | 프로토타입 스코프                 |
-| `PrototypeMode.DEFAULT`          | ✅   | 매번 새 인스턴스 생성             |
-| `PrototypeMode.CALL_SCOPED`      | ✅   | 핸들러 호출 내 동일 인스턴스 공유 |
-| CALL 자동 정리                   | ✅   | 콜스택 기반 @PreDestroy 자동 호출 |
+### 1.2 스코프 관리 ✅
 
-#### AOP (Aspect-Oriented Programming)
+- [x] `Scope.SINGLETON` - 앱 전체 단일 인스턴스
+- [x] `Scope.REQUEST` - 요청 단위 인스턴스 (구조만)
+- [x] `Scope.CALL` - @Handler 메서드 단위 인스턴스
+- [x] `ScopeManager` - 스코프별 인스턴스 저장/조회/정리
+- [x] `asynccontextmanager` 지원 (`call_scope()`, `request_scope()`)
 
-| 기능                            | 상태 | 설명                                      |
-| ------------------------------- | ---- | ----------------------------------------- |
-| `MethodAdvice`                  | ✅   | 메서드 어드바이스 추상 클래스             |
-| `MethodAdviceRegistry`          | ✅   | 어드바이스 레지스트리 (기본 Tracing 포함) |
-| `InvocationContext`             | ✅   | 호출 컨텍스트 (속성 저장)                 |
-| `before` / `after` / `on_error` | ✅   | 전처리/후처리/에러 훅                     |
-| `MethodProxy`                   | ✅   | 메서드 프록시 래퍼                        |
-| `CallStackTraceAdvice`          | ✅   | 콜스택 추적 어드바이스 (기본 제공)        |
-| `CallFrame`                     | ✅   | 콜스택 프레임 (불변)                      |
-| 자동 프록시 적용                | ✅   | 모든 컴포넌트 메서드에 자동 적용          |
-| 무한 재귀 방지                  | ✅   | MethodAdvice/EventBus 하위 클래스 제외    |
+### 1.3 라이프사이클 관리 ✅
 
-#### Event System
+- [x] `@PostConstruct` - 초기화 콜백
+- [x] `@PreDestroy` - 정리 콜백
+- [x] `AutoClosable` 인터페이스
+- [x] CALL 스코프 중첩 지원 (frame_id 스택)
+- [x] `inherit_parent` 옵션
 
-| 기능                   | 상태 | 설명                        |
-| ---------------------- | ---- | --------------------------- |
-| `EventBus`             | ✅   | 이벤트 버스 ABC             |
-| `InMemoryEventBus`     | ✅   | 인메모리 이벤트 버스        |
-| `SystemEventBus`       | ✅   | 시스템 이벤트 버스 (내부용) |
-| `ApplicationEventBus`  | ✅   | 애플리케이션 이벤트 버스    |
-| `DomainEvent`          | ✅   | 도메인 이벤트 베이스 클래스 |
-| `@EventListener`       | ✅   | 이벤트 리스너 데코레이터    |
-| `MethodEnteredEvent`   | ✅   | 메서드 진입 시스템 이벤트   |
-| `MethodExitedEvent`    | ✅   | 메서드 종료 시스템 이벤트   |
-| `MethodErrorEvent`     | ✅   | 메서드 에러 시스템 이벤트   |
-| `InstanceCreatedEvent` | ✅   | 인스턴스 생성 시스템 이벤트 |
+### 1.4 AOP 모듈 ✅
 
-#### Configuration
-
-| 기능                       | 상태 | 설명                                      |
-| -------------------------- | ---- | ----------------------------------------- |
-| `@ConfigurationProperties` | ✅   | 설정 바인딩 데코레이터                    |
-| YAML/JSON 설정 로드        | ✅   | 다중 포맷 지원                            |
-| 환경 변수 치환             | ✅   | `${VAR:default}` 문법                     |
-| 환경 변수 주입             | ✅   | `EnvStr`, `EnvInt`, `EnvFloat`, `EnvBool` |
-| dataclass/Pydantic 지원    | ✅   | 타입 안전 설정 모델                       |
-
-#### Web Layer
-
-| 기능                           | 상태 | 설명                           |
-| ------------------------------ | ---- | ------------------------------ |
-| `@Controller`                  | ✅   | 웹 컨트롤러 등록               |
-| `@RequestMapping`              | ✅   | 경로 prefix 지정               |
-| `@Get/Post/Put/Patch/Delete`   | ✅   | HTTP 메서드 핸들러             |
-| Path Parameters                | ✅   | `/users/{id}` 형식 지원        |
-| Query Parameters               | ✅   | 자동 파라미터 바인딩           |
-| Request Body                   | ✅   | JSON → dataclass/pydantic 변환 |
-| `HttpRequest` / `HttpResponse` | ✅   | 요청/응답 모델                 |
-| ASGI Application               | ✅   | uvicorn 호환                   |
-| Radix Tree Router              | ✅   | O(log n) 최적화된 라우트 매칭  |
-| 정적 파일 서빙                 | ✅   | `StaticFilesManager` 기반      |
-| OpenAPI 자동 생성              | ✅   | Swagger UI, ReDoc 지원         |
-
-#### Parameter Resolvers
-
-| 기능              | 상태 | 설명             |
-| ----------------- | ---- | ---------------- | ---------- |
-| `@RequestBody`    | ✅   | JSON body 바인딩 |
-| `@HttpHeader`     | ✅   | 헤더 값 주입     |
-| `@HttpCookie`     | ✅   | 쿠키 값 주입     |
-| `@UploadedFile`   | ✅   | 파일 업로드 처리 |
-| `Authentication`  | ✅   | 인증 정보 주입   |
-| Optional 파라미터 | ✅   | `param: str      | None` 지원 |
-
-#### Middleware
-
-| 기능                     | 상태 | 설명                   |
-| ------------------------ | ---- | ---------------------- |
-| `MiddlewareChain`        | ✅   | 미들웨어 체인          |
-| `MiddlewareGroup`        | ✅   | 경로별 미들웨어 그룹   |
-| `CorsMiddleware`         | ✅   | CORS 처리              |
-| `AuthMiddleware`         | ✅   | 인증 미들웨어          |
-| `ErrorHandlerMiddleware` | ✅   | 예외 처리              |
-| `@Authorize`             | ✅   | 권한 검사 데코레이터   |
-| `@ErrorHandler`          | ✅   | 예외 핸들러 데코레이터 |
-
-#### WebSocket & Messaging
-
-| 기능                       | 상태 | 설명                    |
-| -------------------------- | ---- | ----------------------- |
-| WebSocket ASGI 통합        | ✅   | ASGI 3.0 WebSocket 지원 |
-| STOMP 프로토콜             | ✅   | STOMP over WebSocket    |
-| `@MessageController`       | ✅   | 메시지 컨트롤러 등록    |
-| `@MessageMapping`          | ✅   | 메시지 핸들러 매핑      |
-| `@SendTo`                  | ✅   | Topic 브로드캐스트      |
-| `@SendToUser`              | ✅   | 사용자별 메시지 전송    |
-| `@SubscribeMapping`        | ✅   | 구독 핸들러             |
-| `@MessageExceptionHandler` | ✅   | 메시지 예외 처리        |
-| `SimpleBroker`             | ✅   | 인메모리 메시지 브로커  |
-| `SimpMessagingTemplate`    | ✅   | 메시지 전송 템플릿      |
-| `WebSocketSession`         | ✅   | WebSocket 세션 관리     |
-| @Controller 메시징 지원    | ✅   | HTTP와 WebSocket 통합   |
-
-#### Task System (비동기 작업)
-
-| 기능                       | 상태 | 설명                     |
-| -------------------------- | ---- | ------------------------ |
-| `@Task`                    | ✅   | 비동기 태스크 데코레이터 |
-| `TaskDescriptor`           | ✅   | 태스크 디스크립터        |
-| `BoundTask`                | ✅   | 바인딩된 태스크 인스턴스 |
-| `TaskResult`               | ✅   | 태스크 실행 결과         |
-| `ScheduledTask`            | ✅   | 스케줄된 태스크          |
-| `AsyncioTaskBackend`       | ✅   | 로컬 asyncio 백엔드      |
-| `DistributedTaskBackend`   | ✅   | 분산 태스크 백엔드       |
-| `InMemoryBroker`           | ✅   | 개발용 인메모리 브로커   |
-| `RedisBroker`              | ✅   | 프로덕션용 Redis 브로커  |
-| `TaskRegistry`             | ✅   | 태스크 레지스트리        |
-| `QueueApplication`         | ✅   | 워커 애플리케이션        |
-| `bloom worker` CLI         | ✅   | 워커 CLI 명령어          |
-| `FixedRateTrigger`         | ✅   | 고정 주기 트리거         |
-| `FixedDelayTrigger`        | ✅   | 고정 지연 트리거         |
-| `CronTrigger`              | ✅   | Cron 표현식 트리거       |
-| `TaskMethodAdvice`         | ✅   | 태스크 메서드 어드바이스 |
-| `.delay()` / `.schedule()` | ✅   | Celery 스타일 API        |
-
-#### 문서화
-
-| 기능                       | 상태 | 설명                    |
-| -------------------------- | ---- | ----------------------- |
-| `copilot-instructions.md`  | ✅   | AI 코딩 가이드          |
-| `architecture-patterns.md` | ✅   | 아키텍처 패턴 문서      |
-| `config-properties.md`     | ✅   | 설정 바인딩 문서        |
-| `testing-testcase.md`      | ✅   | TestCase 클래스 문서    |
-| `task-system.md`           | ✅   | Task 시스템 문서        |
-| `method-advice-pattern.md` | ✅   | AOP 패턴 문서           |
-| `tracing-system.md`        | ✅   | 콜스택 추적 시스템 문서 |
-| `prototype-scope.md`       | ✅   | CALL 스코프 문서        |
-| `event-system.md`          | ✅   | 이벤트 시스템 문서      |
-
-#### 테스팅
-
-| 기능                  | 상태 | 설명                                   |
-| --------------------- | ---- | -------------------------------------- |
-| `TestCase`            | ✅   | Django 스타일 통합 테스트 클래스       |
-| `AsyncTestCase`       | ✅   | 비동기 테스트 케이스                   |
-| `TestClient`          | ✅   | HTTP 테스트 클라이언트                 |
-| `MockContainer`       | ✅   | 의존성 오버라이드                      |
-| `WebSocketTestClient` | ✅   | WebSocket 테스트 클라이언트            |
-| `StompTestClient`     | ✅   | STOMP 테스트 클라이언트                |
-| Assertion 헬퍼        | ✅   | `assert_injected`, `assert_success` 등 |
-
-#### 패키징
-
-| 기능             | 상태 | 설명              |
-| ---------------- | ---- | ----------------- |
-| `pyproject.toml` | ✅   | 패키지 메타데이터 |
-
-#### 테스트 현황
-
-- **576개 테스트** 작성 완료
-- 모든 테스트 통과 ✅
+- [x] `Interceptor` 인터페이스
+- [x] `InterceptorChain` - 체인 패턴
+- [x] `DecoratorFactory` - 데코레이터 기반 AOP
+- [x] `InjectableDecoratorFactory` - DI 통합 AOP
+- [x] `FlatDecorator` - 단순 데코레이터
+- [x] Sync/Async 메서드 지원
 
 ---
 
-## 🚀 로드맵
+## Phase 2: Web Layer 🚧 (현재 진행 중)
 
-### Phase 1: 안정화 및 문서화 (v0.2.0)
+### 2.1 ASGI 기반 HTTP 처리 ✅
 
-#### 📚 문서화
+- [x] `ASGIApplication` - ASGI 앱 구현
+- [x] `Request`, `Response` 객체
+- [x] 미들웨어 체인 구조 (`Middleware`, `MiddlewareStack`)
+- [x] `RequestScopeMiddleware` - REQUEST 스코프 통합
+- [x] DB 모듈 연동 (`Session`, `AsyncSession` → `AutoClosable`)
 
-- [ ] README.md 작성 (Quick Start, 설치 방법)
-- [ ] API 문서 자동 생성 (pdoc / mkdocs)
-- [ ] 예제 프로젝트 작성 (sample/)
-- [ ] CONTRIBUTING.md 작성
+### 2.2 라우팅 ✅
 
-#### 📦 패키징
+- [x] `Router` - URL 패턴 매칭 (path parameter: `{id}`, `{id:int}`, `{path:path}`)
+- [x] `@Controller` - 라우트 그룹 + DI 자동 등록
+- [x] `@RequestMapping` - 클래스 레벨 prefix
+- [x] `@GetMapping`, `@PostMapping`, `@PutMapping`, `@DeleteMapping`, `@PatchMapping`
+- [x] Path 파라미터, Query 파라미터
 
-- [x] `pyproject.toml` 작성 ✅
-- [ ] PyPI 배포 준비
-- [ ] GitHub Actions CI/CD 구성
-- [ ] 버전 관리 체계 수립
+### 2.3 요청/응답 처리 ✅
 
-#### 🐛 안정화
+- [x] `PathVariable[T]`, `Query[T]` 파라미터 바인딩
+- [x] `RequestBody[T]`, `RequestField[T]` - JSON 바디 처리
+- [x] `Header[T]`, `Cookie[T]` 헤더/쿠키 추출
+- [x] `ParameterResolver` - 확장 가능한 파라미터 리졸버
+- [ ] 파일 업로드 (`UploadedFile`)
+- [ ] 스트리밍 응답 (`StreamingResponse`, `SSEResponse`)
 
-- [ ] 엣지 케이스 테스트 추가
-- [ ] 에러 메시지 개선
-- [ ] 타입 힌트 100% 커버리지
-- [ ] mypy/pyright strict 모드 통과
-
----
-
-### Phase 2: 기능 확장 (v0.3.0)
-
-#### 🔧 DI 확장
-
-- [x] `@Scope("prototype")` - 호출마다 새 인스턴스 ✅
-- [x] `PrototypeMode.CALL_SCOPED` - 핸들러 호출 내 공유 ✅
-- [x] `Lazy[T]` - 지연 초기화 ✅
-- [x] `@PostConstruct` / `@PreDestroy` - 라이프사이클 훅 ✅
-- [x] CALL 자동 정리 - 콜스택 기반 @PreDestroy ✅
-- [ ] 조건부 빈 등록 (`@ConditionalOnProperty`)
-
-#### 🌐 Web 확장
-
-- [x] WebSocket 지원 ✅
-- [x] STOMP 프로토콜 ✅
-- [x] 메시징 데코레이터 (@MessageMapping, @SendTo, @SendToUser) ✅
-- [x] SSE (Server-Sent Events) 지원 ✅
-- [x] Response Streaming ✅
-- [x] 파일 다운로드 (`FileResponse`) ✅
-- [x] 정적 파일 서빙 (`StaticFilesManager`) ✅
-- [x] OpenAPI (Swagger) 자동 생성 ✅
-
-#### 🔐 보안 확장
-
-- [ ] JWT 내장 Authenticator
-- [ ] OAuth2 지원
-- [ ] Rate Limiting 미들웨어
-- [ ] CSRF 보호
-
-#### 📊 모니터링
-
-- [x] Request Logging 미들웨어 (CallStackTraceAdvice 기반) ✅
-- [x] Event System (시스템/도메인 이벤트) ✅
-- [ ] Metrics 수집 (Prometheus 형식)
-- [ ] Health Check 엔드포인트
-- [ ] Distributed Tracing 지원
-
----
-
-### Phase 3: 생태계 (v0.4.0)
-
-#### 🗄️ 데이터베이스 통합
-
-- [ ] `bloom-sqlalchemy` - SQLAlchemy 통합
-- [ ] `bloom-tortoise` - Tortoise ORM 통합
-- [ ] 트랜잭션 관리 (`@Transactional`)
-- [ ] Connection Pool 관리
-
-#### 🔄 비동기 작업 (Task)
-
-- [x] `@Task` 데코레이터 (Celery 스타일) ✅
-- [x] `AsyncioTaskBackend` (로컬 비동기 실행) ✅
-- [x] `DistributedTaskBackend` (분산 처리) ✅
-- [x] `TaskResult` / `ScheduledTask` ✅
-- [x] 스케줄링 트리거 (`fixed_rate`, `fixed_delay`, `cron`) ✅
-- [x] `bloom worker` CLI 명령어 ✅
-- [x] `InMemoryBroker` (개발용) ✅
-- [x] `RedisBroker` (프로덕션용) ✅
-
-#### 🧪 테스팅
-
-- [x] `TestCase` 클래스 ✅
-- [x] `AsyncTestCase` 클래스 ✅
-- [x] `TestClient` HTTP 클라이언트 ✅
-- [x] `WebSocketTestClient` / `StompTestClient` ✅
-- [x] `MockContainer` 의존성 오버라이드 ✅
-- [x] Assertion 헬퍼 (`assert_injected`, `assert_success` 등) ✅
-
-#### 🔌 확장 플러그인
-
-- [ ] 플러그인 시스템 설계
-- [ ] `bloom-redis` - Redis 통합
-- [ ] `bloom-kafka` - Kafka 통합
-
----
-
-### Phase 4: 성능 및 프로덕션 (v1.0.0)
-
-#### ⚡ 성능 최적화
-
-- [x] 라우터 매칭 최적화 (Radix Tree 구조) ✅
-- [x] 파라미터 리졸버 캐싱 ✅
-- [x] 컨테이너 초기화 병렬화 ✅
-- [x] 벤치마크 테스트 작성 ✅
-
-#### 🏭 프로덕션 준비
-
-- [x] Graceful Shutdown ✅
-- [x] 멀티 워커 지원 ✅
-- [x] 설정 관리 시스템 (`@ConfigurationProperties`) ✅
-- [x] 환경 변수 치환 (`${VAR:default}`) ✅
-- [x] 환경 변수 주입 (`EnvStr`, `EnvInt`, `EnvFloat`, `EnvBool`) ✅
-- [ ] 환경별 프로필 (`@Profile`)
-
-#### 🌍 국제화
-
-- [ ] i18n 지원
-- [ ] 다국어 에러 메시지
-
----
-
-## 📈 우선순위 매트릭스
+```python
+@Controller
+@RequestMapping("/api/v1/")
+class UserController:
+     service:UserService # Field 주입
+     @PostMapping("/{path}")
+     async def post_request[T](self,
+          body:RequestBody[BodySchema], # 전체 바디 데이터, 바디나, 쿼리, 필드는 RequestBody[list[BodySchema]]등의 리스트들도 기본 지원하도록
+          username: str, # 바디의 필드 데이터
+          address:RequestField[AddressSchema]# 혹은 :AddressSchema,  바디의 필드 데이터
+          path:str:PathVariable[str], # 패스데이터
+          subpath:str:Query[str], # 혹은 :str록록
+          file:UploadedFile # IO rw 가능한 파일객체,
+          authentication:Authentication[int] # 스프링의 Principal비슷한 객체, 기본으로 Authentication[T] = id:T지원
+     )->T|HttpResponse[T]|StreamingResponse[UploadedFile|File]|SSEResponse:...
 
 ```
-중요도 ↑
-         │
-    높음 │  📚 문서화        ⚡ 성능 최적화
-         │  📦 PyPI 배포     🔧 Scope/Lazy
-         │
-    중간 │  🌐 WebSocket     🗄️ DB 통합
-         │  📊 OpenAPI       🔐 JWT 내장
-         │
-    낮음 │  🔌 플러그인      🌍 i18n
-         │
-         └────────────────────────────────→ 긴급도
-              낮음          중간          높음
+
+ParameterResolver는 상속이 가능한 구조로, WebSocket세션과 같은 추상 구현체를 가져서 호환이 되도록 만들어줘
+
+### 2.4 에러 처리
+
+- [ ] `@ExceptionHandler` - 예외 핸들러
+- [ ] 전역 에러 핸들링
+- [ ] HTTP 상태 코드 매핑
+
+---
+
+## Phase 3: Database & ORM ✅ (이미 구현됨)
+
+### 3.1 데이터베이스 연결 ✅
+
+- [x] `SessionFactory` - 세션 팩토리
+- [x] `Session` / `AsyncSession` - Unit of Work 패턴
+- [x] 연결 풀링 (`ConnectionPool`)
+- [x] `AutoClosable` 인터페이스로 DI 통합
+
+### 3.2 ORM ✅
+
+- [x] `Entity` 정의 (`@Entity`, `Column`, `PrimaryKey`, `ForeignKey`)
+- [x] `CrudRepository` 패턴
+- [x] QueryDSL 스타일 쿼리 빌더
+- [x] Django 스타일 마이그레이션
+- [x] Dirty Tracking
+
+---
+
+## Phase 4: Advanced Features
+
+### 4.1 설정 관리
+
+- [ ] `@Value` - 설정값 주입
+- [ ] `@ConfigurationProperties` - 설정 클래스
+- [ ] 환경별 설정 (dev, prod)
+
+### 4.2 보안
+
+- [ ] 인증 미들웨어
+- [ ] `@Authenticated` 데코레이터
+- [ ] JWT 지원
+
+### 4.3 테스팅
+
+- [ ] `TestClient` - HTTP 테스트
+- [ ] `@MockBean` - 모킹 지원
+- [ ] 픽스처 통합
+
+---
+
+## 현재 작업: Phase 2.4 - 에러 처리 & 고급 기능 (다음 작업)
+
+### 목표
+
+`@ExceptionHandler`, 전역 에러 핸들링, 파일 업로드 등
+
+### 작업 항목
+
+1. [ ] `@ExceptionHandler` - 예외 핸들러
+2. [ ] 전역 에러 핸들링 미들웨어
+3. [ ] HTTP 상태 코드 매핑
+4. [ ] `UploadedFile` - 파일 업로드
+5. [ ] `StreamingResponse`, `SSEResponse`
+
+### 구현 완료 (Phase 2.1 ~ 2.3)
+
 ```
-
----
-
-## 🎯 다음 단계 (권장)
-
-1. **README.md 작성** - 프로젝트 소개 및 Quick Start
-2. **pyproject.toml 작성** - 패키지 메타데이터
-3. **GitHub Actions** - CI 파이프라인 구성
-4. **예제 프로젝트** - 실제 사용 예시
-
----
-
-## 📊 통계
-
-| 항목          | 수치                                     |
-| ------------- | ---------------------------------------- |
-| Python 파일   | ~80개                                    |
-| 테스트 케이스 | 576개                                    |
-| 코드 라인     | ~12,000줄 (추정)                         |
-| 외부 의존성   | 4개 (pydantic, uvicorn, pyyaml, aiohttp) |
-
----
-
-## 🔗 참고 프레임워크
-
-- **Spring Framework** (Java) - DI 컨테이너 설계 참고
-- **FastAPI** (Python) - ASGI, 파라미터 리졸버 참고
-- **NestJS** (TypeScript) - 데코레이터 패턴 참고
+bloom/web/
+├── __init__.py          # exports
+├── types.py             # ASGI 타입 정의
+├── request.py           # Request 객체 (cookie 지원)
+├── response.py          # Response, JSONResponse 등
+├── asgi.py              # ASGIApplication
+├── middleware/
+│   ├── __init__.py
+│   ├── base.py          # Middleware, MiddlewareStack
+│   └── request_scope.py # RequestScopeMiddleware
+├── routing/
+│   ├── __init__.py
+│   ├── router.py        # Router, Route, RouteMatch
+│   ├── decorators.py    # @Controller, @GetMapping 등
+│   ├── params.py        # PathVariable, Query, RequestBody 등
+│   └── resolver.py      # ParameterResolver 시스템
+tests/web/
+├── __init__.py
+├── test_request_scope.py  # 12개 테스트 통과
+└── test_routing.py        # 20개 테스트 통과
+```

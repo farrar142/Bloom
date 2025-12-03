@@ -956,6 +956,141 @@ if __name__ == "__main__":
     print(f"Created post: {post.title}")
 ```
 
+---
+
+## DI와 Session 통합
+
+### REQUEST 스코프로 Session 제공
+
+HTTP 요청마다 별도의 세션을 생성하고, 요청 종료 시 자동으로 정리하려면 `@Factory`와 `Scope.REQUEST`를 사용합니다:
+
+```python
+from bloom.core import Component, Factory, Scope
+from bloom.db import Session, AsyncSession, SessionFactory
+from bloom.db.backends import SQLiteBackend
+
+@Component
+class DatabaseConfig:
+    """데이터베이스 설정 및 Session 팩토리"""
+    
+    def __init__(self):
+        self._backend = SQLiteBackend("app.sqlite3")
+        self._factory = SessionFactory(self._backend)
+    
+    @Factory
+    @Scope(Scope.SINGLETON)
+    def session_factory(self) -> SessionFactory:
+        """SessionFactory는 앱 전체에서 공유"""
+        return self._factory
+    
+    @Factory
+    @Scope(Scope.REQUEST)
+    def session(self) -> Session:
+        """Session은 요청마다 생성
+        
+        Session은 AutoClosable을 구현하므로
+        요청 종료 시 자동으로 close()가 호출됩니다.
+        """
+        return self._factory.create()
+    
+    @Factory
+    @Scope(Scope.REQUEST)
+    async def async_session(self) -> AsyncSession:
+        """AsyncSession은 요청마다 생성"""
+        return await self._factory.create_async()
+```
+
+### Repository에서 Session 사용
+
+Repository는 `@Component`로 자동 등록되며, Session을 필드 주입받습니다:
+
+```python
+from bloom.db import CrudRepository, Session
+
+class UserRepository(CrudRepository[User, int]):
+    """UserRepository - @Component로 자동 등록됨"""
+    
+    # Session은 DI로 주입됨 (REQUEST 스코프)
+    session: Session
+    
+    def find_by_email(self, email: str) -> User | None:
+        # self.session은 현재 요청의 세션
+        return self.session.query(User).filter(User.email == email).first()
+    
+    def find_active_users(self) -> list[User]:
+        return (
+            self.session.query(User)
+            .filter(User.is_active == True)
+            .order_by(User.name.asc())
+            .all()
+        )
+```
+
+### Service에서 트랜잭션 관리
+
+```python
+from bloom.core import Component
+
+@Component
+class UserService:
+    session: Session  # REQUEST 스코프로 주입
+    user_repo: UserRepository
+    
+    def create_user(self, name: str, email: str) -> User:
+        """사용자 생성
+        
+        Session이 REQUEST 스코프이므로:
+        - 같은 요청 내 모든 Repository가 같은 Session 공유
+        - 요청 종료 시 자동으로 commit/rollback
+        """
+        # 중복 체크
+        existing = self.user_repo.find_by_email(email)
+        if existing:
+            raise ValueError(f"Email already exists: {email}")
+        
+        # 생성 및 저장
+        user = create(User, name=name, email=email)
+        self.session.add(user)
+        self.session.commit()
+        return user
+```
+
+### Controller에서 사용
+
+```python
+from bloom.web import Controller, GetMapping, PostMapping, RequestBody
+
+@Controller
+class UserController:
+    user_service: UserService
+    
+    @GetMapping("/users/{user_id}")
+    async def get_user(self, user_id: int) -> User | None:
+        return self.user_service.get_user(user_id)
+    
+    @PostMapping("/users")
+    async def create_user(self, body: RequestBody[CreateUserRequest]) -> User:
+        return self.user_service.create_user(
+            name=body.name,
+            email=body.email
+        )
+```
+
+### 동작 원리
+
+1. **요청 시작**: `RequestScopeMiddleware`가 REQUEST 스코프 컨텍스트 시작
+2. **Session 생성**: 첫 접근 시 `DatabaseConfig.session()`으로 Session 생성
+3. **Session 공유**: 같은 요청 내 모든 컴포넌트가 동일 Session 사용
+4. **요청 종료**: 스코프 종료 시 `Session.close()` 자동 호출
+   - `AutoClosable` 인터페이스를 통해 DI가 자동으로 정리
+
+### 장점
+
+- **자원 관리**: 세션이 요청 종료 시 자동으로 정리됨
+- **트랜잭션 일관성**: 같은 요청 내 모든 작업이 같은 세션/트랜잭션 공유
+- **격리**: 요청 간 세션이 완전히 독립
+- **테스트 용이**: 테스트마다 새 세션으로 격리
+
 ## 참고
 
 - [CLI Reference](./cli-reference.md) - 명령줄 인터페이스

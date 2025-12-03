@@ -19,10 +19,10 @@ from .tracker import DirtyTracker, EntityState
 from .dialect import Dialect
 from .query import Query, QueryBuilder
 from .backends.base import DatabaseBackend, Connection, AsyncConnection, ConnectionPool
+from bloom.core.lifecycle import AutoClosable
 
 if TYPE_CHECKING:
     from .columns import Column
-    from bloom.core.protocols import AutoCloseable
 
 T = TypeVar("T")
 
@@ -196,11 +196,11 @@ class SessionMixin:
 # =============================================================================
 
 
-class Session(SessionMixin):
+class Session(SessionMixin, AutoClosable):
     """세션 - Unit of Work 패턴 구현
 
-    AutoCloseable 프로토콜을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
-    CALL 스코프로 사용 시 메서드 종료 시 자동으로 close()가 호출됩니다.
+    AutoClosable을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
+    REQUEST 또는 CALL 스코프로 사용 시 스코프 종료 시 자동으로 close()가 호출됩니다.
 
     엔티티의 생명주기를 관리하고, 변경 사항을 추적하여
     flush 시점에 DB에 반영합니다.
@@ -212,10 +212,10 @@ class Session(SessionMixin):
             session.add(user)
             session.commit()
 
-        # DI로 주입받아 사용 (CALL + CALL_SCOPED 권장)
+        # DI로 주입받아 사용 (REQUEST 스코프 권장)
         @Component
         class UserService:
-            session: Session  # 자동으로 정리됨
+            session: Session  # 요청 종료 시 자동으로 정리됨
 
             def create_user(self, name: str) -> User:
                 user = User(name=name)
@@ -530,9 +530,10 @@ class Session(SessionMixin):
 # =============================================================================
 
 
-class AsyncSession(SessionMixin):
+class AsyncSession(SessionMixin, AutoClosable):
     """비동기 세션 - Unit of Work 패턴 구현 (Async)
 
+    AutoClosable을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
     AsyncConnection을 사용하여 비동기 DB 작업을 지원합니다.
 
     Examples:
@@ -542,14 +543,10 @@ class AsyncSession(SessionMixin):
             session.add(user)
             await session.commit()
 
-        # Async 세션 직접 생성
-        session = await session_factory.create_async()
-        try:
-            user = User(name="alice")
-            session.add(user)
-            await session.commit()
-        finally:
-            await session.close()
+        # DI로 주입받아 사용 (REQUEST 스코프 권장)
+        @Component
+        class UserService:
+            async_session: AsyncSession  # 요청 종료 시 자동으로 정리됨
     """
 
     def __init__(
