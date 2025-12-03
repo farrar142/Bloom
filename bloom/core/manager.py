@@ -1,310 +1,288 @@
-"""ContainerManager 클래스"""
+"""bloom.core.manager - 컨테이너 관리자"""
 
-from contextvars import ContextVar
-from typing import Any, Literal, overload, TYPE_CHECKING
+from __future__ import annotations
 
-if TYPE_CHECKING:
-    from .container import Container, FactoryContainer
-    from .lifecycle import LifecycleManager
-    from .events import SystemEventBus
+from typing import Any, TypeVar, overload
 
-
-# 현재 활성 매니저를 저장하는 ContextVar
-_current_manager: ContextVar["ContainerManager | None"] = ContextVar(
-    "current_manager", default=None
+from .container import Container
+from .scope import Scope
+from .scope_manager import ScopeManager
+from .exceptions import (
+    ComponentNotFoundError,
+    DuplicateComponentError,
+    RequestScopeError,
+    CallScopeError,
 )
 
 
-def get_current_manager() -> "ContainerManager":
-    """현재 활성화된 ContainerManager 반환"""
-    if manager := _current_manager.get():
-        return manager
-    raise RuntimeError(
-        "No active ContainerManager. Ensure Application.scan() is called first."
-    )
-
-
-def try_get_current_manager() -> "ContainerManager | None":
-    """현재 활성화된 ContainerManager 반환 (없으면 None)"""
-    return _current_manager.get()
-
-
-def set_current_manager(manager: "ContainerManager | None") -> None:
-    """현재 ContainerManager 설정"""
-    _current_manager.set(manager)
-
-
-# AmbiguousInstanceError는 exceptions.py에서 정의됨
-from .exceptions import AmbiguousInstanceError
+T = TypeVar("T")
 
 
 class ContainerManager:
     """
-    컨테이너와 인스턴스를 관리하는 매니저
+    전역 컨테이너 관리자.
 
-    Application마다 독립적인 ContainerManager 인스턴스를 가짐
-
-    레지스트리 구조:
-    - container_registry: dict[type, list[Container]]
-    - instance_registry: dict[type, list[T]]
+    모든 컴포넌트의 Container를 관리하고,
+    스코프에 따른 인스턴스 생성/조회를 담당.
     """
 
-    def __init__(self, app_name: str):
-        self.app_name = app_name
-        # type -> list[Container]
-        self.container_registry: dict[type, list["Container"]] = {}
-        # type -> list[instance]
-        self.instance_registry: dict[type, list[Any]] = {}
-        # 라이프사이클 관리자 (lazy initialization)
-        self._lifecycle: "LifecycleManager | None" = None
-        # 시스템 이벤트 버스 (lazy initialization)
-        self._system_events: "SystemEventBus | None" = None
-
-    def reset(self) -> None:
-        """모든 레지스트리 초기화 (테스트 또는 재시작 용도)"""
-        self.container_registry.clear()
-        self.instance_registry.clear()
-        self._lifecycle = None
-        if self._system_events:
-            self._system_events.clear()
-        self._system_events = None
+    def __init__(self) -> None:
+        # type → Container 매핑
+        self._containers: dict[type, Container[Any]] = {}
+        # name → Container 매핑 (동일 타입 여러 빈 구분용)
+        self._named_containers: dict[str, Container[Any]] = {}
+        # 스코프 관리자
+        self._scope_manager = ScopeManager()
+        # 초기화 완료 여부
+        self._initialized = False
 
     @property
-    def system_events(self) -> "SystemEventBus":
-        """시스템 이벤트 버스 반환 (lazy initialization)"""
-        if self._system_events is None:
-            from .events import SystemEventBus
+    def scope_manager(self) -> ScopeManager:
+        """ScopeManager 접근"""
+        return self._scope_manager
 
-            self._system_events = SystemEventBus()
-        return self._system_events
+    # === Container 등록 ===
 
-    @property
-    def lifecycle(self) -> "LifecycleManager":
-        """라이프사이클 매니저 반환 (lazy initialization)"""
-        if self._lifecycle is None:
-            from .lifecycle import LifecycleManager
-
-            self._lifecycle = LifecycleManager(self)
-        return self._lifecycle
-
-    def register_container(self, container: "Container") -> None:
-        """컨테이너 등록"""
-        if container.target not in self.container_registry:
-            self.container_registry[container.target] = []
-        # 중복 등록 방지
-        if container not in self.container_registry[container.target]:
-            self.container_registry[container.target].append(container)
-        # Container에 manager 참조 주입
-        container.manager = self
-
-    def unregister_container(self, container: "Container") -> None:
-        """컨테이너 등록 해제"""
-        containers = self.container_registry.get(container.target, [])
-        if container in containers:
-            containers.remove(container)
-            if not containers:
-                del self.container_registry[container.target]
-
-    def scan(self, module: object) -> None:
-        """모듈에서 컴포넌트 스캔"""
-        from .container.base import Container as BaseContainer
-
-        # module 자체가 클래스일 때 (Controller 등) 클래스 자체도 등록
-        if isinstance(module, type):
-            if container := BaseContainer.get_container(module):
-                self.register_container(container)
-            # 클래스의 메서드들도 스캔하고 owner_cls 주입
-            for method_name in dir(module):
-                try:
-                    method = getattr(module, method_name, None)
-                    if method is None:
-                        continue
-                    child_container = BaseContainer.get_container(method)
-                except Exception:
-                    continue
-                if child_container:
-                    child_container.owner_cls = module  # owner 클래스 주입
-                    self.register_container(child_container)
-            return  # 클래스 스캔 완료 시 반환
-
-        for attr_name in dir(module):
-            try:
-                attr = getattr(module, attr_name)
-            except Exception:
-                continue  # Pydantic 등 일부 라이브러리에서 getattr 시 예외 발생 가능
-            if container := BaseContainer.get_container(attr):
-                self.register_container(container)
-            # Factory/Handler 메서드들도 스캔하고 owner_cls 주입
-            if isinstance(attr, type):
-                for method_name in dir(attr):
-                    try:
-                        method = getattr(attr, method_name, None)
-                        if method is None:
-                            continue
-                        child_container = BaseContainer.get_container(method)
-                    except Exception:
-                        continue
-                    if child_container:
-                        child_container.owner_cls = attr  # owner 클래스 주입
-                        self.register_container(child_container)
-
-    def get_all_containers(self) -> dict[type, list["Container"]]:
-        """모든 컨테이너 반환"""
-        return self.container_registry
-
-    def get_container(self, target: type) -> "Container | None":
+    def register[T](
+        self,
+        container: Container[T],
+        *,
+        allow_override: bool = False,
+    ) -> None:
         """
-        특정 타입의 컨테이너 반환
+        컨테이너 등록.
 
-        - 1개: 반환
-        - 0개: 서브클래스 중 1개면 반환, 아니면 None
-        - 2개 이상: 첫 번째 반환 (Factory Chain 등에서 사용)
+        Args:
+            container: 등록할 컨테이너
+            allow_override: 중복 등록 허용 여부
         """
-        # forward reference (str) 체크
-        if not isinstance(target, type):
-            return None
+        cls = container.target
 
-        containers = self.container_registry.get(target, [])
-        if containers:
-            return containers[0]
-        # 서브클래스 검색
-        for kls, kls_containers in self.container_registry.items():
-            try:
-                if kls != target and issubclass(kls, target) and kls_containers:
-                    return kls_containers[0]
-            except TypeError:
-                # issubclass에 유효하지 않은 타입이 들어온 경우
-                continue
-        return None
+        if cls in self._containers and not allow_override:
+            raise DuplicateComponentError(cls)
 
-    def get_factory_container(self, target: type) -> "FactoryContainer | None":
-        """특정 타입을 반환하는 FactoryContainer 조회"""
-        from .container import FactoryContainer
+        self._containers[cls] = container
 
-        for containers in self.container_registry.values():
-            for container in containers:
-                if isinstance(container, FactoryContainer):
-                    try:
-                        if container.target == target:
-                            return container
-                    except Exception:
-                        continue
-        return None
+        # 이름이 있으면 named 등록도
+        if container.name:
+            self._named_containers[container.name] = container
 
-    def get_container_scope(self, container: "Container") -> tuple:
-        """컨테이너의 스코프와 프로토타입 모드 반환
-
-        Container는 Element를 담기만 하고, 해석은 Manager에서 합니다.
+    def unregister(self, cls: type) -> bool:
+        """
+        컨테이너 등록 해제.
 
         Returns:
-            (Scope, PrototypeMode) 튜플. 기본값: (SINGLETON, DEFAULT)
+            해제 성공 여부
         """
-        from .container.element import Scope, ScopeElement, PrototypeMode
+        container = self._containers.pop(cls, None)
+        if container and container.name:
+            self._named_containers.pop(container.name, None)
+        return container is not None
 
-        for elem in container.elements:
-            if isinstance(elem, ScopeElement):
-                return (elem.scope, elem.prototype_mode)
-        return (Scope.SINGLETON, PrototypeMode.DEFAULT)
+    # === Container 조회 ===
 
-    def get_containers(
-        self, target: type, include_subclasses: bool = True
-    ) -> list["Container"]:
+    def get_container[T](self, cls: type[T]) -> Container[T] | None:
+        """타입으로 컨테이너 조회"""
+        return self._containers.get(cls)
+
+    def get_container_by_name(self, name: str) -> Container[Any] | None:
+        """이름으로 컨테이너 조회"""
+        return self._named_containers.get(name)
+
+    def has_container(self, cls: type) -> bool:
+        """컨테이너 존재 여부"""
+        return cls in self._containers
+
+    def get_all_containers(self) -> list[Container[Any]]:
+        """모든 컨테이너 목록"""
+        return list(self._containers.values())
+
+    def get_containers_by_scope(self, scope: Scope) -> list[Container[Any]]:
+        """특정 스코프의 컨테이너 목록"""
+        return [c for c in self._containers.values() if c.scope == scope]
+
+    # === 인스턴스 획득 ===
+
+    @overload
+    def get_instance[T](self, cls: type[T]) -> T: ...
+
+    @overload
+    def get_instance[T](self, cls: type[T], *, required: bool = True) -> T | None: ...
+
+    def get_instance[T](self, cls: type[T], *, required: bool = True) -> T | None:
         """
-        특정 타입의 컨테이너들 반환
+        인스턴스 획득.
+
+        스코프에 따라:
+        - SINGLETON: 캐시된 인스턴스 반환 (없으면 생성)
+        - REQUEST: 현재 요청의 인스턴스 반환 (없으면 생성)
+        - CALL: 현재 호출의 인스턴스 반환 (없으면 생성)
 
         Args:
-            target: 대상 타입
-            include_subclasses: True면 서브클래스 컨테이너도 포함
+            cls: 컴포넌트 타입
+            required: 필수 여부 (False면 없을 때 None 반환)
+
+        Returns:
+            인스턴스
+
+        Raises:
+            ComponentNotFoundError: 컴포넌트가 없고 required=True일 때
+            RequestScopeError: REQUEST 스코프인데 요청 컨텍스트 밖일 때
+            CallScopeError: CALL 스코프인데 핸들러 컨텍스트 밖일 때
         """
-        if not include_subclasses:
-            return self.container_registry.get(target, [])
+        container = self._containers.get(cls)
 
-        containers = []
-        for kls, kls_containers in self.container_registry.items():
-            if issubclass(kls, target):
-                containers.extend(kls_containers)
-        return containers
+        if container is None:
+            if required:
+                raise ComponentNotFoundError(cls)
+            return None
 
-    def set_instance[T](self, target: type[T], instance: T) -> None:
-        """인스턴스 저장"""
-        if target not in self.instance_registry:
-            self.instance_registry[target] = []
-        # 중복 등록 방지
-        if instance not in self.instance_registry[target]:
-            self.instance_registry[target].append(instance)
+        return self._resolve_instance(container)
 
-    @overload
-    def get_instance[T](
-        self, target: type[T], raise_exception: Literal[False]
-    ) -> T | None: ...
-    @overload
-    def get_instance[T](
-        self,
-        target: type[T],
-        raise_exception: Literal[True] = ...,
-    ) -> T: ...
-    def get_instance[T](
-        self, target: type[T], raise_exception: bool = True
+    def get_instance_by_name[T](self, name: str, cls: type[T] | None = None) -> T:
+        """이름으로 인스턴스 획득"""
+        container = self._named_containers.get(name)
+        if container is None:
+            raise ComponentNotFoundError(cls or type(None))
+        return self._resolve_instance(container)
+
+    def _resolve_instance[T](self, container: Container[T]) -> T:
+        """컨테이너에서 인스턴스 resolve"""
+        scope = container.scope
+        cls = container.target
+
+        # 이미 생성된 인스턴스가 있는지 확인
+        existing = self._scope_manager.get_instance(cls, scope)
+        if existing is not None:
+            return existing
+
+        # 스코프별 컨텍스트 확인
+        if scope == Scope.REQUEST and not self._scope_manager.is_in_request_context():
+            raise RequestScopeError(cls)
+
+        if scope == Scope.CALL and not self._scope_manager.is_in_call_context():
+            raise CallScopeError(cls)
+
+        # 새 인스턴스 생성 (동기 래퍼 - 실제론 async create_instance 호출 필요)
+        # 주의: 이 부분은 Application.ready()에서 async로 호출됨
+        import asyncio
+
+        try:
+            loop = asyncio.get_running_loop()
+            # 이미 이벤트 루프 내부면 create_task 사용 불가
+            # 이 경우 동기적으로 처리해야 함 (LazyProxy에서 호출되는 상황)
+            raise RuntimeError("Use async get_instance_async in async context")
+        except RuntimeError:
+            # 이벤트 루프가 없으면 새로 실행
+            instance = asyncio.run(self._create_and_cache_instance(container))
+
+        return instance
+
+    async def get_instance_async[T](
+        self, cls: type[T], *, required: bool = True
     ) -> T | None:
         """
-        정확한 타입의 인스턴스 1개 반환
-
-        - 1개: 반환
-        - 0개: 서브클래스 검색, 1개면 반환, 아니면 None/Exception
-        - 2개 이상: AmbiguousInstanceError
+        비동기 인스턴스 획득.
         """
-        instances = self.instance_registry.get(target, [])
+        container = self._containers.get(cls)
 
-        if len(instances) == 1:
-            return instances[0]
-        elif len(instances) > 1:
-            raise AmbiguousInstanceError(target, len(instances))
+        if container is None:
+            if required:
+                raise ComponentNotFoundError(cls)
+            return None
 
-        # 정확한 타입 없으면 서브클래스 검색
-        sub_instances = self.get_instances(target, include_subclasses=True)
-        if len(sub_instances) == 1:
-            return sub_instances[0]
-        elif len(sub_instances) > 1:
-            raise AmbiguousInstanceError(target, len(sub_instances))
+        return await self._resolve_instance_async(container)
 
-        if raise_exception:
-            raise Exception(f"Instance for {target.__name__} not found")
-        return None
+    async def _resolve_instance_async[T](self, container: Container[T]) -> T:
+        """비동기로 컨테이너에서 인스턴스 resolve"""
+        scope = container.scope
+        cls = container.target
 
-    def get_instances[T](
-        self, target: type[T], include_subclasses: bool = True
-    ) -> list[T]:
+        # 이미 생성된 인스턴스가 있는지 확인
+        existing = self._scope_manager.get_instance(cls, scope)
+        if existing is not None:
+            return existing
+
+        # 스코프별 컨텍스트 확인
+        if scope == Scope.REQUEST and not self._scope_manager.is_in_request_context():
+            raise RequestScopeError(cls)
+
+        if scope == Scope.CALL and not self._scope_manager.is_in_call_context():
+            raise CallScopeError(cls)
+
+        return await self._create_and_cache_instance(container)
+
+    async def _create_and_cache_instance[T](self, container: Container[T]) -> T:
+        """인스턴스 생성 및 캐싱"""
+        instance = await container.create_instance(self)
+        self._scope_manager.set_instance(container.target, instance, container.scope)
+        return instance
+
+    # === 초기화 / 종료 ===
+
+    async def initialize(self) -> None:
         """
-        타입의 인스턴스들 반환
-
-        Args:
-            target: 대상 타입
-            include_subclasses: True면 서브클래스 인스턴스도 포함
+        모든 SINGLETON 컴포넌트 초기화.
+        의존성 순서대로 생성.
         """
-        # target이 제네릭 타입(Lazy[T] 등)인 경우 처리 불가
-        if not isinstance(target, type):
-            return []
+        if self._initialized:
+            return
 
-        if not include_subclasses:
-            return list(self.instance_registry.get(target, []))
+        # 토폴로지 정렬된 순서로 SINGLETON 생성
+        from .resolver import DependencyResolver
 
-        instances = []
-        for kls, kls_instances in self.instance_registry.items():
-            # kls가 클래스인 경우에만 issubclass 체크
-            if isinstance(kls, type) and issubclass(kls, target):
-                instances.extend(kls_instances)
-        return instances
+        resolver = DependencyResolver(self)
+        sorted_containers = resolver.topological_sort()
 
-    # 하위 호환성을 위한 별칭
-    def get_sub_instances[T](self, target: type[T]) -> list[T]:
-        """특정 타입의 서브클래스 인스턴스들 반환 (get_instances의 별칭)"""
-        return self.get_instances(target, include_subclasses=True)
+        for container in sorted_containers:
+            if container.scope == Scope.SINGLETON:
+                await self._create_and_cache_instance(container)
 
-    def get_all_instances(self) -> dict[type, list[Any]]:
-        """모든 인스턴스 반환"""
-        return self.instance_registry
+        self._initialized = True
+
+    async def shutdown(self) -> None:
+        """
+        모든 SINGLETON 컴포넌트 정리.
+        생성 역순으로 @PreDestroy 호출.
+        """
+        await self._scope_manager.destroy_singletons()
+        self._initialized = False
+
+    # === 유틸리티 ===
 
     def clear(self) -> None:
-        """레지스트리 초기화"""
-        self.container_registry.clear()
-        self.instance_registry.clear()
+        """모든 컨테이너 및 인스턴스 초기화 (테스트용)"""
+        self._containers.clear()
+        self._named_containers.clear()
+        self._scope_manager = ScopeManager()
+        self._initialized = False
+
+    def __repr__(self) -> str:
+        return f"ContainerManager(containers={len(self._containers)})"
+
+
+# === 전역 인스턴스 ===
+
+_global_manager: ContainerManager | None = None
+
+
+def get_container_manager() -> ContainerManager:
+    """전역 ContainerManager 획득"""
+    global _global_manager
+    if _global_manager is None:
+        _global_manager = ContainerManager()
+    return _global_manager
+
+
+def set_container_manager(manager: ContainerManager) -> None:
+    """전역 ContainerManager 설정"""
+    global _global_manager
+    _global_manager = manager
+
+
+def reset_container_manager() -> None:
+    """전역 ContainerManager 초기화 (테스트용)"""
+    global _global_manager
+    if _global_manager:
+        _global_manager.clear()
+    _global_manager = None

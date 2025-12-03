@@ -1,319 +1,361 @@
-"""Component 데코레이터"""
+"""bloom.core.decorators - 데코레이터 정의"""
 
-from typing import Any, Awaitable, Callable, overload, TYPE_CHECKING
+from __future__ import annotations
 
-from .container import (
-    ComponentContainer,
-    Element,
-    FactoryContainer,
-    HandlerContainer,
-    Container,
-)
-from .container.decorator import DecoratorContainer
-from .container.element import (
-    OrderElement,
-    ScopeElement,
-    SingletonOnlyElement,
-    Scope as ScopeEnum,
-    PrototypeMode,
-)
-from .lifecycle import (
-    LifecycleHandlerContainer,
-    LifecycleType,
-    LifecycleTypeElement,
-)
-from .manager import try_get_current_manager
-from ..utils.typing import extract_parameter_types
+import asyncio
+from functools import wraps
+from typing import Any, Callable, TypeVar, overload, TYPE_CHECKING
+
+from .scope import Scope
+from .container import Container, analyze_factory_method
+from .manager import get_container_manager
+
+if TYPE_CHECKING:
+    from .manager import ContainerManager
 
 
-class ComponentElement[T](Element[T]):
-    pass
+T = TypeVar("T")
+F = TypeVar("F", bound=Callable[..., Any])
 
 
-def _scan_child_containers(cls: type) -> None:
-    """클래스의 메서드에서 Factory/Handler/Decorator 컨테이너를 찾아 owner_cls 설정"""
-    from .container.base import Container
+# === @Component ===
 
-    manager = try_get_current_manager()
 
-    for attr_name in dir(cls):
-        try:
-            attr = getattr(cls, attr_name, None)
-        except Exception:
+@overload
+def Component[T: type](cls: T) -> T:
+    """@Component - 기본 SINGLETON"""
+    ...
+
+
+@overload
+def Component[T: type](
+    *,
+    scope: Scope = Scope.SINGLETON,
+    name: str | None = None,
+    primary: bool = False,
+    lazy: bool = True,
+) -> Callable[[T], T]:
+    """@Component(...) - 옵션 지정"""
+    ...
+
+
+def Component[T: type](
+    cls: T | None = None,
+    *,
+    scope: Scope = Scope.SINGLETON,
+    name: str | None = None,
+    primary: bool = False,
+    lazy: bool = True,
+) -> T | Callable[[T], T]:
+    """
+    클래스를 DI 컨테이너에 등록하는 데코레이터.
+
+    사용 예:
+        @Component
+        class UserService:
+            pass
+
+        @Component(scope=Scope.REQUEST)
+        class RequestContext:
+            pass
+
+    Args:
+        scope: 인스턴스 스코프 (SINGLETON, REQUEST, CALL)
+        name: 빈 이름 (동일 타입 여러 빈 구분용)
+        primary: 동일 타입 중 기본 빈 여부
+        lazy: 지연 초기화 여부 (기본 True)
+    """
+
+    def decorator(cls: T) -> T:
+        # 메타데이터 저장
+        cls.__bloom_component__ = True  # type: ignore
+        cls.__bloom_scope__ = scope  # type: ignore
+        cls.__bloom_name__ = name  # type: ignore
+        cls.__bloom_primary__ = primary  # type: ignore
+        cls.__bloom_lazy__ = lazy  # type: ignore
+
+        # Container 생성 및 등록
+        container: Container[T] = Container(
+            target=cls,
+            scope=scope,
+            name=name,
+            primary=primary,
+            lazy=lazy,
+        )
+
+        manager = get_container_manager()
+        manager.register(container)
+
+        return cls
+
+    # @Component vs @Component()
+    if cls is not None:
+        return decorator(cls)
+    return decorator
+
+
+# === Alias Decorators ===
+
+
+def Service[T: type](cls: T) -> T:
+    """@Service = @Component (비즈니스 로직용)"""
+    return Component(cls)
+
+
+def Repository[T: type](cls: T) -> T:
+    """@Repository = @Component (데이터 접근용)"""
+    return Component(cls)
+
+
+def Configuration[T: type](cls: T) -> T:
+    """
+    @Configuration - @Factory 메서드를 포함하는 설정 클래스.
+    자동으로 @Component로 등록됨.
+    """
+    cls.__bloom_configuration__ = True  # type: ignore
+    return Component(cls)
+
+
+# === @Factory ===
+
+
+def Factory[F: Callable[..., Any]](method: F) -> F:
+    """
+    팩토리 메서드 데코레이터.
+    @Configuration 클래스 내부에서 사용.
+
+    사용 예:
+        @Configuration
+        class AppConfig:
+            @Factory
+            def database_client(self) -> DatabaseClient:
+                return DatabaseClient()
+    """
+    method.__bloom_factory__ = True  # type: ignore
+    return method
+
+
+def register_factories_from_configuration[T](
+    config_cls: type[T],
+    manager: "ContainerManager | None" = None,
+) -> None:
+    """
+    @Configuration 클래스에서 @Factory 메서드들을 찾아 등록.
+    Application.scan()에서 호출됨.
+    """
+    if manager is None:
+        manager = get_container_manager()
+
+    for name in dir(config_cls):
+        if name.startswith("_"):
             continue
 
-        if child_container := Container.get_container(attr):
-            # Factory, Handler 또는 Decorator 컨테이너인 경우
-            if isinstance(
-                child_container,
-                (FactoryContainer, HandlerContainer, DecoratorContainer),
-            ):
-                child_container.owner_cls = cls
-                # manager가 있으면 등록
-                if manager:
-                    manager.register_container(child_container)
+        method = getattr(config_cls, name, None)
+        if method is None or not callable(method):
+            continue
+
+        if not getattr(method, "__bloom_factory__", False):
+            continue
+
+        # Factory 메서드 분석
+        factory_info = analyze_factory_method(method, config_cls)
+
+        # Container 생성
+        container: Container[Any] = Container(
+            target=factory_info.return_type,
+            scope=Scope.SINGLETON,  # Factory는 기본 SINGLETON
+            factory=factory_info,
+        )
+
+        manager.register(container)
 
 
-def Component[T](cls: type[T]) -> type[T]:
-    container = ComponentContainer.get_or_create(cls)
-    # 클래스의 메서드에서 Factory/Handler 컨테이너 스캔
-    _scan_child_containers(cls)
+# === @Handler ===
+
+
+def Handler[F: Callable[..., Any]](func: F) -> F:
+    """
+    핸들러 메서드 데코레이터.
+    CALL 스코프 라이프사이클 관리 및 콜스택 추적.
+
+    사용 예:
+        @Component
+        class UserService:
+            tx: TransactionContext  # CALL 스코프
+
+            @Handler
+            async def create_user(self, name: str):
+                # tx는 이 호출 내에서만 유효
+                pass
+    """
+
+    @wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        manager = get_container_manager()
+        scope_manager = manager.scope_manager
+
+        # Call 스코프 시작
+        frame_id = scope_manager.start_call()
+
+        try:
+            # 원본 함수 호출
+            result = func(*args, **kwargs)
+            if asyncio.iscoroutine(result):
+                result = await result
+            return result
+        finally:
+            # Call 스코프 종료 (정리)
+            await scope_manager.end_call(frame_id)
+
+    # 메타데이터 보존
+    wrapper.__bloom_handler__ = True  # type: ignore
+
+    return wrapper  # type: ignore
+
+
+# === @Value ===
+
+
+class Value:
+    """
+    설정값 주입 마커.
+
+    사용 예:
+        @Component
+        class UserService:
+            @Value("app.name")
+            app_name: str
+
+            @Value("app.debug", default=False)
+            debug: bool
+    """
+
+    def __init__(self, key: str, *, default: Any = None) -> None:
+        self.key = key
+        self.default = default
+
+    def __repr__(self) -> str:
+        return f"Value({self.key!r})"
+
+
+# === @Scope ===
+
+
+@overload
+def scope_decorator(scope: Scope) -> Callable[[type[T]], type[T]]:
+    """@Scope(Scope.XXX) 형태"""
+    ...
+
+
+@overload
+def scope_decorator[T: type](cls: T) -> T:
+    """직접 적용 불가 - 항상 인자 필요"""
+    ...
+
+
+def scope_decorator(
+    scope_or_cls: Scope | type | None = None,
+) -> Callable[[type], type] | type:
+    """
+    스코프 지정 데코레이터.
+    @Component와 함께 사용.
+
+    사용 예:
+        @Component
+        @Scope(Scope.REQUEST)
+        class RequestContext:
+            pass
+    """
+    if isinstance(scope_or_cls, Scope):
+        scope = scope_or_cls
+
+        def decorator[T: type](cls: T) -> T:
+            cls.__bloom_scope__ = scope  # type: ignore
+            return cls
+
+        return decorator
+    else:
+        raise TypeError("@Scope requires a Scope argument: @Scope(Scope.REQUEST)")
+
+
+# Alias
+ScopeDecorator = scope_decorator
+
+
+# === 편의 데코레이터 ===
+
+
+def RequestScope[T: type](cls: T) -> T:
+    """@RequestScope = @Component(scope=Scope.REQUEST)"""
+    return Component(cls, scope=Scope.REQUEST)
+
+
+def CallScope[T: type](cls: T) -> T:
+    """@CallScope = @Component(scope=Scope.CALL)"""
+    return Component(cls, scope=Scope.CALL)
+
+
+def Singleton[T: type](cls: T) -> T:
+    """@Singleton = @Component(scope=Scope.SINGLETON)"""
+    return Component(cls, scope=Scope.SINGLETON)
+
+
+# === @Primary ===
+
+
+def Primary[T: type](cls: T) -> T:
+    """
+    동일 타입의 여러 빈 중 기본 빈으로 지정.
+
+    사용 예:
+        @Component
+        @Primary
+        class DefaultUserRepository(UserRepository):
+            pass
+    """
+    cls.__bloom_primary__ = True  # type: ignore
     return cls
 
 
-def Factory[**P, R](method: Callable[P, R]) -> Callable[P, R]:
+# === @Lazy ===
+
+
+def Lazy[T: type](cls: T) -> T:
     """
-    Factory 데코레이터: 메서드를 팩토리로 등록
-    해당 메서드가 속한 클래스가 @Component로 등록되어 있어야 함
+    지연 초기화 명시적 지정.
+    (기본적으로 모든 필드 주입은 Lazy)
 
-    Note:
-        @Factory는 SINGLETON 스코프 컴포넌트에서만 사용 가능합니다.
-        CALL/REQUEST 스코프에서 사용하면 InvalidScopeError가 발생합니다.
-    """
-    container = FactoryContainer.get_or_create(method)
-    container.add_elements(SingletonOnlyElement("Factory"))
-    return method
-
-
-def Handler[**P, R](method: Callable[P, R]) -> Callable[P, R]:
-    """
-    Handler 데코레이터: 메서드를 핸들러로 등록
-    해당 메서드가 속한 클래스가 @Component로 등록되어 있어야 함
-
-    사용 예시:
+    사용 예:
         @Component
-        class MyController:
-            @Handler
-            def get_users(self) -> list[User]:
-                return []
-
-            @Handler
-            def handle_error(self, error: ValueError) -> Response:
-                return Response(400, str(error))
+        @Lazy
+        class HeavyService:
+            pass
     """
-    container = HandlerContainer.get_or_create(method)
-    return method
+    cls.__bloom_lazy__ = True  # type: ignore
+    return cls
 
 
-def PostConstruct[**P, R](method: Callable[P, R]) -> Callable[P, R]:
+# === @Order ===
+
+
+def Order(value: int) -> Callable[[type[T]], type[T]]:
     """
-    PostConstruct 데코레이터: 인스턴스 생성 후 호출될 메서드를 지정
+    초기화 순서 지정 (낮을수록 먼저).
 
-    의존성 주입이 완료된 후 초기화 로직을 실행합니다.
-    비동기 메서드도 지원합니다.
-    LifecycleHandlerContainer 기반으로 구현됩니다.
-
-    사용 예시:
+    사용 예:
         @Component
-        class DatabaseConnection:
-            config: Config
-
-            @PostConstruct
-            def connect(self):
-                self.connection = create_connection(self.config.db_url)
-                print("Database connected")
-    """
-    container = LifecycleHandlerContainer.get_or_create(method)
-    container.add_element(LifecycleTypeElement(LifecycleType.POST_CONSTRUCT))
-    return method
-
-
-def PreDestroy[**P, R](method: Callable[P, R]) -> Callable[P, R]:
-    """
-    PreDestroy 데코레이터: 애플리케이션 종료 시 호출될 메서드를 지정
-
-    리소스 정리, 연결 해제 등의 정리 작업을 수행합니다.
-    비동기 메서드도 지원합니다.
-    LifecycleHandlerContainer 기반으로 구현됩니다.
-
-    사용 예시:
-        @Component
-        class DatabaseConnection:
-            @PreDestroy
-            def disconnect(self):
-                self.connection.close()
-                print("Database disconnected")
-    """
-    container = LifecycleHandlerContainer.get_or_create(method)
-    container.add_element(LifecycleTypeElement(LifecycleType.PRE_DESTROY))
-    return method
-
-
-def Order(order: int):
-    """
-    Order 데코레이터: Factory/Handler의 실행 순서 지정
-
-    동일 타입을 반환하는 여러 Factory가 있을 때 (Factory Chain/Builder Chain),
-    실행 순서를 명시적으로 지정합니다. 숫자가 낮을수록 먼저 실행됩니다.
-
-    Order가 지정되지 않은 Factory는 의존성 그래프로 순서가 자동 결정됩니다.
-
-    사용 예시 (Factory Chain):
-        @Component
-        class Config:
-            @Factory
-            def create(self) -> MyType:  # Order 없음 = 의존성 없으므로 먼저
-                return MyType()
-
-            @Factory
-            @Order(1)
-            def modify1(self, val: MyType) -> MyType:
-                val.x += 1
-                return val
-
-            @Factory
-            @Order(2)
-            def modify2(self, val: MyType) -> MyType:  # 마지막 (최종값 저장)
-                val.x += 2
-                return val
-
-    사용 예시 (Builder Chain):
-        @Component
-        class MyType:
-            val = 0
-
-        @Component
-        class Config:
-            @Factory
-            @Order(1)
-            def enhance1(self, val: MyType) -> MyType:
-                val.val += 1
-                return val
-
-            @Factory
-            @Order(2)
-            def enhance2(self, val: MyType) -> MyType:  # 마지막 (최종값 저장)
-                val.val += 2
-                return val
-    """
-
-    def decorator[**P, R](method: Callable[P, R]) -> Callable[P, R]:
-        from .container.callable import CallableContainer
-
-        container = CallableContainer.get_or_create(method)
-        container.add_element(OrderElement(order))
-        return method
-
-    return decorator
-
-
-def Scope[R](scope: ScopeEnum, mode: PrototypeMode | None = None):
-    """
-    Scope 데코레이터: 컴포넌트의 인스턴스 생명주기 범위 지정
-
-    - SINGLETON (기본값): 애플리케이션 전체에서 단일 인스턴스
-    - CALL: 주입될 때마다 새 인스턴스 생성
-    - REQUEST: HTTP 요청마다 새 인스턴스 (웹 컨텍스트에서만)
-
-    Args:
-        scope: 스코프 유형
-        mode: CALL 스코프의 캐싱 모드 (PrototypeMode)
-            - DEFAULT: 매번 새 인스턴스 생성
-            - CALL_SCOPED: 같은 핸들러 호출 내에서 같은 인스턴스 반환
-
-    사용 예시:
-        from bloom.core.decorators import Scope
-        from bloom.core.container.element import Scope as ScopeEnum, PrototypeMode
-
-        @Component
-        @Scope(ScopeEnum.CALL)
-        class RequestHandler:
-            # 매번 새 인스턴스 생성
+        @Order(1)
+        class FirstService:
             pass
 
         @Component
-        @Scope(ScopeEnum.CALL, mode=PrototypeMode.CALL_SCOPED)
-        class ScopedResource:
-            # 같은 핸들러 호출 내에서는 같은 인스턴스 반환
-            pass
-
-        @Component
-        @Scope(ScopeEnum.SINGLETON)  # 기본값
-        class DatabasePool:
-            # 단일 인스턴스
-            pass
+        @Order(2)
+        class SecondService:
+            first: FirstService
     """
-    actual_mode = mode if mode is not None else PrototypeMode.DEFAULT
 
-    def decorator(cls: type[R]) -> type[R]:
-        container = Container.get_or_create(cls)
-        container.add_element(ScopeElement(scope, actual_mode))
+    def decorator[T: type](cls: T) -> T:
+        cls.__bloom_order__ = value  # type: ignore
         return cls
 
     return decorator
-
-
-# Decorator 함수용 타입 alias
-type ACallable[**P, R] = Callable[P, Awaitable[R]]
-type DecoratorType[**P, R] = Callable[[Callable[P, R]], Callable[P, R]]
-type ADecoratorType[**P, R] = Callable[[ACallable[P, R]], ACallable[P, Awaitable[R]]]
-type InjectableDecorator[**P, R] = Callable[..., Callable[P, R]]
-type InjectableADecorator[**P, R] = Callable[..., ACallable[P, R]]
-
-
-@overload
-def Decorator[**P, R](wrapper: DecoratorType[P, R]) -> DecoratorType[P, R]: ...
-@overload
-def Decorator[**P, R](wrapper: ADecoratorType[P, R]) -> ADecoratorType[P, R]: ...
-@overload
-def Decorator[**P, R](wrapper: InjectableDecorator[P, R]) -> DecoratorType[P, R]: ...
-@overload
-def Decorator[**P, R](wrapper: InjectableADecorator[P, R]) -> ADecoratorType[P, R]: ...
-
-
-def Decorator[**P, R](
-    wrapper: (
-        DecoratorType[P, R]
-        | ADecoratorType[P, R]
-        | InjectableDecorator[P, R]
-        | InjectableADecorator[P, R]
-    ),
-) -> DecoratorType[P, R] | ADecoratorType[P, R]:
-    """
-    DecoratorContainer를 생성하는 데코레이터 팩토리
-
-    기본 사용 예:
-        def my_wrapper(fn):
-            @wraps(fn)
-            async def wrapped(*args, **kwargs):
-                print("before")
-                result = await fn(*args, **kwargs)
-                print("after")
-                return result
-            return wrapped
-
-        @Decorator(my_wrapper)
-        async def my_func():
-            pass
-
-    의존성 주입 사용 예:
-        def logging_wrapper(fn, logger: Logger, config: Config):
-            @wraps(fn)
-            async def wrapped(*args, **kwargs):
-                logger.info(f"Calling {fn.__name__}")
-                result = await fn(*args, **kwargs)
-                logger.info(f"Result: {result}")
-                return result
-            return wrapped
-
-        @Component
-        class MyService:
-            @Decorator(logging_wrapper)
-            async def my_method(self):
-                return "result"
-
-        # Logger와 Config는 런타임에 ContainerManager에서 자동 주입됨
-    """
-    inject_types = extract_parameter_types(wrapper, skip_first=1)
-
-    @overload
-    def decorator_factory(func: Callable[P, R]) -> Callable[P, R]: ...
-    @overload
-    def decorator_factory(func: ACallable[P, R]) -> ACallable[P, R]: ...
-    def decorator_factory(
-        func: Callable[P, R] | ACallable[P, R],
-    ) -> Callable[P, R] | ACallable[P, R]:
-        DecoratorContainer.get_or_create(func, wrapper, inject_types)
-        return func
-
-    return decorator_factory
