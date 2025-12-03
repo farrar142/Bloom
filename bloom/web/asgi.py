@@ -17,21 +17,21 @@ if TYPE_CHECKING:
 class ASGIApplication:
     """
     Bloom ASGI Application.
-    
+
     미들웨어 체인과 라우팅을 관리하는 ASGI 앱입니다.
-    
+
     사용 예:
         app = ASGIApplication()
-        
+
         # 미들웨어 추가
         app.add_middleware(RequestScopeMiddleware)
         app.add_middleware(LoggingMiddleware)
-        
+
         # 라우트 추가
         @app.get("/")
         async def index(request: Request) -> Response:
             return JSONResponse({"message": "Hello, World!"})
-        
+
         # uvicorn으로 실행
         # uvicorn app:app
     """
@@ -40,10 +40,10 @@ class ASGIApplication:
         self.debug = debug
         self._routes: dict[str, dict[str, Callable]] = {}  # path -> {method -> handler}
         self._middleware_stack = MiddlewareStack(self._handle_request)
-        
+
         # REQUEST 스코프 미들웨어는 기본으로 추가
         self._middleware_stack.add(RequestScopeMiddleware)
-        
+
         self._app: ASGIApp | None = None
 
     # === Middleware ===
@@ -100,12 +100,10 @@ class ASGIApplication:
 
     # === Request Handler ===
 
-    async def _handle_request(
-        self, scope: Scope, receive: Receive, send: Send
-    ) -> None:
+    async def _handle_request(self, scope: Scope, receive: Receive, send: Send) -> None:
         """
         실제 요청 처리.
-        
+
         라우트 매칭 후 핸들러 실행.
         """
         if scope["type"] == "lifespan":
@@ -122,11 +120,11 @@ class ASGIApplication:
             return
 
         request = Request(scope, receive)
-        
+
         # 라우트 매칭 (단순 exact match)
         # TODO: 패턴 매칭, path params 추출
         handler = self._routes.get(request.path, {}).get(request.method)
-        
+
         if handler is None:
             # 404 Not Found
             response = JSONResponse(
@@ -139,7 +137,7 @@ class ASGIApplication:
         try:
             # 핸들러 실행
             result = await handler(request)
-            
+
             # 응답 처리
             if isinstance(result, Response):
                 response = result
@@ -149,17 +147,18 @@ class ASGIApplication:
                 response = Response(content=result, media_type="text/plain")
             else:
                 response = JSONResponse(result)
-            
+
             await response(scope, receive, send)
-            
+
         except Exception as e:
             # 500 Internal Server Error
             if self.debug:
                 import traceback
+
                 error_detail = traceback.format_exc()
             else:
                 error_detail = str(e)
-            
+
             response = JSONResponse(
                 {"error": "Internal Server Error", "detail": error_detail},
                 status_code=500,
@@ -172,27 +171,31 @@ class ASGIApplication:
         """ASGI lifespan 프로토콜 처리"""
         while True:
             message = await receive()
-            
+
             if message["type"] == "lifespan.startup":
                 try:
                     # TODO: 앱 초기화 (ContainerManager.initialize())
                     await send({"type": "lifespan.startup.complete"})
                 except Exception as e:
-                    await send({
-                        "type": "lifespan.startup.failed",
-                        "message": str(e),
-                    })
+                    await send(
+                        {
+                            "type": "lifespan.startup.failed",
+                            "message": str(e),
+                        }
+                    )
                     return
-            
+
             elif message["type"] == "lifespan.shutdown":
                 try:
                     # TODO: 앱 종료 (ContainerManager.shutdown())
                     await send({"type": "lifespan.shutdown.complete"})
                 except Exception as e:
-                    await send({
-                        "type": "lifespan.shutdown.failed",
-                        "message": str(e),
-                    })
+                    await send(
+                        {
+                            "type": "lifespan.shutdown.failed",
+                            "message": str(e),
+                        }
+                    )
                 return
 
     # === ASGI Interface ===
@@ -203,9 +206,7 @@ class ASGIApplication:
             self._app = self._middleware_stack.build()
         return self._app
 
-    async def __call__(
-        self, scope: Scope, receive: Receive, send: Send
-    ) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """ASGI 진입점"""
         app = self._build_app()
         await app(scope, receive, send)

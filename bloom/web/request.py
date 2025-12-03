@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 class Request:
     """
     HTTP Request 객체.
-    
+
     ASGI scope에서 요청 정보를 추출하여 제공합니다.
-    
+
     사용 예:
         request = Request(scope, receive)
         print(request.method)  # GET
@@ -93,7 +93,7 @@ class Request:
         cookie_header = self.header("cookie", "")
         if not cookie_header:
             return {}
-        
+
         cookies: dict[str, str] = {}
         for item in cookie_header.split(";"):
             item = item.strip()

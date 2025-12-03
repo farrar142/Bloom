@@ -232,27 +232,41 @@ def dict_to_entity(entity_cls: type[T], data: dict[str, Any]) -> T:
     """딕셔너리를 엔티티로 변환
 
     ManyToOne 필드의 경우 FK 값을 db_name으로 찾아서 설정합니다.
+    FK 컬럼이 별도로 정의된 경우에도 값을 설정합니다.
     """
     entity = entity_cls()
     columns = get_entity_columns(entity_cls)
 
     # db_name -> (field_name, column) 매핑 생성
-    db_name_to_field: dict[str, tuple[str, Any]] = {}
+    # FK 필드는 ManyToOne과 일반 컬럼 모두에 값을 설정해야 함
+    db_name_to_field: dict[str, list[tuple[str, Any]]] = {}
     for name, column in columns.items():
         if isinstance(column, ManyToOne):
-            db_name_to_field[column.db_name] = (name, column)
+            db_name = column.db_name
+            if db_name not in db_name_to_field:
+                db_name_to_field[db_name] = []
+            db_name_to_field[db_name].append((name, column))
         elif hasattr(column, "db_name"):
-            db_name_to_field[column.db_name] = (name, column)
-        db_name_to_field[name] = (name, column)
+            db_name = column.db_name
+            if db_name not in db_name_to_field:
+                db_name_to_field[db_name] = []
+            db_name_to_field[db_name].append((name, column))
+
+        # 필드 이름으로도 매핑
+        if name not in db_name_to_field:
+            db_name_to_field[name] = []
+        # 중복 방지
+        if (name, column) not in db_name_to_field[name]:
+            db_name_to_field[name].append((name, column))
 
     for data_key, value in data.items():
         if data_key in db_name_to_field:
-            field_name, column = db_name_to_field[data_key]
-            if isinstance(column, ManyToOne):
-                # ManyToOne: FK 값 직접 설정
-                column.set_fk_value(entity, value)
-            else:
-                setattr(entity, field_name, value)
+            for field_name, column in db_name_to_field[data_key]:
+                if isinstance(column, ManyToOne):
+                    # ManyToOne: FK 값 직접 설정
+                    column.set_fk_value(entity, value)
+                else:
+                    setattr(entity, field_name, value)
         elif data_key in columns:
             setattr(entity, data_key, value)
 

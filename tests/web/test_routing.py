@@ -247,7 +247,7 @@ class TestParameterResolver:
         """Query 리졸버"""
         registry = ResolverRegistry()
 
-        async def handler(page: Query[int], size: Query[int] = Query(default=10)):
+        async def handler(page: Query[int], size: Query[int] = 10):
             return {"page": page, "size": size}
 
         route = Route("/users", "GET", handler)
@@ -340,7 +340,7 @@ class TestParameterResolver:
         async def handler(
             request: Request,
             user_id: PathVariable[int],
-            include_posts: Query[bool] = Query(default=False),
+            include_posts: Query[bool] = False,
         ):
             return {
                 "path": request.path,
@@ -369,17 +369,13 @@ class TestRequestCookie:
 
     def test_cookies_parsing(self):
         """쿠키 파싱"""
-        request = make_request(
-            headers=[(b"cookie", b"session_id=abc123; user_id=42")]
-        )
+        request = make_request(headers=[(b"cookie", b"session_id=abc123; user_id=42")])
 
         assert request.cookies == {"session_id": "abc123", "user_id": "42"}
 
     def test_single_cookie(self):
         """단일 쿠키 조회"""
-        request = make_request(
-            headers=[(b"cookie", b"session_id=abc123")]
-        )
+        request = make_request(headers=[(b"cookie", b"session_id=abc123")])
 
         assert request.cookie("session_id") == "abc123"
         assert request.cookie("unknown") is None

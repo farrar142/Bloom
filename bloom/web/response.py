@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 class Response:
     """
     HTTP Response 기본 클래스.
-    
+
     사용 예:
         response = Response(content=b"Hello", status_code=200)
         await response(scope, receive, send)
@@ -30,10 +30,10 @@ class Response:
     ) -> None:
         self.status_code = status_code
         self._headers: dict[str, str] = dict(headers) if headers else {}
-        
+
         if media_type is not None:
             self.media_type = media_type
-        
+
         self.body = self._encode_body(content)
         self._set_content_headers()
 
@@ -49,7 +49,7 @@ class Response:
         """Content-Type, Content-Length 헤더 설정"""
         if self.body:
             self._headers.setdefault("content-length", str(len(self.body)))
-        
+
         if self.media_type is not None:
             content_type = self.media_type
             if self.media_type.startswith("text/") and "charset" not in self.media_type:
@@ -80,7 +80,7 @@ class Response:
     ) -> "Response":
         """쿠키 설정"""
         cookie = f"{key}={value}"
-        
+
         if max_age is not None:
             cookie += f"; Max-Age={max_age}"
         if expires is not None:
@@ -95,14 +95,14 @@ class Response:
             cookie += "; HttpOnly"
         if samesite:
             cookie += f"; SameSite={samesite}"
-        
+
         # 여러 쿠키 지원을 위해 기존 Set-Cookie에 추가
         existing = self._headers.get("set-cookie", "")
         if existing:
             self._headers["set-cookie"] = f"{existing}, {cookie}"
         else:
             self._headers["set-cookie"] = cookie
-        
+
         return self
 
     def _build_headers(self) -> list[tuple[bytes, bytes]]:
@@ -114,15 +114,19 @@ class Response:
 
     async def __call__(self, scope: Any, receive: Any, send: "Send") -> None:
         """ASGI 응답 전송"""
-        await send({
-            "type": "http.response.start",
-            "status": self.status_code,
-            "headers": self._build_headers(),
-        })
-        await send({
-            "type": "http.response.body",
-            "body": self.body,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status_code,
+                "headers": self._build_headers(),
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": self.body,
+            }
+        )
 
     def __repr__(self) -> str:
         return f"<Response {self.status_code}>"
@@ -204,11 +208,23 @@ class RedirectResponse(Response):
 
 
 class StreamingResponse(Response):
-    """스트리밍 응답"""
+    """
+    스트리밍 응답.
+
+    대용량 파일이나 실시간 데이터를 청크 단위로 전송합니다.
+
+    사용 예:
+        async def generate():
+            for i in range(10):
+                yield f"chunk {i}\\n".encode()
+                await asyncio.sleep(0.1)
+
+        return StreamingResponse(generate(), media_type="text/plain")
+    """
 
     def __init__(
         self,
-        content: Any,  # AsyncIterable[bytes]
+        content: Any,  # AsyncIterable[bytes] | Iterable[bytes] | Callable
         status_code: int = 200,
         headers: Mapping[str, str] | None = None,
         media_type: str | None = None,
@@ -217,27 +233,257 @@ class StreamingResponse(Response):
         self._headers = dict(headers) if headers else {}
         self.media_type = media_type
         self._content = content
-        
+
         if self.media_type is not None:
             self._headers.setdefault("content-type", self.media_type)
 
     async def __call__(self, scope: Any, receive: Any, send: "Send") -> None:
         """ASGI 스트리밍 응답 전송"""
-        await send({
-            "type": "http.response.start",
-            "status": self.status_code,
-            "headers": self._build_headers(),
-        })
-        
-        async for chunk in self._content:
-            await send({
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status_code,
+                "headers": self._build_headers(),
+            }
+        )
+
+        # Callable이면 호출
+        content = self._content
+        if callable(content):
+            content = content()
+
+        # AsyncIterable 처리
+        if hasattr(content, "__aiter__"):
+            async for chunk in content:
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": chunk,
+                        "more_body": True,
+                    }
+                )
+        else:
+            # 동기 Iterable 처리
+            for chunk in content:
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": chunk,
+                        "more_body": True,
+                    }
+                )
+
+        await send(
+            {
                 "type": "http.response.body",
-                "body": chunk,
-                "more_body": True,
-            })
-        
-        await send({
-            "type": "http.response.body",
-            "body": b"",
-            "more_body": False,
-        })
+                "body": b"",
+                "more_body": False,
+            }
+        )
+
+
+class FileResponse(StreamingResponse):
+    """
+    파일 응답.
+
+    파일을 청크 단위로 스트리밍합니다.
+
+    사용 예:
+        return FileResponse("/path/to/file.pdf")
+        return FileResponse("/path/to/image.jpg", filename="download.jpg")
+    """
+
+    chunk_size: int = 64 * 1024  # 64KB
+
+    def __init__(
+        self,
+        path: str,
+        status_code: int = 200,
+        headers: Mapping[str, str] | None = None,
+        media_type: str | None = None,
+        filename: str | None = None,
+    ) -> None:
+        import mimetypes
+        import os
+
+        self.path = path
+
+        # 파일 존재 확인
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"File not found: {path}")
+
+        # Content-Type 추론
+        if media_type is None:
+            media_type, _ = mimetypes.guess_type(path)
+            if media_type is None:
+                media_type = "application/octet-stream"
+
+        # 파일 크기
+        file_size = os.path.getsize(path)
+
+        # 헤더 설정
+        _headers = dict(headers) if headers else {}
+        _headers["content-length"] = str(file_size)
+
+        # Content-Disposition (다운로드 파일명)
+        if filename:
+            _headers["content-disposition"] = f'attachment; filename="{filename}"'
+
+        super().__init__(
+            content=self._file_iterator,
+            status_code=status_code,
+            headers=_headers,
+            media_type=media_type,
+        )
+
+    async def _file_iterator(self):
+        """파일 청크 반복자"""
+        with open(self.path, "rb") as f:
+            while True:
+                chunk = f.read(self.chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+
+
+class SSEResponse(Response):
+    """
+    Server-Sent Events (SSE) 응답.
+
+    실시간 이벤트 스트리밍을 위한 응답입니다.
+
+    사용 예:
+        async def event_stream():
+            for i in range(10):
+                yield SSEEvent(data=f"count: {i}", event="counter")
+                await asyncio.sleep(1)
+
+        return SSEResponse(event_stream())
+
+        # 또는 간단히
+        async def simple_stream():
+            for i in range(10):
+                yield {"count": i}  # 자동으로 JSON 직렬화
+                await asyncio.sleep(1)
+
+        return SSEResponse(simple_stream())
+    """
+
+    def __init__(
+        self,
+        content: Any,  # AsyncIterable[SSEEvent | dict | str]
+        status_code: int = 200,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
+        self.status_code = status_code
+        self._headers = dict(headers) if headers else {}
+        self._content = content
+
+        # SSE 필수 헤더
+        self._headers["content-type"] = "text/event-stream"
+        self._headers["cache-control"] = "no-cache"
+        self._headers["connection"] = "keep-alive"
+
+    async def __call__(self, scope: Any, receive: Any, send: "Send") -> None:
+        """ASGI SSE 응답 전송"""
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status_code,
+                "headers": self._build_headers(),
+            }
+        )
+
+        # Callable이면 호출
+        content = self._content
+        if callable(content):
+            content = content()
+
+        async for event in content:
+            # 이벤트 직렬화
+            data = self._serialize_event(event)
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": data,
+                    "more_body": True,
+                }
+            )
+
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b"",
+                "more_body": False,
+            }
+        )
+
+    def _serialize_event(self, event: Any) -> bytes:
+        """이벤트를 SSE 형식으로 직렬화"""
+        if isinstance(event, SSEEvent):
+            return event.encode()
+        elif isinstance(event, dict):
+            # dict는 data로 JSON 직렬화
+            return SSEEvent(data=json.dumps(event, ensure_ascii=False)).encode()
+        elif isinstance(event, str):
+            return SSEEvent(data=event).encode()
+        else:
+            return SSEEvent(data=str(event)).encode()
+
+
+class SSEEvent:
+    """
+    Server-Sent Event 데이터 객체.
+
+    SSE 프로토콜에 따른 이벤트를 표현합니다.
+
+    사용 예:
+        event = SSEEvent(
+            data="Hello, World!",
+            event="message",
+            id="1",
+            retry=3000,
+        )
+    """
+
+    def __init__(
+        self,
+        data: str = "",
+        event: str | None = None,
+        id: str | None = None,
+        retry: int | None = None,
+    ) -> None:
+        self.data = data
+        self.event = event
+        self.id = id
+        self.retry = retry
+
+    def encode(self) -> bytes:
+        """SSE 형식으로 인코딩"""
+        lines: list[str] = []
+
+        if self.id is not None:
+            lines.append(f"id: {self.id}")
+
+        if self.event is not None:
+            lines.append(f"event: {self.event}")
+
+        if self.retry is not None:
+            lines.append(f"retry: {self.retry}")
+
+        # 데이터는 여러 줄일 수 있음
+        for line in self.data.split("\n"):
+            lines.append(f"data: {line}")
+
+        # 이벤트 종료 (빈 줄)
+        lines.append("")
+        lines.append("")
+
+        return "\n".join(lines).encode("utf-8")
+
+    def __repr__(self) -> str:
+        return f"<SSEEvent event={self.event!r} data={self.data[:50]!r}...>"

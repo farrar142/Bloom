@@ -37,7 +37,7 @@
 
 ---
 
-## Phase 2: Web Layer 🚧 (현재 진행 중)
+## Phase 2: Web Layer ✅
 
 ### 2.1 ASGI 기반 HTTP 처리 ✅
 
@@ -61,8 +61,10 @@
 - [x] `RequestBody[T]`, `RequestField[T]` - JSON 바디 처리
 - [x] `Header[T]`, `Cookie[T]` 헤더/쿠키 추출
 - [x] `ParameterResolver` - 확장 가능한 파라미터 리졸버
-- [ ] 파일 업로드 (`UploadedFile`)
-- [ ] 스트리밍 응답 (`StreamingResponse`, `SSEResponse`)
+- [x] 파일 업로드 (`UploadedFile`, `parse_multipart`)
+- [x] 스트리밍 응답 (`StreamingResponse`, `SSEResponse`, `FileResponse`)
+- [x] `Authentication[T]` - 인증 정보 추출, `AuthenticationInfo[T]`
+- [x] `@Authenticated` - 인증 필수 데코레이터
 
 ```python
 @Controller
@@ -84,11 +86,14 @@ class UserController:
 
 ParameterResolver는 상속이 가능한 구조로, WebSocket세션과 같은 추상 구현체를 가져서 호환이 되도록 만들어줘
 
-### 2.4 에러 처리
+### 2.4 에러 처리 ✅
 
-- [ ] `@ExceptionHandler` - 예외 핸들러
-- [ ] 전역 에러 핸들링
-- [ ] HTTP 상태 코드 매핑
+- [x] `@ExceptionHandler` - 예외 핸들러 데코레이터
+- [x] `ExceptionHandlerRegistry` - 예외 핸들러 관리
+- [x] 전역 에러 핸들링 (`ErrorHandlerMiddleware`)
+- [x] HTTP 상태 코드 매핑 (`HTTPException`, `ValidationError`, `NotFoundError`, 등)
+- [x] `CORSMiddleware` - CORS 처리
+- [x] `json_error_response` - JSON 에러 응답 유틸리티
 
 ---
 

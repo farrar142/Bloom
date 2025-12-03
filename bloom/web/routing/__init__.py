@@ -19,6 +19,8 @@ from .params import (
     RequestField,
     Header,
     Cookie,
+    UploadedFile,
+    Authentication,
 )
 from .resolver import (
     ParameterResolver,
@@ -28,6 +30,8 @@ from .resolver import (
     HeaderResolver,
     CookieResolver,
     RequestResolver,
+    UploadedFileResolver,
+    AuthenticationResolver,
     ResolverRegistry,
 )
 
@@ -53,6 +57,8 @@ __all__ = [
     "RequestField",
     "Header",
     "Cookie",
+    "UploadedFile",
+    "Authentication",
     # Resolver
     "ParameterResolver",
     "PathVariableResolver",
@@ -61,5 +67,7 @@ __all__ = [
     "HeaderResolver",
     "CookieResolver",
     "RequestResolver",
+    "UploadedFileResolver",
+    "AuthenticationResolver",
     "ResolverRegistry",
 ]

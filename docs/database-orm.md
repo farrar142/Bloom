@@ -972,27 +972,27 @@ from bloom.db.backends import SQLiteBackend
 @Component
 class DatabaseConfig:
     """데이터베이스 설정 및 Session 팩토리"""
-    
+
     def __init__(self):
         self._backend = SQLiteBackend("app.sqlite3")
         self._factory = SessionFactory(self._backend)
-    
+
     @Factory
     @Scope(Scope.SINGLETON)
     def session_factory(self) -> SessionFactory:
         """SessionFactory는 앱 전체에서 공유"""
         return self._factory
-    
+
     @Factory
     @Scope(Scope.REQUEST)
     def session(self) -> Session:
         """Session은 요청마다 생성
-        
+
         Session은 AutoClosable을 구현하므로
         요청 종료 시 자동으로 close()가 호출됩니다.
         """
         return self._factory.create()
-    
+
     @Factory
     @Scope(Scope.REQUEST)
     async def async_session(self) -> AsyncSession:
@@ -1009,14 +1009,14 @@ from bloom.db import CrudRepository, Session
 
 class UserRepository(CrudRepository[User, int]):
     """UserRepository - @Component로 자동 등록됨"""
-    
+
     # Session은 DI로 주입됨 (REQUEST 스코프)
     session: Session
-    
+
     def find_by_email(self, email: str) -> User | None:
         # self.session은 현재 요청의 세션
         return self.session.query(User).filter(User.email == email).first()
-    
+
     def find_active_users(self) -> list[User]:
         return (
             self.session.query(User)
@@ -1035,10 +1035,10 @@ from bloom.core import Component
 class UserService:
     session: Session  # REQUEST 스코프로 주입
     user_repo: UserRepository
-    
+
     def create_user(self, name: str, email: str) -> User:
         """사용자 생성
-        
+
         Session이 REQUEST 스코프이므로:
         - 같은 요청 내 모든 Repository가 같은 Session 공유
         - 요청 종료 시 자동으로 commit/rollback
@@ -1047,7 +1047,7 @@ class UserService:
         existing = self.user_repo.find_by_email(email)
         if existing:
             raise ValueError(f"Email already exists: {email}")
-        
+
         # 생성 및 저장
         user = create(User, name=name, email=email)
         self.session.add(user)
@@ -1063,11 +1063,11 @@ from bloom.web import Controller, GetMapping, PostMapping, RequestBody
 @Controller
 class UserController:
     user_service: UserService
-    
+
     @GetMapping("/users/{user_id}")
     async def get_user(self, user_id: int) -> User | None:
         return self.user_service.get_user(user_id)
-    
+
     @PostMapping("/users")
     async def create_user(self, body: RequestBody[CreateUserRequest]) -> User:
         return self.user_service.create_user(
