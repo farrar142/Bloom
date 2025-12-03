@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Generic, TypeVar, Self, TYPE_CHECKING, Callable, Iterator
+from typing import (
+    Any,
+    Generic,
+    TypeVar,
+    Self,
+    TYPE_CHECKING,
+    Callable,
+    Iterator,
+    overload,
+)
 from copy import copy
 
 from .expressions import (
     Condition,
     ConditionGroup,
+    ConditionLike,
     OrderBy,
     FieldExpression,
     AggregateFunction,
@@ -29,11 +39,118 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
-# Filter 조건으로 사용 가능한 타입들
-FilterCondition = Condition | ConditionGroup | SubqueryCondition | SubqueryInCondition
+# Filter 조건으로 사용 가능한 타입들 (JoinCondition은 상관 서브쿼리에서 사용)
+FilterCondition = (
+    Condition | ConditionGroup | JoinCondition | SubqueryCondition | SubqueryInCondition
+)
 
-# JOIN ON 조건으로 사용 가능한 타입들
-JoinOnCondition = Condition | ConditionGroup | JoinCondition
+# JOIN ON 조건으로 사용 가능한 타입들 (ConditionLike와 동일)
+JoinOnCondition = ConditionLike
+
+
+# =============================================================================
+# JoinBuilder - QueryDSL-style JOIN 체이닝
+# =============================================================================
+
+
+class JoinBuilder(Generic[T]):
+    """QueryDSL-style JOIN 빌더
+
+    Query.join()이 반환하는 중간 객체로, .on() 메서드로 조건을 지정합니다.
+
+    Examples:
+        # 기본 JOIN
+        query = (
+            Query(Order)
+            .join(User)
+            .on(Order.user_id, User.id)
+            .select(Order.id, Order.amount)
+        )
+
+        # 복합 조건
+        query = (
+            Query(Order)
+            .join(User)
+            .on((Order.user_id == User.id) & (User.status == "active"))
+            .filter(Order.amount > 100)
+        )
+    """
+
+    __slots__ = ("_query", "_target", "_join_type", "_alias")
+
+    def __init__(
+        self,
+        query: "Query[T]",
+        target: type[Any],
+        join_type: str = JoinType.INNER,
+        alias: str | None = None,
+    ):
+        self._query = query
+        self._target = target
+        self._join_type = join_type
+        self._alias = alias
+
+    @overload
+    def on(
+        self,
+        left: FieldExpression[Any],
+        right: FieldExpression[Any],
+        /,
+    ) -> "Query[T]": ...
+
+    @overload
+    def on(
+        self,
+        condition: JoinOnCondition,
+        /,
+    ) -> "Query[T]": ...
+
+    def on(
+        self,
+        left_or_condition: FieldExpression[Any] | JoinOnCondition,
+        right: FieldExpression[Any] | None = None,
+        /,
+    ) -> "Query[T]":
+        """JOIN ON 조건 지정
+
+        Args:
+            left_or_condition: 왼쪽 필드 또는 조건 (Condition/JoinCondition/ConditionGroup)
+            right: 오른쪽 필드 (두 필드 비교 시)
+
+        Examples:
+            # 두 필드 비교 (권장)
+            .join(User).on(Order.user_id, User.id)
+
+            # Condition 직접 전달 (복합 조건)
+            .join(User).on((Order.user_id == User.id) & (User.status == "active"))
+        """
+        condition: JoinOnCondition
+        if right is not None:
+            # 두 필드가 전달된 경우: .on(Order.user_id, User.id)
+            left_field = left_or_condition
+            if not isinstance(left_field, FieldExpression):
+                raise TypeError(
+                    "First argument must be a FieldExpression when using two-argument form"
+                )
+            condition = JoinCondition(
+                left_field=left_field.name,
+                right_field=right.name,
+                operator="=",
+                left_table=left_field.table_name,
+                right_table=right.table_name,
+            )
+        else:
+            # 단일 조건이 전달된 경우: .on(Order.user_id == User.id)
+            if isinstance(left_or_condition, FieldExpression):
+                raise TypeError(
+                    "Single FieldExpression cannot be used as JOIN condition. "
+                    "Use .on(left_field, right_field) or .on(condition)"
+                )
+            condition = left_or_condition
+
+        return self._query._add_join(
+            self._target, condition, self._join_type, self._alias
+        )
 
 
 # =============================================================================
@@ -228,7 +345,9 @@ class Query(Generic[T]):
     _session: Session | None = None
     _async_session: AsyncSession | None = None
     _aggregates: dict[str, AggregateFunction] = field(default_factory=dict)
-    _group_by: list[str] = field(default_factory=list)
+    _group_by: list[tuple[str, str | None]] = field(
+        default_factory=list
+    )  # (column, table_name)
     _having: list[HavingCondition | HavingConditionGroup] = field(default_factory=list)
     _joins: list[JoinClause] = field(default_factory=list)
     _subquery_params: dict[str, Any] = field(default_factory=dict)
@@ -367,13 +486,13 @@ class Query(Generic[T]):
             query.group_by("user_id", "status")
         """
         new_query = copy(self)
-        col_names: list[str] = []
+        col_info: list[tuple[str, str | None]] = []
         for c in columns:
             if isinstance(c, str):
-                col_names.append(c)
+                col_info.append((c, None))
             elif isinstance(c, FieldExpression):
-                col_names.append(c.name)
-        new_query._group_by = [*self._group_by, *col_names]
+                col_info.append((c.name, c.table_name))
+        new_query._group_by = [*self._group_by, *col_info]
         return new_query
 
     def having(self, *conditions: HavingCondition | HavingConditionGroup) -> Self:
@@ -397,81 +516,87 @@ class Query(Generic[T]):
         return new_query
 
     # -------------------------------------------------------------------------
-    # JOIN 메서드
+    # JOIN 메서드 (QueryDSL-style)
     # -------------------------------------------------------------------------
 
     def join(
         self,
         target: type[Any],
-        condition: JoinOnCondition,
         alias: str | None = None,
-    ) -> Self:
-        """INNER JOIN 추가
+    ) -> JoinBuilder[T]:
+        """INNER JOIN 추가 (QueryDSL-style)
 
         Examples:
-            from bloom.db import on
-
-            # 방법 1: on() 헬퍼 사용
+            # 기본 JOIN
             query = (
                 Query(Order)
-                .join(User, on(Order.user_id, User.id))
+                .join(User).on(Order.user_id, User.id)
+                .select(Order.id, Order.amount)
             )
 
-            # 방법 2: 일반 Condition 사용 (값 비교용)
+            # 복합 조건
             query = (
                 Query(Order)
-                .join(User, Order.user_id == User.id)
+                .join(User).on((Order.user_id == User.id) & (User.status == "active"))
+                .filter(Order.amount > 100)
+            )
+
+            # 별칭 사용
+            query = (
+                Query(Order)
+                .join(User, alias="buyer").on(Order.user_id, User.id)
+                .select(Order.id, User.name)
             )
         """
-        return self._add_join(target, condition, JoinType.INNER, alias)
+        return JoinBuilder(self, target, JoinType.INNER, alias)
 
     def left_join(
         self,
         target: type[Any],
-        condition: JoinOnCondition,
         alias: str | None = None,
-    ) -> Self:
-        """LEFT JOIN 추가
+    ) -> JoinBuilder[T]:
+        """LEFT JOIN 추가 (QueryDSL-style)
 
         Examples:
             query = (
                 Query(User)
-                .left_join(Order, on(User.id, Order.user_id))
+                .left_join(Order).on(User.id, Order.user_id)
+                .select(User.name, Order.id)
             )
         """
-        return self._add_join(target, condition, JoinType.LEFT, alias)
+        return JoinBuilder(self, target, JoinType.LEFT, alias)
 
     def right_join(
         self,
         target: type[Any],
-        condition: JoinOnCondition,
         alias: str | None = None,
-    ) -> Self:
-        """RIGHT JOIN 추가
+    ) -> JoinBuilder[T]:
+        """RIGHT JOIN 추가 (QueryDSL-style)
 
         Examples:
             query = (
                 Query(Order)
-                .right_join(User, on(Order.user_id, User.id))
+                .right_join(User).on(Order.user_id, User.id)
+                .filter(User.status == "active")
             )
         """
-        return self._add_join(target, condition, JoinType.RIGHT, alias)
+        return JoinBuilder(self, target, JoinType.RIGHT, alias)
 
     def full_join(
         self,
         target: type[Any],
-        condition: JoinOnCondition,
         alias: str | None = None,
-    ) -> Self:
-        """FULL OUTER JOIN 추가
+    ) -> JoinBuilder[T]:
+        """FULL OUTER JOIN 추가 (QueryDSL-style)
 
         Examples:
             query = (
                 Query(User)
-                .full_join(Order, on(User.id, Order.user_id))
+                .full_join(Order).on(User.id, Order.user_id)
+                .select(User.name, Order.id)
             )
         """
-        return self._add_join(target, condition, JoinType.FULL, alias)
+        return JoinBuilder(self, target, JoinType.FULL, alias)
 
     def cross_join(self, target: type[Any], alias: str | None = None) -> Self:
         """CROSS JOIN 추가
@@ -526,12 +651,7 @@ class Query(Generic[T]):
 
         for i, cond in enumerate(self._conditions):
             prefix = f"w_{i}"
-            if isinstance(cond, (SubqueryCondition, SubqueryInCondition)):
-                sql, sub_params = cond.to_sql(prefix)
-            elif isinstance(cond, (Condition, ConditionGroup)):
-                sql, sub_params = cond.to_sql(prefix)
-            else:
-                sql, sub_params = cond.to_sql(prefix)
+            sql, sub_params = cond.to_sql(prefix)
             parts.append(sql)
             params.update(sub_params)
 
@@ -562,7 +682,13 @@ class Query(Generic[T]):
 
     def _build_group_by(self) -> list[str]:
         """GROUP BY 절 생성"""
-        return [f'"{col}"' for col in self._group_by]
+        result = []
+        for col, table in self._group_by:
+            if table:
+                result.append(f'"{table}"."{col}"')
+            else:
+                result.append(f'"{col}"')
+        return result
 
     def _build_having(self) -> tuple[str | None, dict[str, Any]]:
         """HAVING 절 생성"""
@@ -594,19 +720,33 @@ class Query(Generic[T]):
         having_sql, having_params = self._build_having()
         params.update(having_params)
 
+        # JOIN이 있는 경우 테이블 접두사 필요
+        has_joins = bool(self._joins)
+        table_name = self._meta.table_name
+
         # SELECT 컬럼 결정
         if self._aggregates:
             # 집계 쿼리: GROUP BY 컬럼 + 집계 함수
             select_parts: list[str] = []
             if self._group_by:
-                select_parts.extend(f'"{col}"' for col in self._group_by)
+                for col, tbl in self._group_by:
+                    if tbl:
+                        select_parts.append(f'"{tbl}"."{col}"')
+                    elif has_joins:
+                        select_parts.append(f'"{table_name}"."{col}"')
+                    else:
+                        select_parts.append(f'"{col}"')
             for agg in self._aggregates.values():
                 select_parts.append(agg.to_sql())
             cols_str = ", ".join(select_parts) if select_parts else "*"
         else:
             # 일반 쿼리
             columns = self._select_columns or self._meta.column_names
-            cols_str = ", ".join(f'"{c}"' for c in columns)
+            if has_joins:
+                # JOIN이 있으면 테이블 접두사 추가
+                cols_str = ", ".join(f'"{table_name}"."{c}"' for c in columns)
+            else:
+                cols_str = ", ".join(f'"{c}"' for c in columns)
 
         sql = f'SELECT {cols_str} FROM "{self._meta.table_name}"'
 

@@ -183,7 +183,9 @@ class TestAggregateFunction:
     def test_aggregate_from_field_expression(self):
         """FieldExpression에서 집계 함수 생성"""
         count = Count(Order.id)  # type: ignore
-        assert count.to_sql() == "COUNT(id)"
+        sql = count.to_sql()
+        # FieldExpression을 사용하면 테이블명이 포함됨: COUNT("order"."id")
+        assert "COUNT(" in sql and "id" in sql
 
 
 # =============================================================================

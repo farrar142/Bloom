@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field as dataclass_field
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, Union, overload
 
 if TYPE_CHECKING:
     from .columns import Column
+
+# =============================================================================
+# Type Aliases (Forward References)
+# =============================================================================
+
+# ConditionLike: Condition, ConditionGroup, JoinCondition 모두 포함
+# 실제 정의는 클래스 정의 후 하단에서 이루어짐
+ConditionLike = Union[
+    "Condition", "ConditionGroup", "JoinCondition"
+]
 
 
 # =============================================================================
@@ -18,19 +28,22 @@ class AggregateFunction:
     """집계 함수 기본 클래스
 
     Examples:
-        Count(User.id)            →  COUNT(id)
-        Sum(Order.amount)         →  SUM(amount)
-        Avg(Product.price)        →  AVG(price)
-        Count(User.id).as_("cnt") →  COUNT(id) AS cnt
+        Count(User.id)            →  COUNT("users"."id")
+        Sum(Order.amount)         →  SUM("orders"."amount")
+        Avg(Product.price)        →  AVG("products"."price")
+        Count(User.id).as_("cnt") →  COUNT("users"."id") AS cnt
     """
 
     field: str | FieldExpression[Any]
     alias: str | None = None
     _func_name: str = dataclass_field(default="", init=False)
+    _table_name: str | None = dataclass_field(default=None, init=False)
 
     def __post_init__(self) -> None:
-        # FieldExpression에서 field name 추출
+        # FieldExpression에서 field name과 table_name 추출
         if hasattr(self.field, "name"):
+            if hasattr(self.field, "table_name"):
+                self._table_name = self.field.table_name  # type: ignore[union-attr]
             self.field = self.field.name  # type: ignore[assignment]
 
     def as_(self, alias: str) -> AggregateFunction:
@@ -38,9 +51,16 @@ class AggregateFunction:
         self.alias = alias
         return self
 
+    def _get_field_ref(self) -> str:
+        """테이블 접두사가 있으면 포함한 필드 참조 반환"""
+        if self._table_name:
+            return f'"{self._table_name}"."{self.field}"'
+        return str(self.field)
+
     def to_sql(self) -> str:
         """SQL 표현식 생성"""
-        sql = f"{self._func_name}({self.field})"
+        field_ref = self._get_field_ref()
+        sql = f"{self._func_name}({field_ref})"
         if self.alias:
             sql = f"{sql} AS {self.alias}"
         return sql
@@ -233,23 +253,32 @@ class Condition:
     """쿼리 조건 - SQL WHERE 절 표현
 
     Examples:
-        User.name == "alice"  →  Condition("name", "=", "alice")
-        User.age > 18         →  Condition("age", ">", 18)
+        User.name == "alice"  →  Condition("name", "=", "alice", table_name="users")
+        User.age > 18         →  Condition("age", ">", 18, table_name="users")
     """
 
     field: str
     operator: str
     value: Any
+    table_name: str | None = None  # JOIN 시 테이블 접두사
 
-    def __and__(self, other: Condition | ConditionGroup) -> ConditionGroup:
+    def __and__(self, other: ConditionLike) -> ConditionGroup:
         return ConditionGroup("AND", [self, other])
 
-    def __or__(self, other: Condition | ConditionGroup) -> ConditionGroup:
+    def __or__(self, other: ConditionLike) -> ConditionGroup:
         return ConditionGroup("OR", [self, other])
 
     def __invert__(self) -> Condition:
         """NOT 연산"""
-        return Condition(self.field, f"NOT {self.operator}", self.value)
+        return Condition(
+            self.field, f"NOT {self.operator}", self.value, self.table_name
+        )
+
+    def _get_field_ref(self) -> str:
+        """테이블 접두사가 있으면 포함한 필드 참조 반환"""
+        if self.table_name:
+            return f'"{self.table_name}"."{self.field}"'
+        return self.field  # 기존 동작 유지: 테이블명 없으면 필드명만
 
     def to_sql(self, param_prefix: str = "p") -> tuple[str, dict[str, Any]]:
         """SQL 조건절과 파라미터 생성
@@ -258,9 +287,10 @@ class Condition:
             (sql_string, params_dict)
         """
         param_name = f"{param_prefix}_{self.field}"
+        field_ref = self._get_field_ref()
 
         if self.operator in ("IS", "IS NOT"):
-            return f"{self.field} {self.operator} NULL", {}
+            return f"{field_ref} {self.operator} NULL", {}
 
         if self.operator == "IN":
             if not self.value:
@@ -269,7 +299,7 @@ class Condition:
                 f":{param_name}_{i}" for i in range(len(self.value))
             )
             params = {f"{param_name}_{i}": v for i, v in enumerate(self.value)}
-            return f"{self.field} IN ({placeholders})", params
+            return f"{field_ref} IN ({placeholders})", params
 
         if self.operator == "NOT IN":
             if not self.value:
@@ -278,16 +308,16 @@ class Condition:
                 f":{param_name}_{i}" for i in range(len(self.value))
             )
             params = {f"{param_name}_{i}": v for i, v in enumerate(self.value)}
-            return f"{self.field} NOT IN ({placeholders})", params
+            return f"{field_ref} NOT IN ({placeholders})", params
 
         if self.operator == "BETWEEN":
             low, high = self.value
             return (
-                f"{self.field} BETWEEN :{param_name}_low AND :{param_name}_high",
+                f"{field_ref} BETWEEN :{param_name}_low AND :{param_name}_high",
                 {f"{param_name}_low": low, f"{param_name}_high": high},
             )
 
-        return f"{self.field} {self.operator} :{param_name}", {param_name: self.value}
+        return f"{field_ref} {self.operator} :{param_name}", {param_name: self.value}
 
 
 @dataclass
@@ -300,14 +330,14 @@ class ConditionGroup:
     """
 
     operator: str  # "AND" or "OR"
-    conditions: list[Condition | ConditionGroup] = dataclass_field(default_factory=list)
+    conditions: list[ConditionLike] = dataclass_field(default_factory=list)
 
-    def __and__(self, other: Condition | ConditionGroup) -> ConditionGroup:
+    def __and__(self, other: ConditionLike) -> ConditionGroup:
         if self.operator == "AND":
             return ConditionGroup("AND", [*self.conditions, other])
         return ConditionGroup("AND", [self, other])
 
-    def __or__(self, other: Condition | ConditionGroup) -> ConditionGroup:
+    def __or__(self, other: ConditionLike) -> ConditionGroup:
         if self.operator == "OR":
             return ConditionGroup("OR", [*self.conditions, other])
         return ConditionGroup("OR", [self, other])
@@ -315,7 +345,7 @@ class ConditionGroup:
     def __invert__(self) -> ConditionGroup:
         """NOT 연산 - De Morgan's law 적용"""
         inverted_op = "OR" if self.operator == "AND" else "AND"
-        inverted_conditions = [~c for c in self.conditions]
+        inverted_conditions = [~c for c in self.conditions]  # type: ignore
         return ConditionGroup(inverted_op, inverted_conditions)
 
     def to_sql(
@@ -376,37 +406,129 @@ class FieldExpression[T]:
         User.name.asc()   →  OrderBy("name", "ASC")
     """
 
-    __slots__ = ("name", "column")
+    __slots__ = ("name", "column", "_owner_class")
 
-    def __init__(self, name: str, column: Column[T]):
+    def __init__(self, name: str, column: Column[T], owner_class: type | None = None):
         self.name = name
         self.column = column
+        self._owner_class = owner_class
+
+    @property
+    def table_name(self) -> str | None:
+        """테이블명 반환 (Entity 메타에서 추출)"""
+        if self._owner_class is None:
+            return None
+        # EntityMeta에서 테이블명 가져오기
+        meta = getattr(self._owner_class, "__bloom_meta__", None)
+        if meta is not None:
+            return meta.table_name
+        return None
 
     # -------------------------------------------------------------------------
     # 비교 연산자
     # -------------------------------------------------------------------------
 
-    def __eq__(self, other: T | None) -> Condition:  # type: ignore[override]
+    @overload
+    def __eq__(self, other: "FieldExpression[Any]") -> "JoinCondition": ...  # type: ignore[overload-overlap]
+    @overload
+    def __eq__(self, other: T | None) -> "Condition": ...
+
+    def __eq__(self, other: T | "FieldExpression[Any]" | None) -> "Condition | JoinCondition":  # type: ignore[override]
+        # FieldExpression 간 비교 (JOIN ON 조건)
+        if isinstance(other, FieldExpression):
+            return JoinCondition(
+                left_field=self.name,
+                right_field=other.name,
+                operator="=",
+                left_table=self.table_name,
+                right_table=other.table_name,
+            )
         if other is None:
-            return Condition(self.name, "IS", None)
-        return Condition(self.name, "=", other)
+            return Condition(self.name, "IS", None, self.table_name)
+        return Condition(self.name, "=", other, self.table_name)
 
-    def __ne__(self, other: T | None) -> Condition:  # type: ignore[override]
+    @overload
+    def __ne__(self, other: "FieldExpression[Any]") -> "JoinCondition": ...  # type: ignore[overload-overlap]
+    @overload
+    def __ne__(self, other: T | None) -> "Condition": ...
+
+    def __ne__(self, other: T | "FieldExpression[Any]" | None) -> "Condition | JoinCondition":  # type: ignore[override]
+        # FieldExpression 간 비교 (JOIN ON 조건)
+        if isinstance(other, FieldExpression):
+            return JoinCondition(
+                left_field=self.name,
+                right_field=other.name,
+                operator="!=",
+                left_table=self.table_name,
+                right_table=other.table_name,
+            )
         if other is None:
-            return Condition(self.name, "IS NOT", None)
-        return Condition(self.name, "!=", other)
+            return Condition(self.name, "IS NOT", None, self.table_name)
+        return Condition(self.name, "!=", other, self.table_name)
 
-    def __gt__(self, other: T) -> Condition:
-        return Condition(self.name, ">", other)
+    @overload
+    def __gt__(self, other: "FieldExpression[Any]") -> "JoinCondition": ...  # type: ignore[overload-overlap]
+    @overload
+    def __gt__(self, other: T) -> "Condition": ...
 
-    def __ge__(self, other: T) -> Condition:
-        return Condition(self.name, ">=", other)
+    def __gt__(self, other: T | "FieldExpression[Any]") -> "Condition | JoinCondition":
+        if isinstance(other, FieldExpression):
+            return JoinCondition(
+                left_field=self.name,
+                right_field=other.name,
+                operator=">",
+                left_table=self.table_name,
+                right_table=other.table_name,
+            )
+        return Condition(self.name, ">", other, self.table_name)
 
-    def __lt__(self, other: T) -> Condition:
-        return Condition(self.name, "<", other)
+    @overload
+    def __ge__(self, other: "FieldExpression[Any]") -> "JoinCondition": ...  # type: ignore[overload-overlap]
+    @overload
+    def __ge__(self, other: T) -> "Condition": ...
 
-    def __le__(self, other: T) -> Condition:
-        return Condition(self.name, "<=", other)
+    def __ge__(self, other: T | "FieldExpression[Any]") -> "Condition | JoinCondition":
+        if isinstance(other, FieldExpression):
+            return JoinCondition(
+                left_field=self.name,
+                right_field=other.name,
+                operator=">=",
+                left_table=self.table_name,
+                right_table=other.table_name,
+            )
+        return Condition(self.name, ">=", other, self.table_name)
+
+    @overload
+    def __lt__(self, other: "FieldExpression[Any]") -> "JoinCondition": ...  # type: ignore[overload-overlap]
+    @overload
+    def __lt__(self, other: T) -> "Condition": ...
+
+    def __lt__(self, other: T | "FieldExpression[Any]") -> "Condition | JoinCondition":
+        if isinstance(other, FieldExpression):
+            return JoinCondition(
+                left_field=self.name,
+                right_field=other.name,
+                operator="<",
+                left_table=self.table_name,
+                right_table=other.table_name,
+            )
+        return Condition(self.name, "<", other, self.table_name)
+
+    @overload
+    def __le__(self, other: "FieldExpression[Any]") -> "JoinCondition": ...  # type: ignore[overload-overlap]
+    @overload
+    def __le__(self, other: T) -> "Condition": ...
+
+    def __le__(self, other: T | "FieldExpression[Any]") -> "Condition | JoinCondition":
+        if isinstance(other, FieldExpression):
+            return JoinCondition(
+                left_field=self.name,
+                right_field=other.name,
+                operator="<=",
+                left_table=self.table_name,
+                right_table=other.table_name,
+            )
+        return Condition(self.name, "<=", other, self.table_name)
 
     # -------------------------------------------------------------------------
     # 문자열 연산
@@ -414,23 +536,23 @@ class FieldExpression[T]:
 
     def like(self, pattern: str) -> Condition:
         """LIKE 패턴 매칭"""
-        return Condition(self.name, "LIKE", pattern)
+        return Condition(self.name, "LIKE", pattern, self.table_name)
 
     def ilike(self, pattern: str) -> Condition:
         """대소문자 무시 LIKE (PostgreSQL)"""
-        return Condition(self.name, "ILIKE", pattern)
+        return Condition(self.name, "ILIKE", pattern, self.table_name)
 
     def startswith(self, prefix: str) -> Condition:
         """문자열 시작 매칭"""
-        return Condition(self.name, "LIKE", f"{prefix}%")
+        return Condition(self.name, "LIKE", f"{prefix}%", self.table_name)
 
     def endswith(self, suffix: str) -> Condition:
         """문자열 끝 매칭"""
-        return Condition(self.name, "LIKE", f"%{suffix}")
+        return Condition(self.name, "LIKE", f"%{suffix}", self.table_name)
 
     def contains(self, substring: str) -> Condition:
         """문자열 포함 매칭"""
-        return Condition(self.name, "LIKE", f"%{substring}%")
+        return Condition(self.name, "LIKE", f"%{substring}%", self.table_name)
 
     # -------------------------------------------------------------------------
     # 컬렉션 연산
@@ -444,8 +566,10 @@ class FieldExpression[T]:
             User.id.in_(Query(Order).select(Order.user_id).subquery())
         """
         if isinstance(values, Subquery):
-            return SubqueryInCondition(self.name, values, negate=False)
-        return Condition(self.name, "IN", values)
+            return SubqueryInCondition(
+                self.name, values, negate=False, table_name=self.table_name
+            )
+        return Condition(self.name, "IN", values, self.table_name)
 
     def not_in(self, values: list[T] | Subquery) -> "Condition | SubqueryInCondition":
         """NOT IN 연산 (리스트 또는 서브쿼리)
@@ -455,12 +579,14 @@ class FieldExpression[T]:
             User.id.not_in(Query(Order).select(Order.user_id).subquery())
         """
         if isinstance(values, Subquery):
-            return SubqueryInCondition(self.name, values, negate=True)
-        return Condition(self.name, "NOT IN", values)
+            return SubqueryInCondition(
+                self.name, values, negate=True, table_name=self.table_name
+            )
+        return Condition(self.name, "NOT IN", values, self.table_name)
 
     def between(self, low: T, high: T) -> Condition:
         """BETWEEN 연산"""
-        return Condition(self.name, "BETWEEN", (low, high))
+        return Condition(self.name, "BETWEEN", (low, high), self.table_name)
 
     # -------------------------------------------------------------------------
     # NULL 체크
@@ -468,11 +594,11 @@ class FieldExpression[T]:
 
     def is_null(self) -> Condition:
         """IS NULL 체크"""
-        return Condition(self.name, "IS", None)
+        return Condition(self.name, "IS", None, self.table_name)
 
     def is_not_null(self) -> Condition:
         """IS NOT NULL 체크"""
-        return Condition(self.name, "IS NOT", None)
+        return Condition(self.name, "IS NOT", None, self.table_name)
 
     # -------------------------------------------------------------------------
     # 정렬
@@ -582,6 +708,7 @@ class SubqueryInCondition:
     field: str
     subquery: Subquery
     negate: bool = False
+    table_name: str | None = None  # JOIN 시 테이블 접두사
 
     def __and__(
         self, other: Condition | ConditionGroup | "SubqueryInCondition"
@@ -593,13 +720,20 @@ class SubqueryInCondition:
     ) -> ConditionGroup:
         return ConditionGroup("OR", [self, other])  # type: ignore
 
+    def _get_field_ref(self) -> str:
+        """테이블 접두사가 있으면 포함한 필드 참조 반환"""
+        if self.table_name:
+            return f'"{self.table_name}"."{self.field}"'
+        return f'"{self.field}"'  # 서브쿼리는 항상 따옴표 필요
+
     def to_sql(
         self, param_prefix: str = "sq", depth: int = 0
     ) -> tuple[str, dict[str, Any]]:
         """SQL 생성"""
         subquery_sql, params = self.subquery.to_sql(f"{param_prefix}_{depth}")
         op = "NOT IN" if self.negate else "IN"
-        return f'"{self.field}" {op} {subquery_sql}', params
+        field_ref = self._get_field_ref()
+        return f"{field_ref} {op} {subquery_sql}", params
 
 
 @dataclass
@@ -1213,6 +1347,32 @@ class JoinClause:
     join_type: str = JoinType.INNER  # JOIN 타입
     alias: str | None = None  # 테이블 별칭
 
+    def _replace_table_in_condition(
+        self, cond: Any, original_table: str, new_table: str
+    ) -> Any:
+        """조건 내의 테이블명을 별칭으로 교체"""
+        from copy import copy
+
+        if isinstance(cond, JoinCondition):
+            new_cond = copy(cond)
+            if new_cond.left_table == original_table:
+                new_cond.left_table = new_table
+            if new_cond.right_table == original_table:
+                new_cond.right_table = new_table
+            return new_cond
+        elif isinstance(cond, Condition):
+            new_cond = copy(cond)
+            if new_cond.table_name == original_table:
+                new_cond.table_name = new_table
+            return new_cond
+        elif isinstance(cond, ConditionGroup):
+            new_conditions = [
+                self._replace_table_in_condition(c, original_table, new_table)
+                for c in cond.conditions
+            ]
+            return ConditionGroup(cond.operator, new_conditions)
+        return cond
+
     def to_sql(self, param_prefix: str = "j") -> tuple[str, dict[str, Any]]:
         """SQL JOIN 절 생성"""
         from .entity import get_entity_meta
@@ -1230,7 +1390,14 @@ class JoinClause:
         if self.join_type == JoinType.CROSS or self.condition is None:
             return f"{self.join_type} {table_ref}", {}
 
-        cond_sql, params = self.condition.to_sql(param_prefix)
+        # 별칭이 있으면 조건에서 테이블명을 별칭으로 교체
+        condition = self.condition
+        if self.alias:
+            condition = self._replace_table_in_condition(
+                condition, table_name, self.alias
+            )
+
+        cond_sql, params = condition.to_sql(param_prefix)
         return f"{self.join_type} {table_ref} ON {cond_sql}", params
 
 
@@ -1249,13 +1416,31 @@ class JoinCondition:
     right_table: str | None = None
 
     def __post_init__(self) -> None:
-        if hasattr(self.left_field, "name"):
-            self.left_field = self.left_field.name  # type: ignore
-        if hasattr(self.right_field, "name"):
-            self.right_field = self.right_field.name  # type: ignore
+        # FieldExpression에서 테이블명과 필드명 추출
+        if isinstance(self.left_field, FieldExpression):
+            if self.left_table is None:
+                self.left_table = self.left_field.table_name
+            self.left_field = self.left_field.name
+        if isinstance(self.right_field, FieldExpression):
+            if self.right_table is None:
+                self.right_table = self.right_field.table_name
+            self.right_field = self.right_field.name
 
-    def to_sql(self, param_prefix: str = "j") -> tuple[str, dict[str, Any]]:
-        """SQL 조건 생성 (파라미터 없이 컬럼 간 비교)"""
+    def __and__(self, other: ConditionLike) -> ConditionGroup:
+        """AND 연산으로 ConditionGroup 생성"""
+        return ConditionGroup("AND", [self, other])
+
+    def __or__(self, other: ConditionLike) -> ConditionGroup:
+        """OR 연산으로 ConditionGroup 생성"""
+        return ConditionGroup("OR", [self, other])
+
+    def to_sql(
+        self, param_prefix: str = "j", depth: int = 0
+    ) -> tuple[str, dict[str, Any]]:
+        """SQL 조건 생성 (파라미터 없이 컬럼 간 비교)
+
+        depth 인자는 ConditionGroup과의 호환성을 위해 존재하지만 사용되지 않습니다.
+        """
         left = (
             f'"{self.left_table}"."{self.left_field}"'
             if self.left_table

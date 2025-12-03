@@ -262,6 +262,7 @@ class Column[T]:
 
     def __set_name__(self, owner: type, name: str) -> None:
         self.field_name = name
+        self._owner_class = owner  # owner 클래스 저장
 
         # 엔티티 클래스에 컬럼 메타데이터 등록
         if not hasattr(owner, "__bloom_columns__"):
@@ -281,7 +282,9 @@ class Column[T]:
     def __get__(self, obj: object | None, objtype: type) -> FieldExpression[T] | T:
         if obj is None:
             # 클래스 레벨 접근 → FieldExpression 반환 (쿼리용)
-            return FieldExpression[T](self.field_name, self)
+            # owner_class에서 테이블명 추출 (Entity 데코레이터로 설정됨)
+            owner_class = getattr(self, "_owner_class", None)
+            return FieldExpression[T](self.field_name, self, owner_class)
 
         # 인스턴스 레벨 접근 → 실제 값 반환
         if obj in self._values:

@@ -192,7 +192,7 @@ class TestJoin:
 
     def test_inner_join_basic(self, session):
         """기본 INNER JOIN 테스트"""
-        query = Query(JsOrder).join(JsUser, on(JsOrder.user_id, JsUser.id))
+        query = Query(JsOrder).join(JsUser).on(JsOrder.user_id, JsUser.id)
         sql, params = query.build()
 
         assert "INNER JOIN" in sql
@@ -201,7 +201,7 @@ class TestJoin:
 
     def test_left_join_basic(self, session):
         """LEFT JOIN 테스트"""
-        query = Query(JsUser).left_join(JsOrder, on(JsUser.id, JsOrder.user_id))
+        query = Query(JsUser).left_join(JsOrder).on(JsUser.id, JsOrder.user_id)
         sql, params = query.build()
 
         assert "LEFT JOIN" in sql
@@ -209,14 +209,14 @@ class TestJoin:
 
     def test_right_join_basic(self, session):
         """RIGHT JOIN 테스트"""
-        query = Query(JsOrder).right_join(JsUser, on(JsOrder.user_id, JsUser.id))
+        query = Query(JsOrder).right_join(JsUser).on(JsOrder.user_id, JsUser.id)
         sql, params = query.build()
 
         assert "RIGHT JOIN" in sql
 
     def test_full_join_basic(self, session):
         """FULL OUTER JOIN 테스트"""
-        query = Query(JsUser).full_join(JsOrder, on(JsUser.id, JsOrder.user_id))
+        query = Query(JsUser).full_join(JsOrder).on(JsUser.id, JsOrder.user_id)
         sql, params = query.build()
 
         assert "FULL OUTER JOIN" in sql
@@ -234,8 +234,10 @@ class TestJoin:
         """다중 JOIN 테스트"""
         query = (
             Query(JsOrderItem)
-            .join(JsOrder, on(JsOrderItem.order_id, JsOrder.id))
-            .join(JsProduct, on(JsOrderItem.product_id, JsProduct.id))
+            .join(JsOrder)
+            .on(JsOrderItem.order_id, JsOrder.id)
+            .join(JsProduct)
+            .on(JsOrderItem.product_id, JsProduct.id)
         )
         sql, params = query.build()
 
@@ -246,7 +248,8 @@ class TestJoin:
         """JOIN + WHERE 테스트"""
         query = (
             Query(JsOrder)
-            .join(JsUser, on(JsOrder.user_id, JsUser.id))
+            .join(JsUser)
+            .on(JsOrder.user_id, JsUser.id)
             .filter(JsOrder.status == "completed")
         )
         sql, params = query.build()
@@ -256,7 +259,7 @@ class TestJoin:
 
     def test_join_with_alias(self, session):
         """JOIN with alias 테스트"""
-        query = Query(JsOrder).join(JsUser, on(JsOrder.user_id, JsUser.id), alias="u")
+        query = Query(JsOrder).join(JsUser, alias="u").on(JsOrder.user_id, JsUser.id)
         sql, params = query.build()
 
         assert '"user" AS u' in sql
@@ -370,7 +373,8 @@ class TestJoinSubqueryCombined:
 
         query = (
             Query(JsOrder)
-            .join(JsUser, on(JsOrder.user_id, JsUser.id))
+            .join(JsUser)
+            .on(JsOrder.user_id, JsUser.id)
             .filter(JsOrder.id.in_(laptop_orders.subquery()))
         )
         sql, params = query.build()
@@ -465,9 +469,12 @@ class TestEdgeCases:
         """연쇄 JOIN 테스트"""
         query = (
             Query(JsOrderItem)
-            .join(JsOrder, on(JsOrderItem.order_id, JsOrder.id))
-            .join(JsUser, on(JsOrder.user_id, JsUser.id))
-            .join(JsProduct, on(JsOrderItem.product_id, JsProduct.id))
+            .join(JsOrder)
+            .on(JsOrderItem.order_id, JsOrder.id)
+            .join(JsUser)
+            .on(JsOrder.user_id, JsUser.id)
+            .join(JsProduct)
+            .on(JsOrderItem.product_id, JsProduct.id)
         )
         sql, params = query.build()
 

@@ -136,7 +136,9 @@ class TestShellCLI:
         """shell --help"""
         result = runner.invoke(cli, ["shell", "--help"])
         assert result.exit_code == 0
-        assert "shell" in result.output.lower() or "interactive" in result.output.lower()
+        assert (
+            "shell" in result.output.lower() or "interactive" in result.output.lower()
+        )
 
 
 class TestCheckCLI:
