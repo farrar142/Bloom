@@ -1012,7 +1012,7 @@ class TestFlatDecorator:
             **kwargs: Any,
         ) -> Any:
             import asyncio
-            
+
             last_error = None
             for attempt in range(max_attempts):
                 try:
@@ -1085,9 +1085,11 @@ class TestFlatDecorator:
         assert result == "done"
         # 파이썬 데코레이터 순서: First가 Second를 감쌈
         assert execution_order == [
-            "A:before", "B:before",
+            "A:before",
+            "B:before",
             "method",
-            "B:after", "A:after"
+            "B:after",
+            "A:after",
         ]
 
     @pytest.mark.asyncio
@@ -1158,6 +1160,7 @@ class TestFlatDecorator:
             **kwargs: Any,
         ) -> Any:
             import time
+
             start = time.time()
             result = func(*args, **kwargs)
             elapsed = time.time() - start
@@ -1209,7 +1212,9 @@ class TestDecoratorFactorySyncSupport:
                     result = func(*args, **kwargs)
                     call_log.append(f"[{level}] after: {result}")
                     return result
+
                 return wrapper
+
             return decorator
 
         Logged = DecoratorFactory(logged)
@@ -1238,7 +1243,9 @@ class TestDecoratorFactorySyncSupport:
                 def wrapper(*args, **kwargs):
                     call_log.append(f"[{name}] called")
                     return func(*args, **kwargs)
+
                 return wrapper
+
             return decorator
 
         Counter = DecoratorFactory(counter)
@@ -1304,7 +1311,9 @@ class TestInterceptorDIIntegration:
                     result = await func(*args, **kwargs)
                     log_service.log(f"[{level}] After {func.__name__}: {result}")
                     return result
+
                 return wrapper
+
             return decorator
 
         # Injectable 어노테이션으로 변환
@@ -1361,7 +1370,9 @@ class TestInterceptorDIIntegration:
                     # audit_service가 주입되지 않으면 NameError 발생
                     audit_service.audit(f"Action: {action}")
                     return await func(*args, **kwargs)
+
                 return wrapper
+
             return decorator
 
         Audited = InjectableDecoratorFactory(audited)
@@ -1405,7 +1416,9 @@ class TestInterceptorDIIntegration:
                     else:
                         call_log.append(f"{prefix} No logger - after")
                     return result
+
                 return wrapper
+
             return decorator
 
         OptionalLogging = InjectableDecoratorFactory(optional_logging)
@@ -1455,7 +1468,9 @@ class TestInterceptorDIIntegration:
                 async def wrapper(*args, **kwargs):
                     metrics.record(metric_name, 1)
                     return await func(*args, **kwargs)
+
                 return wrapper
+
             return decorator
 
         MeteredAnnotation = InjectableDecoratorFactory(metered_decorator)

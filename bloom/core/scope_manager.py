@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import Any, TypeVar, TYPE_CHECKING
+from typing import Any, TypeVar, TYPE_CHECKING, AsyncIterator
 
 from .scope import Scope
 from .lifecycle import LifecycleManager
@@ -39,9 +40,9 @@ _call_creation_order: ContextVar[dict[str, list[type]] | None] = ContextVar(
     "bloom_call_creation_order", default=None
 )
 
-# 현재 활성 frame_id (Call 스코프용)
-_current_frame_id: ContextVar[str | None] = ContextVar(
-    "bloom_current_frame_id", default=None
+# 현재 활성 frame_id 스택 (중첩 Handler 지원)
+_frame_id_stack: ContextVar[list[str] | None] = ContextVar(
+    "bloom_frame_id_stack", default=None
 )
 
 
@@ -135,11 +136,53 @@ class ScopeManager:
         """현재 요청 컨텍스트 내부인지 확인"""
         return _request_instances.get() is not None
 
+    @asynccontextmanager
+    async def request_scope(self) -> AsyncIterator[None]:
+        """
+        REQUEST 스코프 컨텍스트 매니저.
+
+        사용 예:
+            async with scope_manager.request_scope():
+                # REQUEST 스코프 인스턴스 사용
+                instance = await manager.get_instance_async(RequestScopedService)
+        """
+        self.start_request()
+        try:
+            yield
+        finally:
+            await self.end_request()
+
     # === CALL SCOPE ===
 
-    def start_call(self) -> str:
+    def _get_current_frame_id(self) -> str | None:
+        """현재 활성 frame_id 반환 (스택 최상단)"""
+        stack = _frame_id_stack.get()
+        if stack and len(stack) > 0:
+            return stack[-1]
+        return None
+
+    def _push_frame_id(self, frame_id: str) -> None:
+        """frame_id를 스택에 푸시"""
+        stack = _frame_id_stack.get()
+        if stack is None:
+            stack = []
+            _frame_id_stack.set(stack)
+        stack.append(frame_id)
+
+    def _pop_frame_id(self) -> str | None:
+        """frame_id를 스택에서 팝"""
+        stack = _frame_id_stack.get()
+        if stack and len(stack) > 0:
+            return stack.pop()
+        return None
+
+    def start_call(self, *, inherit_parent: bool = False) -> str:
         """
         메서드 호출 시작 - @Handler 진입 시.
+
+        Args:
+            inherit_parent: True면 부모 컨텍스트의 CALL 스코프 인스턴스를 상속
+                           (중첩 Handler에서 같은 인스턴스를 공유하고 싶을 때)
 
         Returns:
             생성된 frame_id
@@ -156,40 +199,59 @@ class ScopeManager:
             order = {}
             _call_creation_order.set(order)
 
-        instances[frame_id] = {}
-        order[frame_id] = []
+        # 부모 컨텍스트 상속 옵션
+        if inherit_parent:
+            parent_frame_id = self._get_current_frame_id()
+            if parent_frame_id and parent_frame_id in instances:
+                # 부모의 인스턴스 복사 (얕은 복사)
+                instances[frame_id] = dict(instances[parent_frame_id])
+                order[frame_id] = []  # 생성 순서는 새로 시작
+            else:
+                instances[frame_id] = {}
+                order[frame_id] = []
+        else:
+            instances[frame_id] = {}
+            order[frame_id] = []
 
-        # 현재 frame_id 설정
-        _current_frame_id.set(frame_id)
+        # frame_id를 스택에 푸시 (중첩 호출 지원)
+        self._push_frame_id(frame_id)
 
         return frame_id
 
-    async def end_call(self, frame_id: str) -> None:
-        """메서드 호출 종료 - @PreDestroy 호출 후 정리"""
+    async def end_call(self, frame_id: str, *, destroy_instances: bool = True) -> None:
+        """
+        메서드 호출 종료 - @PreDestroy 호출 후 정리.
+
+        Args:
+            frame_id: 종료할 frame_id
+            destroy_instances: False면 @PreDestroy를 호출하지 않음
+                              (부모 컨텍스트에서 정리하게 위임할 때)
+        """
         instances = _call_instances.get()
         order = _call_creation_order.get()
 
         if instances and frame_id in instances:
-            frame_instances = instances[frame_id]
-            frame_order = order.get(frame_id, []) if order else []
+            if destroy_instances:
+                frame_instances = instances[frame_id]
+                frame_order = order.get(frame_id, []) if order else []
 
-            # 역순으로 정리
-            for cls in reversed(frame_order):
-                instance = frame_instances.get(cls)
-                if instance:
-                    await LifecycleManager.invoke_pre_destroy(instance)
+                # 역순으로 정리
+                for cls in reversed(frame_order):
+                    instance = frame_instances.get(cls)
+                    if instance:
+                        await LifecycleManager.invoke_pre_destroy(instance)
 
             del instances[frame_id]
             if order and frame_id in order:
                 del order[frame_id]
 
-        # frame_id 초기화
-        _current_frame_id.set(None)
+        # frame_id를 스택에서 팝
+        self._pop_frame_id()
 
     def get_call_scoped[T](self, cls: type[T], frame_id: str | None = None) -> T | None:
         """CALL 스코프 인스턴스 조회"""
         if frame_id is None:
-            frame_id = _current_frame_id.get()
+            frame_id = self._get_current_frame_id()
         if frame_id is None:
             return None
 
@@ -204,7 +266,7 @@ class ScopeManager:
     ) -> None:
         """CALL 스코프 인스턴스 저장"""
         if frame_id is None:
-            frame_id = _current_frame_id.get()
+            frame_id = self._get_current_frame_id()
         if frame_id is None:
             raise CallScopeError(cls)
 
@@ -222,7 +284,7 @@ class ScopeManager:
     def has_call_scoped(self, cls: type, frame_id: str | None = None) -> bool:
         """CALL 스코프 인스턴스 존재 여부"""
         if frame_id is None:
-            frame_id = _current_frame_id.get()
+            frame_id = self._get_current_frame_id()
         if frame_id is None:
             return False
 
@@ -235,11 +297,47 @@ class ScopeManager:
 
     def is_in_call_context(self) -> bool:
         """현재 Call 컨텍스트 내부인지 확인"""
-        return _current_frame_id.get() is not None
+        return self._get_current_frame_id() is not None
 
     def get_current_frame_id(self) -> str | None:
         """현재 활성 frame_id 반환"""
-        return _current_frame_id.get()
+        return self._get_current_frame_id()
+
+    def get_frame_stack_depth(self) -> int:
+        """현재 frame 스택 깊이 반환 (중첩 Handler 깊이)"""
+        stack = _frame_id_stack.get()
+        return len(stack) if stack else 0
+
+    @asynccontextmanager
+    async def call_scope(
+        self, *, inherit_parent: bool = False, destroy_instances: bool = True
+    ) -> AsyncIterator[str]:
+        """
+        CALL 스코프 컨텍스트 매니저.
+
+        Args:
+            inherit_parent: True면 부모 컨텍스트의 인스턴스를 상속
+            destroy_instances: False면 종료 시 @PreDestroy를 호출하지 않음
+
+        Yields:
+            frame_id: 생성된 frame ID
+
+        사용 예:
+            async with scope_manager.call_scope() as frame_id:
+                # CALL 스코프 인스턴스 사용
+                instance = await manager.get_instance_async(CallScopedService)
+            # 종료 시 자동으로 @PreDestroy 호출
+
+            # 부모 인스턴스 상속
+            async with scope_manager.call_scope(inherit_parent=True):
+                # 부모 컨텍스트의 인스턴스를 공유
+                pass
+        """
+        frame_id = self.start_call(inherit_parent=inherit_parent)
+        try:
+            yield frame_id
+        finally:
+            await self.end_call(frame_id, destroy_instances=destroy_instances)
 
     # === 통합 조회 ===
 

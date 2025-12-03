@@ -177,4 +177,6 @@ class ComponentProxyFactory:
 
     def create_proxy[T](self, instance: T) -> T:
         """프록시 인스턴스 생성"""
-        return create_component_proxy(instance, container_manager=self._container_manager)
+        return create_component_proxy(
+            instance, container_manager=self._container_manager
+        )

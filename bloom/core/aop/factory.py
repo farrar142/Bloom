@@ -14,7 +14,16 @@ InjectableDecoratorFactory 추가 지원:
     - 타입 힌트된 파라미터를 자동으로 주입
 """
 
-from typing import Any, Callable, TypeVar, ParamSpec, overload, Generic, get_type_hints, TYPE_CHECKING
+from typing import (
+    Any,
+    Callable,
+    TypeVar,
+    ParamSpec,
+    overload,
+    Generic,
+    get_type_hints,
+    TYPE_CHECKING,
+)
 from functools import wraps
 import inspect
 
@@ -63,6 +72,7 @@ class WrapperInterceptor(MethodInterceptor):
                 invocation.args = args
                 invocation.kwargs = kwargs
                 return await proceed()
+
         else:
             # 동기 버전 - 하지만 proceed는 항상 async이므로 래핑 필요
             async def fake_func(*args, **kwargs):
@@ -689,7 +699,7 @@ def create_injectable_annotation(
 
 # 데코레이터 옵션용 ParamSpec
 D = ParamSpec("D")
-# 타겟 함수용 ParamSpec  
+# 타겟 함수용 ParamSpec
 T = ParamSpec("T")
 R = TypeVar("R")
 
@@ -697,7 +707,7 @@ R = TypeVar("R")
 class FlatInterceptor(MethodInterceptor):
     """
     FlatDecorator용 인터셉터.
-    
+
     평탄화된 핸들러 함수를 직접 호출.
     """
 
@@ -794,9 +804,7 @@ class FlatDecorator(Generic[D]):
         self._handler = handler
         self._inject = inject or []
         self._order = order
-        self._interceptor_type = (
-            interceptor_type or f"flat_decorator_{id(handler)}"
-        )
+        self._interceptor_type = interceptor_type or f"flat_decorator_{id(handler)}"
         self._injectable_params = self._analyze_injectable_params()
 
         self._register_factory()

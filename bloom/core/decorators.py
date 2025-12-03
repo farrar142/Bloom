@@ -59,6 +59,12 @@ def Component[T: type](
         class RequestContext:
             pass
 
+        # @Scope 데코레이터와 함께 사용 (순서 무관)
+        @Component
+        @Scope(Scope.CALL)
+        class CallScopedService:
+            pass
+
     Args:
         scope: 인스턴스 스코프 (SINGLETON, REQUEST, CALL)
         name: 빈 이름 (동일 타입 여러 빈 구분용)
@@ -67,9 +73,13 @@ def Component[T: type](
     """
 
     def decorator(cls: T) -> T:
+        # __bloom_scope__가 이미 설정되어 있으면 우선 사용 (@Scope 데코레이터)
+        # 이를 통해 @Scope를 먼저 적용하든 나중에 적용하든 동작
+        actual_scope = getattr(cls, "__bloom_scope__", None) or scope
+
         # 메타데이터 저장
         cls.__bloom_component__ = True  # type: ignore
-        cls.__bloom_scope__ = scope  # type: ignore
+        cls.__bloom_scope__ = actual_scope  # type: ignore
         cls.__bloom_name__ = name  # type: ignore
         cls.__bloom_primary__ = primary  # type: ignore
         cls.__bloom_lazy__ = lazy  # type: ignore
@@ -77,7 +87,7 @@ def Component[T: type](
         # Container 생성 및 등록
         container: Container[T] = Container(
             target=cls,
-            scope=scope,
+            scope=actual_scope,
             name=name,
             primary=primary,
             lazy=lazy,
@@ -198,6 +208,11 @@ def Handler[F: Callable[..., Any]](func: F) -> F:
         frame_id = scope_manager.start_call()
 
         try:
+            # self가 있으면 CALL 스코프 의존성 미리 생성
+            if args:
+                self_instance = args[0]
+                await _prepare_call_scope_dependencies(manager, self_instance)
+
             # 원본 함수 호출
             result = func(*args, **kwargs)
             if asyncio.iscoroutine(result):
@@ -211,6 +226,79 @@ def Handler[F: Callable[..., Any]](func: F) -> F:
     wrapper.__bloom_handler__ = True  # type: ignore
 
     return wrapper  # type: ignore
+
+
+async def _prepare_call_scope_dependencies(
+    manager: "ContainerManager", instance: Any, visited: set[type] | None = None
+) -> None:
+    """
+    인스턴스의 CALL 스코프 의존성을 미리 생성합니다.
+    LazyProxy로 주입된 필드 중 CALL 스코프인 것들을 찾아서 미리 resolve합니다.
+    재귀적으로 중첩 의존성도 처리합니다 (깊이 우선 - 의존성 먼저).
+    """
+    from .proxy import LazyProxy
+
+    if visited is None:
+        visited = set()
+
+    # 순환 참조 방지
+    instance_type = type(instance)
+    if instance_type in visited:
+        return
+    visited.add(instance_type)
+
+    # 인스턴스의 __dict__에서 LazyProxy 찾기
+    for attr_name, attr_value in vars(instance).items():
+        if isinstance(attr_value, LazyProxy):
+            container = object.__getattribute__(attr_value, "_lp_container")
+            if container.scope == Scope.CALL:
+                # Container의 의존성 정보를 이용해 먼저 중첩 의존성 처리 (깊이 우선)
+                await _prepare_dependencies_depth_first(
+                    manager, container.target, visited.copy()
+                )
+
+
+async def _prepare_dependencies_depth_first(
+    manager: "ContainerManager", cls: type, visited: set[type]
+) -> None:
+    """
+    깊이 우선으로 CALL 스코프 의존성을 생성합니다.
+    의존성을 먼저 생성한 후 현재 클래스 인스턴스를 생성합니다.
+    """
+    if cls in visited:
+        return
+    visited.add(cls)
+
+    container = manager.get_container(cls)
+    if container is None or container.scope != Scope.CALL:
+        return
+
+    # 이미 현재 frame에 인스턴스가 있으면 스킵
+    existing = manager.scope_manager.get_call_scoped(cls)
+    if existing is not None:
+        return
+
+    # 먼저 이 클래스의 의존성들을 재귀적으로 처리
+    for dep in container.dependencies:
+        dep_type = dep.field_type
+        if isinstance(dep_type, str):
+            # forward reference - 해결 시도
+            dep_container = None
+            for c in manager._containers.values():
+                if c.target.__name__ == dep_type:
+                    dep_container = c
+                    break
+            if dep_container:
+                dep_type = dep_container.target
+            else:
+                continue
+
+        dep_container = manager.get_container(dep_type)
+        if dep_container and dep_container.scope == Scope.CALL:
+            await _prepare_dependencies_depth_first(manager, dep_type, visited)
+
+    # 의존성이 모두 생성된 후 현재 클래스 인스턴스 생성
+    await manager.get_instance_async(cls)
 
 
 # === @Value ===

@@ -147,7 +147,7 @@ class InterceptorChain:
         """실제 타겟 메서드 실행"""
         method = invocation.method
         args = invocation.args
-        
+
         # InjectableDecoratorFactory로 감싸진 메서드는 __bloom_original_method__를 가짐
         # 이 경우 원본 메서드를 호출해야 인터셉터에서 주입된 의존성이 제대로 동작함
         original = getattr(method, "__bloom_original_method__", None)

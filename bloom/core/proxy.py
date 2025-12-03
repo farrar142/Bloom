@@ -6,6 +6,8 @@ import asyncio
 from functools import wraps
 from typing import Any, Callable, Generic, TypeVar, TYPE_CHECKING, cast, overload
 
+from .scope import Scope
+
 if TYPE_CHECKING:
     from .container import Container
     from .manager import ContainerManager
@@ -38,6 +40,11 @@ class LazyProxy(Generic[T]):
             a: ServiceA  # LazyProxy로 주입 - 접근 시점에 resolve
 
         # A, B 모두 생성 완료 후 접근 시 상호 참조 가능
+
+    스코프별 동작:
+        - SINGLETON: 한 번 resolve 후 캐싱
+        - REQUEST: 요청마다 다시 resolve (캐싱 안 함)
+        - CALL: Handler 호출마다 다시 resolve (캐싱 안 함)
     """
 
     __slots__ = ("_lp_container", "_lp_manager", "_lp_instance", "_lp_resolved")
@@ -58,11 +65,29 @@ class LazyProxy(Generic[T]):
 
         ScopeManager에 캐시된 인스턴스를 먼저 확인하여
         순환 의존성 상황에서도 안전하게 동작.
-        """
-        if not object.__getattribute__(self, "_lp_resolved"):
-            container: Container[T] = object.__getattribute__(self, "_lp_container")
-            manager: ContainerManager = object.__getattribute__(self, "_lp_manager")
 
+        스코프별 동작:
+        - SINGLETON: 한 번만 resolve하고 프록시 내부에 캐싱
+        - REQUEST/CALL: 매번 ScopeManager에서 현재 컨텍스트의 인스턴스 조회
+        """
+        container: Container[T] = object.__getattribute__(self, "_lp_container")
+        manager: ContainerManager = object.__getattribute__(self, "_lp_manager")
+
+        # SINGLETON이 아닌 스코프는 매번 ScopeManager에서 조회
+        # (REQUEST나 CALL 스코프는 컨텍스트마다 다른 인스턴스가 필요)
+        if container.scope != Scope.SINGLETON:
+            # 현재 컨텍스트에서 인스턴스 조회
+            cached = manager.scope_manager.get_instance(
+                container.target, container.scope
+            )
+            if cached is not None:
+                return cached
+
+            # 캐시에 없으면 새로 생성 (get_instance가 처리)
+            return manager.get_instance(container.target)
+
+        # SINGLETON: 한 번만 resolve하고 캐싱
+        if not object.__getattribute__(self, "_lp_resolved"):
             # 먼저 ScopeManager에서 캐시된 인스턴스 확인
             cached = manager.scope_manager.get_instance(
                 container.target, container.scope
