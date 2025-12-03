@@ -24,6 +24,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: bloom-redis
+    ports:
+      - "6379:6379"
     volumes:
       - bloom-redis-data:/data
 
@@ -35,6 +37,8 @@ services:
       POSTGRES_USER: bloom
       POSTGRES_PASSWORD: bloom
       POSTGRES_DB: bloom_dev
+    ports:
+      - "5432:5432"
     volumes:
       - bloom-postgres-data:/var/lib/postgresql/data
 
