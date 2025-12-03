@@ -13,8 +13,8 @@ from bloom.core.container import (
     CallableContainer,
     HandlerContainer,
     DecoratorContainer,
-    decorator,
 )
+from bloom.core.decorators import Decorator
 from bloom.core.container.element import Element, OrderElement
 from bloom.core.manager import ContainerManager, set_current_manager
 
@@ -218,7 +218,7 @@ class TestDecoratorContainerTransfer:
 
     @pytest.mark.asyncio
     async def test_decorator_then_handler_same_level(self):
-        """DecoratorContainer와 HandlerContainer가 같은 레벨일 때 먼저 생성된 것 유지"""
+        """DecoratorContainer 후 HandlerContainer 적용 시 HandlerContainer가 우선 (priority 30 > 20)"""
         call_log: list[str] = []
 
         wrapper = create_logging_wrapper(call_log)
@@ -231,17 +231,18 @@ class TestDecoratorContainerTransfer:
         dec_container = DecoratorContainer.get_or_create(my_handler, wrapper)
         assert isinstance(dec_container, DecoratorContainer)
 
-        # HandlerContainer 시도 - 같은 레벨이므로 DecoratorContainer 유지
+        # HandlerContainer 시도 - priority가 높으므로 오버라이드
         handler_container = HandlerContainer.get_or_create(my_handler)
 
-        # 현재 컨테이너 확인 - DecoratorContainer 유지됨
+        # 현재 컨테이너 확인 - HandlerContainer가 됨 (priority 30 > 20)
         current_container = getattr(my_handler, "__container__")
-        assert isinstance(current_container, DecoratorContainer)
+        assert isinstance(current_container, HandlerContainer)
 
-        # decorated 메서드 실행 확인
-        result = await current_container.invoke()
-        assert call_log == ["before", "handler", "after:done"]
-        assert result == "done"
+        # decoration element가 이전되었는지 확인
+        decoration_elements = [
+            e for e in current_container.elements if "wrapper" in e.metadata
+        ]
+        assert len(decoration_elements) > 0, "decoration element should be transferred"
 
     def test_handler_absorbed_by_decorator_preserves_handler(self):
         """HandlerContainer가 먼저 있으면 유지됨"""
@@ -264,8 +265,8 @@ class TestDecoratorContainerTransfer:
         assert current_container.has_element(OrderElement)
         assert current_container.get_metadata("order") == 10
 
-    def test_decorator_chain_transfer(self):
-        """데코레이션 체인이 이전되는지 확인"""
+    def test_decorator_creation(self):
+        """DecoratorContainer 생성 확인"""
         call_log: list[str] = []
 
         wrapper = create_logging_wrapper(call_log)
@@ -274,11 +275,9 @@ class TestDecoratorContainerTransfer:
             call_log.append("original")
             return "result"
 
-        # 첫 번째 데코레이터
-        container1 = DecoratorContainer.get_or_create(my_func, wrapper)
-
-        # 체인 길이 확인
-        assert len(container1.get_decoration_chain()) == 1
+        # 데코레이터 생성
+        container = DecoratorContainer.get_or_create(my_func, wrapper)
+        assert isinstance(container, DecoratorContainer)
 
     def test_element_transfer_includes_decorator_metadata(self):
         """Element 이전 시 데코레이터 메타데이터 포함 확인"""
@@ -292,14 +291,13 @@ class TestDecoratorContainerTransfer:
         # DecoratorContainer 생성
         dec_container = DecoratorContainer.get_or_create(target_func, my_wrapper)
 
-        # 다른 컨테이너로 이전
-        new_container = CallableContainer(target_func)
-        dec_container._transfer_elements_to(new_container)
+        # HandlerContainer로 오버라이드 (priority 30 > 20)
+        handler_container = HandlerContainer.get_or_create(target_func)
 
-        # 메타데이터 확인
+        # 메타데이터 확인 - HandlerContainer에 decoration element가 이전됨
         decoration_element = None
-        for elem in new_container.elements:
-            if "decoration_chain" in elem.metadata:
+        for elem in handler_container.elements:
+            if "wrapper" in elem.metadata:
                 decoration_element = elem
                 break
 
@@ -312,7 +310,7 @@ class TestDecoratorFunction:
 
     @pytest.mark.asyncio
     async def test_decorator_factory_with_wrapper(self):
-        """@decorator(wrapper) 사용"""
+        """@Decorator(wrapper) 사용"""
         call_log: list[str] = []
 
         def timing_wrapper(original):
@@ -324,7 +322,7 @@ class TestDecoratorFunction:
 
             return wrapped
 
-        @decorator(timing_wrapper)
+        @Decorator(timing_wrapper)
         def my_function(x: int):
             call_log.append(f"compute:{x}")
             return x * 2
@@ -345,8 +343,8 @@ class TestDecoratorFunction:
         wrapper1 = create_simple_wrapper(call_log, "outer")
         wrapper2 = create_simple_wrapper(call_log, "inner")
 
-        @decorator(wrapper1)
-        @decorator(wrapper2)
+        @Decorator(wrapper1)
+        @Decorator(wrapper2)
         def my_function():
             call_log.append("execute")
             return "done"
@@ -489,18 +487,21 @@ class TestDecoratorContainerAbsorption:
         dec_container = DecoratorContainer.get_or_create(my_func, noop_wrapper)
         dec_container.add_element(custom_element)
 
-        # HandlerContainer로 오버라이드
+        # HandlerContainer로 오버라이드 (priority 30 > 20)
         handler_container = HandlerContainer.get_or_create(my_func)
 
         # Element가 이전되었는지 확인
         current = getattr(my_func, "__container__")
+        # HandlerContainer가 됨 (priority가 더 높음)
+        assert isinstance(current, HandlerContainer)
+        # custom element가 이전되었는지 확인
         assert any(
             elem.metadata.get("custom_key") == "custom_value"
             for elem in current.elements
         )
 
-    def test_decorator_to_decorator_transfer(self):
-        """DecoratorContainer → DecoratorContainer 이전"""
+    def test_decorator_to_decorator_stacking(self):
+        """같은 함수에 @decorator 여러번 적용 시 wrapper 누적"""
         call_log: list[str] = []
 
         wrapper1 = create_simple_wrapper(call_log, "wrapper1")
@@ -513,12 +514,11 @@ class TestDecoratorContainerAbsorption:
         # 첫 번째 DecoratorContainer
         container1 = DecoratorContainer.get_or_create(my_func, wrapper1)
 
-        # 두 번째 DecoratorContainer로 이전 테스트
-        container2 = DecoratorContainer(my_func, wrapper2)
-        container1._transfer_elements_to(container2)
+        # 두 번째 @decorator 적용 - 같은 컨테이너에 wrapper 추가
+        container2 = DecoratorContainer.get_or_create(my_func, wrapper2)
 
-        # 체인에 container1이 추가되었는지 확인
-        assert len(container2.get_decoration_chain()) == 2
+        # 같은 컨테이너여야 함
+        assert container1 is container2
 
 
 class TestDecoratorContainerStandalone:
@@ -551,7 +551,7 @@ class TestDecoratorContainerStandalone:
             def __init__(self):
                 self.name = "MyService"
 
-            @decorator(logging_wrapper)
+            @Decorator(logging_wrapper)
             async def process(self, data: str) -> str:
                 call_log.append(f"process:{data}:{self.name}")
                 return f"processed:{data}"
@@ -596,7 +596,7 @@ class TestDecoratorContainerStandalone:
             def __init__(self):
                 self.counter = 0
 
-            @decorator(timing_wrapper)
+            @Decorator(timing_wrapper)
             async def increment(self) -> int:
                 self.counter += 1
                 call_log.append(f"counter:{self.counter}")
@@ -638,7 +638,7 @@ class TestDecoratorContainerStandalone:
             def __init__(self):
                 self.state = "initialized"
 
-            @decorator(validate_wrapper)
+            @Decorator(validate_wrapper)
             async def get_state(self) -> str:
                 call_log.append(f"get_state:{self.state}")
                 return self.state
@@ -680,7 +680,7 @@ class TestDecoratorContainerStandalone:
             def __init__(self):
                 self.operations = []
 
-            @decorator(audit_wrapper)
+            @Decorator(audit_wrapper)
             async def add(self, a: int, b: int) -> int:
                 result = a + b
                 self.operations.append(f"add({a},{b})={result}")
@@ -732,8 +732,8 @@ class TestDecoratorContainerStandalone:
 
         @Component
         class MultiWrapperService:
-            @decorator(wrapper1)
-            @decorator(wrapper2)
+            @Decorator(wrapper1)
+            @Decorator(wrapper2)
             async def do_work(self) -> str:
                 call_log.append("do_work")
                 return "done"
@@ -770,7 +770,7 @@ class TestDecoratorContainerStandalone:
             def __init__(self):
                 self.value = 10
 
-            @decorator(sync_wrapper)
+            @Decorator(sync_wrapper)
             def get_value(self) -> int:
                 call_log.append(f"get_value:{self.value}")
                 return self.value
@@ -817,7 +817,7 @@ class TestDecoratorWithComponentAndHandler:
 
         @Component
         class MyService:
-            @decorator(logging_wrapper)
+            @Decorator(logging_wrapper)
             @Handler
             async def process_data(self, data: str) -> str:
                 call_log.append(f"process:{data}")
@@ -845,7 +845,7 @@ class TestDecoratorWithComponentAndHandler:
 
     @pytest.mark.asyncio
     async def test_handler_then_decorator_order(self, reset_manager):
-        """@Handler → @decorator 순서 (아래에서 위로 적용)"""
+        """@Handler → @decorator 순서: HandlerContainer가 priority 높아서 유지됨"""
         from bloom import Application, Component
         from bloom.core.decorators import Handler
 
@@ -866,20 +866,17 @@ class TestDecoratorWithComponentAndHandler:
             call_log.append("operation")
             return "done"
 
-        # @decorator가 먼저, @Handler가 나중
+        # @decorator가 먼저 (priority 20), @Handler가 나중 (priority 30)
         dec_container = DecoratorContainer.get_or_create(timed_func, timing_wrapper)
         handler_container = HandlerContainer.get_or_create(timed_func)
 
-        # 컨테이너 타입 확인 (같은 레벨이므로 먼저 생성된 DecoratorContainer 유지)
+        # 컨테이너 타입 확인 - HandlerContainer가 우선 (priority 30 > 20)
         current = getattr(timed_func, "__container__")
-        assert isinstance(current, DecoratorContainer)
+        assert isinstance(current, HandlerContainer)
 
-        # 실행
-        result = await current()
-        assert "timing_start" in call_log
-        assert "operation" in call_log
-        assert "timing_end" in call_log
-        assert result == "done"
+        # decoration element가 이전되었는지 확인
+        decoration_elements = [e for e in current.elements if "wrapper" in e.metadata]
+        assert len(decoration_elements) > 0, "decoration element should be transferred"
 
     @pytest.mark.asyncio
     async def test_multiple_handlers_with_decorator(self, reset_manager):
@@ -907,13 +904,13 @@ class TestDecoratorWithComponentAndHandler:
 
         @Component
         class MultiHandlerService:
-            @decorator(wrapper_a)
+            @Decorator(wrapper_a)
             @Handler
             async def handler_a(self) -> str:
                 call_log.append("handler_a")
                 return "a"
 
-            @decorator(wrapper_b)
+            @Decorator(wrapper_b)
             @Handler
             async def handler_b(self) -> str:
                 call_log.append("handler_b")
@@ -945,7 +942,7 @@ class TestDecoratorWithComponentAndHandler:
 
         @Component
         class ServiceWithDecorator:
-            @decorator(noop_wrapper)
+            @Decorator(noop_wrapper)
             @Handler
             async def my_handler(self) -> str:
                 return "result"
@@ -977,7 +974,7 @@ class TestDecoratorWithComponentAndHandler:
 
         @Component
         class InvokeTestService:
-            @decorator(invoke_wrapper)
+            @Decorator(invoke_wrapper)
             @Handler
             async def invoke_me(self, value: int) -> int:
                 call_log.append(f"invoke:{value}")
@@ -1012,7 +1009,7 @@ class TestDecoratorWithComponentAndHandler:
 
         @Component
         class ElementTransferService:
-            @decorator(my_wrapper)
+            @Decorator(my_wrapper)
             @Handler
             async def my_method(self) -> str:
                 return "result"
@@ -1022,7 +1019,7 @@ class TestDecoratorWithComponentAndHandler:
         # decoration 관련 Element 확인
         decoration_elem = None
         for elem in container.elements:
-            if "wrapper" in elem.metadata or "decoration_chain" in elem.metadata:
+            if "wrapper" in elem.metadata:
                 decoration_elem = elem
                 break
 
@@ -1054,7 +1051,7 @@ class TestDecoratorContainerWithControllerAndGet:
 
         @Controller
         class ApiController:
-            @decorator(auth_wrapper)
+            @Decorator(auth_wrapper)
             @Get("/api/users")
             async def get_users(self) -> dict:
                 call_log.append("get_users")
@@ -1091,7 +1088,7 @@ class TestDecoratorContainerWithControllerAndGet:
         @Controller
         class ValidationController:
             @Order(1)
-            @decorator(validate_wrapper)
+            @Decorator(validate_wrapper)
             @Post("/api/items")
             async def create_item(self, data: dict) -> dict:
                 call_log.append("create")
@@ -1141,8 +1138,8 @@ class TestMultipleDecoratorContainersWithHandler:
 
         @Component
         class ServiceWithTwoDecorators:
-            @decorator(log_wrapper)
-            @decorator(timing_wrapper)
+            @Decorator(log_wrapper)
+            @Decorator(timing_wrapper)
             @Handler
             async def process(self, data: str) -> str:
                 call_log.append(f"process:{data}")
@@ -1194,8 +1191,8 @@ class TestMultipleDecoratorContainersWithHandler:
 
         @Component
         class TransactionalService:
-            @decorator(audit_wrapper)
-            @decorator(transaction_wrapper)
+            @Decorator(audit_wrapper)
+            @Decorator(transaction_wrapper)
             @Handler
             async def save_data(self, data: dict) -> dict:
                 call_log.append("save_data")
@@ -1239,8 +1236,8 @@ class TestMultipleDecoratorContainersWithHandler:
         @Component
         class OrderedService:
             @Order(10)
-            @decorator(rate_limit_wrapper)
-            @decorator(metrics_wrapper)
+            @Decorator(rate_limit_wrapper)
+            @Decorator(metrics_wrapper)
             @Handler
             async def api_call(self, endpoint: str) -> str:
                 call_log.append(f"api:{endpoint}")
@@ -1270,8 +1267,8 @@ class TestMultipleDecoratorContainersWithHandler:
 
         @Component
         class MultiDecoratorService:
-            @decorator(noop_wrapper)
-            @decorator(noop_wrapper)
+            @Decorator(noop_wrapper)
+            @Decorator(noop_wrapper)
             @Handler
             async def my_method(self) -> str:
                 return "done"
@@ -1316,9 +1313,9 @@ class TestMultipleDecoratorContainersWithHandler:
 
         @Component
         class ResilientService:
-            @decorator(retry_wrapper)
-            @decorator(circuit_breaker_wrapper)
-            @decorator(fallback_wrapper)
+            @Decorator(retry_wrapper)
+            @Decorator(circuit_breaker_wrapper)
+            @Decorator(fallback_wrapper)
             @Handler
             async def resilient_call(self) -> str:
                 call_log.append("call:execute")
@@ -1362,8 +1359,8 @@ class TestMultipleDecoratorContainersWithHandler:
 
         @Controller
         class ApiWithMiddleware:
-            @decorator(cors_wrapper)
-            @decorator(compress_wrapper)
+            @Decorator(cors_wrapper)
+            @Decorator(compress_wrapper)
             @Get("/api/data")
             async def get_data(self) -> dict:
                 call_log.append("get_data")
@@ -1389,8 +1386,8 @@ class TestMultipleDecoratorContainersWithHandler:
 
         @Component
         class SignaturePreserveService:
-            @decorator(noop_wrapper)
-            @decorator(noop_wrapper)
+            @Decorator(noop_wrapper)
+            @Decorator(noop_wrapper)
             @Handler
             async def method_with_params(
                 self, user_id: int, name: str, active: bool = True

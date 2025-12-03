@@ -11,6 +11,39 @@ class Element[T]:
         return f"Element(metadata={self.metadata})"
 
 
+class PriorityElement(Element):
+    """
+    컨테이너 오버라이드 우선순위를 지정하는 Element
+
+    높은 priority를 가진 컨테이너가 낮은 priority를 가진 컨테이너를 오버라이드합니다.
+    오버라이드 시 기존 컨테이너의 Element들이 새 컨테이너로 이전됩니다.
+
+    Priority 테이블:
+        - Container (base)           : 0
+        - CallableContainer          : 10
+        - DecoratorContainer         : 20  (항상 오버라이드 당함)
+        - HandlerContainer           : 30
+        - FactoryContainer           : 30
+        - ComponentContainer         : 30
+        - HttpMethodHandlerContainer : 40
+
+    사용 예시:
+        # DecoratorContainer.__init__에서
+        self.add_element(PriorityElement(20))
+
+        # HandlerContainer.__init__에서
+        self.add_element(PriorityElement(30))
+    """
+
+    def __init__(self, priority: int):
+        super().__init__()
+        self.metadata["priority"] = priority
+
+    @property
+    def priority(self) -> int:
+        return self.metadata.get("priority", 0)
+
+
 class OrderElement(Element):
     """
     Factory/Handler의 실행 순서를 지정하는 Element

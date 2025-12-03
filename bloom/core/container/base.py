@@ -356,9 +356,19 @@ class Container[T]:
         return instance
 
     def _transfer_elements_to(self, target_container: "Container") -> None:
-        """현재 컨테이너의 Element들을 target_container로 이전"""
+        """현재 컨테이너의 Element들을 target_container로 이전
+
+        기본 Element 타입이면서 metadata가 있는 경우 항상 이전합니다.
+        서브클래스 Element는 타입으로 중복 체크합니다.
+        """
         for element in self.elements:
-            if not target_container.has_element(type(element)):
+            elem_type = type(element)
+
+            # 기본 Element 타입이면서 metadata가 있으면 항상 이전
+            if elem_type is Element and element.metadata:
+                target_container.add_element(element)
+            # 서브클래스 Element는 타입으로 중복 체크
+            elif not target_container.has_element(elem_type):
                 target_container.add_element(element)
 
     @classmethod
@@ -385,6 +395,22 @@ class Container[T]:
         """
         return cls._get_mro_index(cls) > cls._get_mro_index(other)
 
+    @staticmethod
+    def _get_container_priority(container: "Container") -> int:
+        """
+        컨테이너의 priority를 Element에서 가져옴
+
+        여러 PriorityElement가 있으면 가장 높은 값 반환
+        PriorityElement가 없으면 0 반환
+        """
+        from .element import PriorityElement
+
+        max_priority = 0
+        for element in container.elements:
+            if isinstance(element, PriorityElement):
+                max_priority = max(max_priority, element.priority)
+        return max_priority
+
     @classmethod
     def _apply_override_rules(
         cls,
@@ -394,16 +420,20 @@ class Container[T]:
         """
         컨테이너 오버라이드 규칙을 적용하여 컨테이너를 생성하거나 반환
 
-        오버라이드 규칙:
+        오버라이드 규칙 (priority 기반):
         1. 기존 컨테이너가 없으면: 새로 생성
         2. 동일 타입이면: 기존 컨테이너 반환
-        3. 하위 컨테이너가 이미 존재하면: 하위 컨테이너 반환 (상위는 Element만 추가 가능)
-        4. 상위 컨테이너가 이미 존재하면: 하위 컨테이너로 교체하고 Element 이전
+        3. 새 컨테이너의 priority가 더 높으면: 새 컨테이너로 교체하고 Element 이전
+        4. 기존 컨테이너의 priority가 더 높거나 같으면: 기존 컨테이너 유지
 
-        MRO 인덱스가 높을수록 더 구체적(하위) 타입:
-        - Container: 0
-        - HandlerContainer: 1
-        - HttpMethodHandlerContainer: 2
+        Priority 테이블:
+        - Container (base)           : 0
+        - CallableContainer          : 10
+        - DecoratorContainer         : 20  (항상 오버라이드 당함)
+        - HandlerContainer           : 30
+        - FactoryContainer           : 30
+        - ComponentContainer         : 30
+        - HttpMethodHandlerContainer : 40
 
         Args:
             target: 컨테이너를 연결할 대상 (클래스 또는 메서드)
@@ -428,12 +458,14 @@ class Container[T]:
             return existing_container
 
         if isinstance(existing_container, Container):
-            existing_type = type(existing_container)
+            # priority 비교를 위해 새 컨테이너 임시 생성
+            new_container = create_new()
 
-            if cls._is_more_specific_than(existing_type):
-                # cls가 existing보다 더 구체적(하위)임
-                # → 하위 컨테이너로 교체하고, 상위 컨테이너의 Element들을 이전
-                new_container = create_new()
+            existing_priority = cls._get_container_priority(existing_container)
+            new_priority = cls._get_container_priority(new_container)
+
+            if new_priority > existing_priority:
+                # 새 컨테이너의 priority가 더 높음 → 교체하고 Element 이전
                 existing_container._transfer_elements_to(new_container)
                 setattr(target, "__container__", new_container)
                 if manager := try_get_current_manager():
@@ -441,8 +473,9 @@ class Container[T]:
                     manager.register_container(new_container)
                 return new_container
             else:
-                # existing_container가 cls보다 더 구체적(하위)이거나 동등
-                # → 하위 컨테이너를 유지하고 반환
+                # 기존 컨테이너의 priority가 더 높거나 같음 → 기존 유지
+                # 새 컨테이너의 Element만 기존에 추가
+                new_container._transfer_elements_to(existing_container)
                 return existing_container  # type: ignore
 
         # 다른 타입의 객체가 있는 경우 (예상치 못한 상황)

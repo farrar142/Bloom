@@ -6,8 +6,8 @@ from typing import Callable, Self, get_type_hints, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..manager import ContainerManager
 
-from ..manager import try_get_current_manager
 from .callable import CallableContainer
+from ...utils.resolver import DependencyResolver
 
 
 class FactoryContainer[**P, R](CallableContainer[P, R]):
@@ -37,39 +37,46 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
 
     """
 
+    _default_priority: int = 30
+
     def __init__(self, factory_method: Callable[P, R]):
-        self.factory_method = factory_method
-        self._resolved_hints: dict | None = None
         self._target: type | None = None
-        self.elements = list()
-        self.owner_cls: type | None = None  # scan 후 주입됨
+        self._resolver: DependencyResolver | None = None
         self.manager: "ContainerManager | None" = None  # scan 시점에 주입됨
         # Factory Chain에서 중간 단계인지 여부 (True면 인스턴스 등록 스킵)
         self._is_chain_intermediate: bool = False
 
-    def _get_type_hints(self) -> dict:
-        """타입 힌트를 resolve하여 캐시"""
-        if self._resolved_hints is None:
-            try:
-                # 함수의 globals를 사용해서 타입 힌트 resolve
-                globalns = getattr(self.factory_method, "__globals__", {})
-                self._resolved_hints = get_type_hints(
-                    self.factory_method, globalns=globalns
-                )
-            except Exception:
-                self._resolved_hints = getattr(
-                    self.factory_method, "__annotations__", {}
-                )
-        return self._resolved_hints  # type: ignore
+        # CallableContainer 초기화 (target은 property로 동적 resolve)
+        self.callable_target = factory_method
+        self.owner_cls: type | None = None
+        self._bound_method: Callable[P, R] | None = None
+        self._is_coroutine: bool | None = None
+
+        # Container 기본 초기화 (target 설정 제외)
+        from .element import Element, PriorityElement
+
+        self.elements = list[Element]()
+        self.element = Element()
+        self.add_element(PriorityElement(self._default_priority))
+
+    @property
+    def factory_method(self) -> Callable[P, R]:
+        """callable_target의 별칭 (하위 호환성)"""
+        return self.callable_target
+
+    def _get_resolver(self) -> DependencyResolver:
+        """DependencyResolver 인스턴스 (캐싱)"""
+        if self._resolver is None:
+            self._resolver = DependencyResolver(
+                self.callable_target,
+                skip_params=1,  # self 스킵
+            )
+        return self._resolver
 
     def _get_target_type(self) -> type:
         """반환 타입을 resolve"""
-        hints = self._get_type_hints()
+        hints = self._get_resolver()._hints
         return hints.get("return", type(None))
-
-    def _get_owner_type(self) -> type | None:
-        """owner 타입 반환 (scan에서 주입됨)"""
-        return self.owner_cls
 
     def __repr__(self) -> str:
         try:
@@ -77,7 +84,7 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
             target_name = target.__name__ if isinstance(target, type) else str(target)
         except Exception:
             target_name = "Unknown"
-        method_name = self.factory_method.__name__
+        method_name = self.callable_target.__name__
         return f"FactoryContainer(method={method_name}, target={target_name})"
 
     @property
@@ -87,10 +94,6 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
             self._target = self._get_target_type()
         return self._target
 
-    def get_callable_name(self) -> str:
-        """Factory 메서드 이름 반환"""
-        return getattr(self.factory_method, "__name__", str(self.factory_method))
-
     def get_dependencies(self) -> list[type]:
         """이 팩토리 컨테이너가 의존하는 타입들을 반환"""
         dependencies = []
@@ -98,14 +101,11 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
         if owner_type:
             dependencies.append(owner_type)
 
-        hints = self._get_type_hints()
-        sig = inspect.signature(self.factory_method)
-        first_param_name = list(sig.parameters.keys())[0] if sig.parameters else None
+        resolver = self._get_resolver()
+        hints = resolver._hints
 
-        for param_name, param in sig.parameters.items():
-            if param_name == first_param_name:
-                continue
-            param_type = hints.get(param_name)
+        for name, param in resolver._params:
+            param_type = hints.get(name)
             if param_type is None or param_type == owner_type:
                 continue
 
@@ -115,7 +115,6 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
                 for containers in manager.get_all_containers().values():
                     for container in containers:
                         kls = container.target
-                        # kls가 클래스인 경우에만 issubclass 체크
                         if (
                             isinstance(kls, type)
                             and kls != param_type
@@ -133,53 +132,15 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
         owner_type = self._get_owner_type()
         if owner_type is None:
             raise Exception(
-                f"Factory method {self.factory_method.__name__} must have 'self' parameter with type hint"
+                f"Factory method {self.callable_target.__name__} must have 'self' parameter with type hint"
             )
         owner_instance = manager.get_instance(owner_type)
-        # self를 제외한 hints만 전달
-        hints = self._get_type_hints()
-        sig = inspect.signature(self.factory_method)
-        first_param_name = list(sig.parameters.keys())[0] if sig.parameters else None
 
-        # varargs (*args) 파라미터 처리
-        varargs: list = []
-        vararg_param_name: str | None = None
-        for param_name, param in sig.parameters.items():
-            if param_name == first_param_name:
-                continue
-            if param.kind == inspect.Parameter.VAR_POSITIONAL:
-                vararg_param_name = param_name
-                # *args: Type 형태 - 해당 타입의 모든 서브 인스턴스 수집
-                vararg_type = hints.get(param_name)
-                if vararg_type:
-                    varargs = manager.get_sub_instances(vararg_type)
+        # DependencyResolver로 의존성 resolve
+        resolver = self._get_resolver()
+        deps = resolver.resolve(manager, chain_type=self.target)
 
-        # varargs 파라미터는 kwargs에서 제외
-        filtered_hints = {
-            k: v
-            for k, v in hints.items()
-            if k != first_param_name and k != vararg_param_name
-        }
-
-        # Factory Chain의 경우, 자신의 반환 타입과 동일한 의존성은
-        # Manager에서 이미 등록된 인스턴스를 가져옴 (무한 재귀 방지)
-        kwargs = {}
-        for name, dep_type in filtered_hints.items():
-            if name == "return":
-                continue
-
-            # 자신의 반환 타입과 같은 타입을 의존성으로 가지는 경우
-            # (Factory Chain의 Modifier 패턴)
-            if dep_type == self.target:
-                instance = manager.get_instance(dep_type, raise_exception=False)
-                if instance is not None:
-                    kwargs[name] = instance
-                    continue
-
-            # 일반적인 의존성 주입
-            kwargs[name] = manager.get_instance(dep_type)
-
-        return self.factory_method(owner_instance, *varargs, **kwargs)  # type: ignore
+        return deps.call(self.callable_target, owner_instance)
 
     def initialize_instance(self) -> R:
         """
@@ -187,7 +148,7 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
 
         Factory Chain에서는 각 Factory가 독립적으로 _create_instance()를 호출해야 함.
         이전 단계의 결과를 의존성으로 받아서 수정하는 패턴이기 때문임.
-        
+
         Note: @PostConstruct는 여기서 호출하지 않습니다.
         orchestrator가 async로 처리합니다.
         """
@@ -197,11 +158,5 @@ class FactoryContainer[**P, R](CallableContainer[P, R]):
 
     @classmethod
     def get_or_create(cls, factory_method: Callable[P, R]) -> Self:
-        """팩토리 메서드에 대한 컨테이너 생성
-
-        Container._apply_override_rules를 사용하여 오버라이드 규칙 적용
-        """
-        return cls._apply_override_rules(
-            factory_method,
-            lambda: cls(factory_method),
-        )
+        """팩토리 메서드에 대한 컨테이너 생성"""
+        return cls._apply_override_rules(factory_method, lambda: cls(factory_method))

@@ -1,34 +1,14 @@
 """파라미터 리졸버 베이스 클래스"""
 
 from abc import ABC, abstractmethod
-from typing import Any, Union, get_origin, get_args, TYPE_CHECKING
-from types import UnionType, NoneType
+from typing import Any, get_origin, get_args, TYPE_CHECKING
+
+# 공통 유틸리티에서 가져오기
+from bloom.utils.typing import is_optional, unwrap_optional
 
 if TYPE_CHECKING:
     from bloom.web.http import HttpRequest
     from .context import ResolverContext
-
-
-def is_optional(param_type: type) -> bool:
-    """타입이 Optional인지 확인 (T | None 또는 Optional[T])"""
-    origin = get_origin(param_type)
-    if origin is Union or origin is UnionType:
-        args = get_args(param_type)
-        return NoneType in args or type(None) in args
-    return False
-
-
-def unwrap_optional(param_type: type) -> type:
-    """Optional[T]에서 T를 추출, Optional이 아니면 그대로 반환"""
-    if not is_optional(param_type):
-        return param_type
-
-    args = get_args(param_type)
-    # None이 아닌 첫 번째 타입 반환
-    for arg in args:
-        if arg is not NoneType and arg is not type(None):
-            return arg
-    return param_type
 
 
 class ParameterResolver(ABC):

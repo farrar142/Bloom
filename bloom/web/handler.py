@@ -52,11 +52,7 @@ class HttpMethodHandlerContainer[**P, R](HandlerContainer[P, R]):
             return HttpResponse.created({"id": 1})
     """
 
-    def __init__(
-        self,
-        handler_method: Callable[P, R],
-    ):
-        super().__init__(handler_method)
+    _default_priority: int = 40
 
     def __repr__(self) -> str:
         response_type = self.get_metadata("response_type")
@@ -64,7 +60,7 @@ class HttpMethodHandlerContainer[**P, R](HandlerContainer[P, R]):
         path = self.get_metadata("http_path")
         response_info = f", response={response_type}" if self else ""
         return (
-            f"HttpMethodHandlerContainer(method={self.handler_method.__name__}, "
+            f"HttpMethodHandlerContainer(method={self.callable_target.__name__}, "
             f"{method} {path}{response_info})"
         )
 
@@ -114,7 +110,6 @@ def _create_http_method_decorator(http_method: str):
             else:
                 path = __path_or_func if __path_or_func else f"/{func.__name__}"
             container = HttpMethodHandlerContainer.get_or_create(func)
-            # setattr(func, "__container__", container)
             container.add_elements(MethodElement(http_method))
             container.add_elements(PathElement(path))
             if response:

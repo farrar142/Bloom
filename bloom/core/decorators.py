@@ -1,6 +1,6 @@
 """Component 데코레이터"""
 
-from typing import Any, Callable, overload, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, overload, TYPE_CHECKING
 
 from .container import (
     ComponentContainer,
@@ -9,6 +9,7 @@ from .container import (
     HandlerContainer,
     Container,
 )
+from .container.decorator import DecoratorContainer
 from .container.element import (
     OrderElement,
     ScopeElement,
@@ -22,6 +23,7 @@ from .lifecycle import (
     LifecycleTypeElement,
 )
 from .manager import try_get_current_manager
+from ..utils.typing import extract_parameter_types
 
 
 class ComponentElement[T](Element[T]):
@@ -29,7 +31,7 @@ class ComponentElement[T](Element[T]):
 
 
 def _scan_child_containers(cls: type) -> None:
-    """클래스의 메서드에서 Factory/Handler 컨테이너를 찾아 owner_cls 설정"""
+    """클래스의 메서드에서 Factory/Handler/Decorator 컨테이너를 찾아 owner_cls 설정"""
     from .container.base import Container
 
     manager = try_get_current_manager()
@@ -41,8 +43,11 @@ def _scan_child_containers(cls: type) -> None:
             continue
 
         if child_container := Container.get_container(attr):
-            # Factory 또는 Handler 컨테이너인 경우
-            if isinstance(child_container, (FactoryContainer, HandlerContainer)):
+            # Factory, Handler 또는 Decorator 컨테이너인 경우
+            if isinstance(
+                child_container,
+                (FactoryContainer, HandlerContainer, DecoratorContainer),
+            ):
                 child_container.owner_cls = cls
                 # manager가 있으면 등록
                 if manager:
@@ -86,7 +91,7 @@ def Handler[**P, R](method: Callable[P, R]) -> Callable[P, R]:
             def handle_error(self, error: ValueError) -> Response:
                 return Response(400, str(error))
     """
-    HandlerContainer.get_or_create(method)
+    container = HandlerContainer.get_or_create(method)
     return method
 
 
@@ -236,3 +241,79 @@ def Scope[R](scope: ScopeEnum, mode: PrototypeMode | None = None):
         return cls
 
     return decorator
+
+
+# Decorator 함수용 타입 alias
+type ACallable[**P, R] = Callable[P, Awaitable[R]]
+type DecoratorType[**P, R] = Callable[[Callable[P, R]], Callable[P, R]]
+type ADecoratorType[**P, R] = Callable[[ACallable[P, R]], ACallable[P, Awaitable[R]]]
+type InjectableDecorator[**P, R] = Callable[..., Callable[P, R]]
+type InjectableADecorator[**P, R] = Callable[..., ACallable[P, R]]
+
+
+@overload
+def Decorator[**P, R](wrapper: DecoratorType[P, R]) -> DecoratorType[P, R]: ...
+@overload
+def Decorator[**P, R](wrapper: ADecoratorType[P, R]) -> ADecoratorType[P, R]: ...
+@overload
+def Decorator[**P, R](wrapper: InjectableDecorator[P, R]) -> DecoratorType[P, R]: ...
+@overload
+def Decorator[**P, R](wrapper: InjectableADecorator[P, R]) -> ADecoratorType[P, R]: ...
+
+
+def Decorator[**P, R](
+    wrapper: (
+        DecoratorType[P, R]
+        | ADecoratorType[P, R]
+        | InjectableDecorator[P, R]
+        | InjectableADecorator[P, R]
+    ),
+) -> DecoratorType[P, R] | ADecoratorType[P, R]:
+    """
+    DecoratorContainer를 생성하는 데코레이터 팩토리
+
+    기본 사용 예:
+        def my_wrapper(fn):
+            @wraps(fn)
+            async def wrapped(*args, **kwargs):
+                print("before")
+                result = await fn(*args, **kwargs)
+                print("after")
+                return result
+            return wrapped
+
+        @Decorator(my_wrapper)
+        async def my_func():
+            pass
+
+    의존성 주입 사용 예:
+        def logging_wrapper(fn, logger: Logger, config: Config):
+            @wraps(fn)
+            async def wrapped(*args, **kwargs):
+                logger.info(f"Calling {fn.__name__}")
+                result = await fn(*args, **kwargs)
+                logger.info(f"Result: {result}")
+                return result
+            return wrapped
+
+        @Component
+        class MyService:
+            @Decorator(logging_wrapper)
+            async def my_method(self):
+                return "result"
+
+        # Logger와 Config는 런타임에 ContainerManager에서 자동 주입됨
+    """
+    inject_types = extract_parameter_types(wrapper, skip_first=1)
+
+    @overload
+    def decorator_factory(func: Callable[P, R]) -> Callable[P, R]: ...
+    @overload
+    def decorator_factory(func: ACallable[P, R]) -> ACallable[P, R]: ...
+    def decorator_factory(
+        func: Callable[P, R] | ACallable[P, R],
+    ) -> Callable[P, R] | ACallable[P, R]:
+        DecoratorContainer.get_or_create(func, wrapper, inject_types)
+        return func
+
+    return decorator_factory

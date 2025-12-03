@@ -1,26 +1,21 @@
-"""Decorator Container - 메서드를 데코레이션하는 컨테이너"""
+"""DecoratorContainer 클래스 - 메서드를 데코레이션하는 컨테이너"""
 
-import asyncio
 from typing import (
-    Any,
-    Awaitable,
     Callable,
-    ParamSpec,
-    TypeVar,
     Self,
-    overload,
     TYPE_CHECKING,
 )
-from functools import wraps
 
 if TYPE_CHECKING:
     from ..manager import ContainerManager
 
 from .callable import CallableContainer
+from .element import Element
 
 
-P = ParamSpec("P")
-R = TypeVar("R")
+def _resolve_types(manager: "ContainerManager", types: list[type]) -> list:
+    """타입 리스트에서 인스턴스 리스트로 resolve"""
+    return [manager.get_instance(t) for t in types]
 
 
 class DecoratorContainer[**P, R](CallableContainer[P, R]):
@@ -28,183 +23,148 @@ class DecoratorContainer[**P, R](CallableContainer[P, R]):
     원본 컨테이너나 함수를 데코레이션하는 컨테이너.
 
     DecoratorContainer는 원본 메서드를 wrapper 함수로 감쌉니다.
-    다른 컨테이너와 흡수/전이될 때 데코레이션이 유지됩니다.
+    여러 @Decorator가 적용되면 wrapper가 누적되어 감싸집니다.
 
     @Handler 없이도 독립적으로 동작 가능:
         @Component
         class MyService:
-            @decorator(my_wrapper)
+            @Decorator(my_wrapper)
             async def my_method(self):
                 pass
 
-    @Handler와 함께 사용:
-        @Component
-        class MyService:
-            @decorator(my_wrapper)
-            @Handler
-            async def my_handler(self):
-                pass
+    의존성 주입 지원:
+        def my_wrapper(fn, logger: Logger, config: Config):
+            @wraps(fn)
+            async def wrapped(*args, **kwargs):
+                logger.info("before")
+                return await fn(*args, **kwargs)
+            return wrapped
 
-    DecoratorContainer가 상위 컨테이너(예: HandlerContainer)에 의해 오버라이드되면,
-    Element들이 이전되면서 데코레이션 체인도 함께 유지됩니다.
+        @Decorator(my_wrapper)
+        async def my_method(self):
+            pass
     """
+
+    _default_priority: int = 20
 
     def __init__(
         self,
         callable_target: Callable[P, R],
-        wrapper: Callable[[Callable[P, R]], Callable[P, R]],
+        wrapper: Callable[..., Callable[P, R]],
+        inject_types: list[type] | None = None,
     ):
         """
         DecoratorContainer 초기화
 
         Args:
             callable_target: 데코레이션할 원본 함수/메서드
-            wrapper: 원본을 완전히 래핑하는 함수
+            wrapper: 원본을 완전히 래핑하는 함수 (의존성 파라미터 포함 가능)
+            inject_types: wrapper에 주입할 의존성 타입들
         """
         self._original_target = callable_target
-        self._wrapper = wrapper
-        # wrapper로 감싼 함수를 callable_target으로 저장
-        super().__init__(wrapper(callable_target))
-        self._decoration_chain: list["DecoratorContainer"] = [self]
-        self._is_coroutine: bool | None = None
+        self._resolved_wrapper: Callable[[Callable[P, R]], Callable[P, R]]
         self.manager: "ContainerManager | None" = None
+        inject_types = inject_types or []
 
-    def _get_owner_type(self) -> type | None:
-        """owner 타입 반환 (scan에서 주입됨)"""
-        return self.owner_cls
+        # 의존성이 없으면 바로 wrapper 적용
+        if not inject_types:
+            super().__init__(wrapper(callable_target))
+            self._resolved_wrapper = wrapper
+        else:
+            # 의존성 있으면 일단 원본으로 초기화 (나중에 _bind_method에서 resolve)
+            super().__init__(callable_target)
+            # 클로저로 wrapper 캡처
+            self._resolved_wrapper = self._create_injectable_wrapper(
+                wrapper, inject_types
+            )
+
+        # decoration 정보를 담은 Element 추가
+        decoration_element = Element()
+        decoration_element.metadata["wrapper"] = wrapper
+        decoration_element.metadata["inject_types"] = inject_types
+        self.add_element(decoration_element)
+
+    def _create_injectable_wrapper(
+        self,
+        wrapper: Callable[..., Callable[P, R]],
+        inject_types: list[type],
+    ) -> Callable[[Callable[P, R]], Callable[P, R]]:
+        """의존성 주입이 필요한 wrapper를 lazy resolve하는 wrapper 생성"""
+        resolved: list[Callable[[Callable[P, R]], Callable[P, R]] | None] = [None]
+
+        def lazy_wrapper(fn: Callable[P, R]) -> Callable[P, R]:
+            if resolved[0] is None:
+                deps = _resolve_types(self._get_manager(), inject_types)
+                resolved[0] = lambda f: wrapper(f, *deps)
+            return resolved[0](fn)
+
+        return lazy_wrapper
+
+    def add_wrapper(
+        self,
+        wrapper: Callable[..., Callable[P, R]],
+        inject_types: list[type] | None = None,
+    ) -> None:
+        """
+        새 wrapper를 기존 callable_target에 감싸서 추가
+
+        Args:
+            wrapper: 추가할 wrapper 함수
+            inject_types: wrapper에 주입할 의존성 타입들
+        """
+        inject_types = inject_types or []
+        old_resolved_wrapper = self._resolved_wrapper
+
+        if not inject_types:
+            # 의존성 없으면 기존 wrapper 위에 바로 적용
+            def combined_wrapper(fn: Callable[P, R]) -> Callable[P, R]:
+                return wrapper(old_resolved_wrapper(fn))
+
+            self._resolved_wrapper = combined_wrapper
+        else:
+            # 의존성 있으면 lazy resolve
+            def combined_wrapper(fn: Callable[P, R]) -> Callable[P, R]:
+                deps = _resolve_types(self._get_manager(), inject_types)
+                return wrapper(old_resolved_wrapper(fn), *deps)
+
+            self._resolved_wrapper = combined_wrapper
+
+        self._bound_method = None  # 캐시 무효화
 
     def _bind_method(self) -> Callable[P, R]:
-        """owner 인스턴스에 바인딩된 메서드 반환"""
-        owner_type = self._get_owner_type()
-        if owner_type is None:
-            # owner가 없는 경우 (standalone 함수)
-            return self.callable_target
-        else:
-            # owner 인스턴스를 가져와서 원본을 바인딩 후 wrapper 적용
-            owner_instance = self._get_manager().get_instance(owner_type)
-            bound_method = self._original_target.__get__(owner_instance, owner_type)
-            return self._wrapper(bound_method)
+        """owner 인스턴스에 바인딩된 메서드 반환 (wrapper 적용)"""
+        if self._bound_method is not None:
+            return self._bound_method
 
-    def initialize_instance(self) -> Self:
-        """DecoratorContainer 자체를 인스턴스로 반환 (HandlerContainer처럼)"""
-        return self
-
-    def add_decorator(self, decorator: "DecoratorContainer") -> None:
-        """데코레이션 체인에 추가"""
-        self._decoration_chain.append(decorator)
-        self._decorated = None  # 캐시 무효화
-
-    def get_decoration_chain(self) -> list["DecoratorContainer"]:
-        """전체 데코레이션 체인 반환"""
-        return list(self._decoration_chain)
-
-    def _transfer_elements_to(self, target_container: "CallableContainer") -> None:
-        """
-        Element 이전 시 데코레이션 체인도 함께 이전
-
-        DecoratorContainer의 핵심 기능:
-        상위 컨테이너(예: HandlerContainer)로 오버라이드될 때,
-        데코레이션 정보를 target_container에 전달합니다.
-        """
-        # 부모의 Element 이전 로직 호출
-        super()._transfer_elements_to(target_container)
-
-        # target이 DecoratorContainer면 데코레이션 체인 이전
-        if isinstance(target_container, DecoratorContainer):
-            for decorator in self._decoration_chain:
-                if decorator not in target_container._decoration_chain:
-                    target_container._decoration_chain.append(decorator)
-            target_container._decorated = None  # 캐시 무효화
-        else:
-            # target이 DecoratorContainer가 아니면 Element로 데코레이션 정보 저장
-            from .element import Element
-
-            decoration_element = Element()
-            decoration_element.metadata["decoration_chain"] = self._decoration_chain
-            decoration_element.metadata["wrapper"] = self._wrapper
-            target_container.add_element(decoration_element)
+        self._bound_method = self._create_bound_method(
+            self._original_target, self._resolved_wrapper
+        )
+        return self._bound_method
 
     @classmethod
     def get_or_create(
         cls,
         method: Callable[P, R],
-        wrapper: Callable[[Callable[P, R]], Callable[P, R]],
+        wrapper: Callable[..., Callable[P, R]],
+        inject_types: list[type] | None = None,
     ) -> Self:
         """
-        DecoratorContainer 생성 또는 기존 반환
+        DecoratorContainer 생성 또는 기존에 wrapper 추가
 
-        Args:
-            method: 데코레이션할 함수/메서드
-            wrapper: 원본을 완전히 래핑하는 함수
+        같은 함수에 @decorator가 여러번 적용되면 wrapper를 누적합니다.
         """
-        return cls._apply_override_rules(method, lambda: cls(method, wrapper))
+        existing = getattr(method, "__container__", None)
 
-    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
-        """데코레이션된 함수 호출 (owner 인스턴스 자동 바인딩)"""
-        bound_method = self._bind_method()
+        if isinstance(existing, cls):
+            # 같은 타입이면 wrapper만 추가
+            existing.add_wrapper(wrapper, inject_types)
+            return existing
 
-        # 코루틴 여부 캐싱 (최초 호출 시 한 번만 검사)
-        if self._is_coroutine is None:
-            self._is_coroutine = asyncio.iscoroutinefunction(bound_method)
-
-        if self._is_coroutine:
-            return await bound_method(*args, **kwargs)  # type: ignore
-        else:
-            return bound_method(*args, **kwargs)
-
-    async def invoke(self, *args: P.args, **kwargs: P.kwargs) -> R:
-        """핸들러 메서드 호출 (별칭)"""
-        return await self(*args, **kwargs)
+        # 새로 생성하거나 오버라이드
+        return cls._apply_override_rules(
+            method, lambda: cls(method, wrapper, inject_types)
+        )
 
     def invoke_sync(self, *args: P.args, **kwargs: P.kwargs) -> R:
         """동기 호출 (테스트용, owner 바인딩 없음)"""
         return self.callable_target(*args, **kwargs)
-
-
-type ACallable[**P, R] = Callable[P, Awaitable[R]]
-
-type Decorator[**P, R] = Callable[[Callable[P, R]], Callable[P, R]]
-type ADecorator[**P, R] = Callable[[ACallable[P, R]], ACallable[P, Awaitable[R]]]
-
-
-@overload
-def decorator[**P, R](wrapper: Decorator[P, R]) -> Decorator[P, R]: ...
-@overload
-def decorator[**P, R](wrapper: ADecorator[P, R]) -> ADecorator[P, R]: ...
-
-
-def decorator[**P, R](
-    wrapper: Decorator[P, R] | ADecorator[P, R],
-) -> Decorator[P, R] | ADecorator[P, R]:
-    """
-    DecoratorContainer를 생성하는 데코레이터 팩토리
-
-    사용 예:
-        def my_wrapper(fn):
-            @wraps(fn)
-            async def wrapped(*args, **kwargs):
-                print("before")
-                result = await fn(*args, **kwargs)
-                print("after")
-                return result
-            return wrapped
-
-        @decorator(my_wrapper)
-        def my_func():
-            pass
-    """
-
-    @overload
-    def decorator_factory(func: Callable[P, R]) -> Callable[P, R]: ...
-    @overload
-    def decorator_factory(
-        func: ACallable[P, R],
-    ) -> ACallable[P, R]: ...
-    def decorator_factory(
-        func: Callable[P, R] | ACallable[P, R],
-    ) -> Callable[P, R] | ACallable[P, R]:
-        DecoratorContainer.get_or_create(func, wrapper)
-        # 원본 함수 시그니처 유지하면서 컨테이너 연결
-        return func
-
-    return decorator_factory

@@ -20,6 +20,7 @@ from .container import (
 # Decorators
 from .decorators import (
     Component,
+    Decorator,
     Factory,
     Handler,
     PostConstruct,

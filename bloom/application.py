@@ -455,10 +455,14 @@ class Application:
                         setattr(instance, name, bound_obj)
                 continue
 
-            # 일반 메서드 처리
-            container = HandlerContainer.get_container(attr)
+            # 일반 메서드 처리 - 모든 Container 타입 확인 (DecoratorContainer 포함)
+            from .core.container import Container
+            from .core.container.callable import CallableContainer
+            from .core.container.decorator import DecoratorContainer
+
+            container = Container.get_container(attr)
             if container is None:
-                # HandlerContainer가 없으면 자동 생성 (모든 메서드 추적 지원)
+                # Container가 없으면 HandlerContainer 자동 생성 (모든 메서드 추적 지원)
                 # method 객체에서 원본 함수 추출 (__func__)
                 original_func = getattr(attr, "__func__", attr)
                 try:
@@ -467,11 +471,25 @@ class Application:
                     # pydantic 등 특수 클래스의 메서드는 setattr 불가 - 스킵
                     continue
 
+            # DecoratorContainer는 wrapper가 적용된 메서드를 original로 사용
+            # 이미 바인딩된 메서드이므로 instance=None
+            if isinstance(container, DecoratorContainer):
+                wrapped = container._resolved_wrapper(container._original_target)
+                original = wrapped.__get__(instance, type(instance))
+                proxy_instance = None
+            elif isinstance(container, CallableContainer):
+                # CallableContainer면 callable_target 사용
+                original = container.callable_target
+                proxy_instance = instance
+            else:
+                original = attr
+                proxy_instance = instance
+
             # 프록시 생성 및 적용
             proxy = MethodProxy(
                 container=container,
-                instance=instance,
-                original=attr,
+                instance=proxy_instance,
+                original=original,
                 manager=invocation_manager,
             )
             try:
