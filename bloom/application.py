@@ -219,23 +219,31 @@ class Application:
                     mname: str = method_name,
                     route_for_match: Route = route_obj,
                 ) -> Any:
-                    controller = await app.container_manager.get_instance_async(
-                        ctrl_cls
-                    )
-                    method = getattr(controller, mname)
+                    # CALL 스코프 시작
+                    scope_manager = app.container_manager.scope_manager
+                    frame_id = scope_manager.start_call()
 
-                    # RouteMatch 생성 (path variables 추출)
-                    match = RouteMatch(
-                        route=route_for_match,
-                        path_params=request.path_params,
-                    )
+                    try:
+                        controller = await app.container_manager.get_instance_async(
+                            ctrl_cls
+                        )
+                        method = getattr(controller, mname)
 
-                    # 파라미터 해결
-                    params = await resolver_registry.resolve_parameters(
-                        method, request, match
-                    )
+                        # RouteMatch 생성 (path variables 추출)
+                        match = RouteMatch(
+                            route=route_for_match,
+                            path_params=request.path_params,
+                        )
 
-                    return await method(**params)
+                        # 파라미터 해결
+                        params = await resolver_registry.resolve_parameters(
+                            method, request, match
+                        )
+
+                        return await method(**params)
+                    finally:
+                        # CALL 스코프 종료 (정리)
+                        await scope_manager.end_call(frame_id)
 
                 # 라우트 등록
                 for method in methods:
