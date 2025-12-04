@@ -21,6 +21,8 @@ __all__ = [
     "SSEEvent",
     # Middleware
     "Middleware",
+    "MiddlewareComponent",
+    "MiddlewareStack",
     "RequestScopeMiddleware",
     "ErrorHandlerMiddleware",
     "CORSMiddleware",
@@ -131,6 +133,8 @@ def __getattr__(name: str):
     # Middleware
     if name in (
         "Middleware",
+        "MiddlewareComponent",
+        "MiddlewareStack",
         "RequestScopeMiddleware",
         "ErrorHandlerMiddleware",
         "CORSMiddleware",

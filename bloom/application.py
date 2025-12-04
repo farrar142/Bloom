@@ -121,6 +121,124 @@ class Application:
         # ContainerManager (lazy import)
         self._container_manager: Any = None
 
+        # 미들웨어 설정
+        self._middleware_entries: list[Any] = []  # MiddlewareEntry 리스트
+        self._exception_handlers: dict[type[Exception], Any] = {}
+
+    # =========================================================================
+    # Middleware API
+    # =========================================================================
+
+    def add_middleware(
+        self,
+        middleware_cls: type,
+        order: int = 0,
+        path: str | None = None,
+        **kwargs: Any,
+    ) -> "Application":
+        """미들웨어 추가
+
+        ASGI 레벨 미들웨어 또는 DI 연동 미들웨어를 추가합니다.
+
+        Args:
+            middleware_cls: 미들웨어 클래스
+            order: 실행 순서 (낮을수록 먼저 실행)
+            path: 적용할 경로 패턴 (예: "/api/*")
+            **kwargs: ASGI 미들웨어에 전달할 인자
+
+        Returns:
+            self (체이닝용)
+
+        Examples:
+            # ASGI 레벨 미들웨어
+            app.add_middleware(CORSMiddleware, order=0, allow_origins=["*"])
+
+            # DI 연동 미들웨어 (@MiddlewareComponent)
+            app.add_middleware(AuthMiddleware, order=50)
+        """
+        from .web.middleware.base import (
+            MiddlewareEntry,
+            Middleware,
+            is_middleware_component,
+        )
+
+        if is_middleware_component(middleware_cls):
+            # DI 연동 미들웨어
+            entry = MiddlewareEntry(
+                order=order,
+                di_middleware_cls=middleware_cls,
+                path_pattern=path,
+            )
+        elif issubclass(middleware_cls, Middleware):
+            # ASGI 레벨 미들웨어
+            entry = MiddlewareEntry(
+                order=order,
+                middleware_cls=middleware_cls,
+                middleware_kwargs=kwargs,
+            )
+        else:
+            # DI 연동 미들웨어로 간주 (프로토콜 기반)
+            entry = MiddlewareEntry(
+                order=order,
+                di_middleware_cls=middleware_cls,
+                path_pattern=path,
+            )
+
+        self._middleware_entries.append(entry)
+        self._asgi = None  # 캐시 무효화
+        return self
+
+    def middleware(
+        self,
+        order: int = 0,
+        path: str | None = None,
+    ):
+        """함수 미들웨어 데코레이터
+
+        Args:
+            order: 실행 순서 (낮을수록 먼저 실행)
+            path: 적용할 경로 패턴 (예: "/api/*")
+
+        Examples:
+            @app.middleware(order=10)
+            async def logging_middleware(request, call_next):
+                start = time.time()
+                response = await call_next(request)
+                print(f"Duration: {time.time() - start:.3f}s")
+                return response
+        """
+        from .web.middleware.base import MiddlewareEntry
+
+        def decorator(func):
+            entry = MiddlewareEntry(
+                order=order,
+                func_middleware=func,
+                path_pattern=path,
+            )
+            self._middleware_entries.append(entry)
+            self._asgi = None  # 캐시 무효화
+            return func
+
+        return decorator
+
+    def exception_handler(self, exception_cls: type[Exception]):
+        """예외 핸들러 데코레이터
+
+        Args:
+            exception_cls: 처리할 예외 타입
+
+        Examples:
+            @app.exception_handler(ValidationError)
+            async def validation_error_handler(request, exc):
+                return JSONResponse({"error": str(exc)}, status_code=400)
+        """
+
+        def decorator(func):
+            self._exception_handlers[exception_cls] = func
+            return func
+
+        return decorator
+
     @property
     def queue(self) -> "TaskApp":
         """태스크 큐 앱 (TaskApp)
@@ -186,12 +304,68 @@ class Application:
         from .web.routing.decorators import get_controller_routes
         from .web.routing.resolver import ResolverRegistry
         from .web.routing.router import Route, RouteMatch
+        from .web.middleware.base import (
+            MiddlewareEntry,
+            Middleware,
+            is_middleware_component,
+            get_middleware_metadata,
+        )
+        from .web.middleware import ErrorHandlerMiddleware
 
         asgi = ASGIApplication(debug=True)
         app = self  # closure용
         resolver_registry = ResolverRegistry()
 
-        # @Controller 클래스 찾기 및 라우트 등록
+        # =================================================================
+        # 미들웨어 수집 및 등록
+        # =================================================================
+
+        # 1. @MiddlewareComponent로 등록된 DI 미들웨어 자동 수집
+        for container in self.container_manager.get_all_containers():
+            cls = container.target
+            metadata = get_middleware_metadata(cls)
+            if metadata:
+                entry = MiddlewareEntry(
+                    order=metadata.order,
+                    di_middleware_cls=cls,
+                    path_pattern=metadata.path_pattern,
+                )
+                # 중복 방지
+                if not any(
+                    e.di_middleware_cls == cls for e in self._middleware_entries
+                ):
+                    self._middleware_entries.append(entry)
+
+        # 2. 미들웨어 분류
+        asgi_middlewares: list[MiddlewareEntry] = []
+        di_middlewares: list[MiddlewareEntry] = []
+        func_middlewares: list[MiddlewareEntry] = []
+
+        for entry in self._middleware_entries:
+            if entry.middleware_cls:
+                asgi_middlewares.append(entry)
+            elif entry.di_middleware_cls:
+                di_middlewares.append(entry)
+            elif entry.func_middleware:
+                func_middlewares.append(entry)
+
+        # 3. ASGI 레벨 미들웨어 등록 (MiddlewareStack으로)
+        for entry in sorted(asgi_middlewares, key=lambda e: e.order):
+            asgi.add_middleware(
+                entry.middleware_cls,  # type: ignore
+                **entry.middleware_kwargs,
+            )
+
+        # 4. ErrorHandlerMiddleware 등록 (가장 안쪽, 기본 등록)
+        # 예외 핸들러 등록
+        error_middleware = ErrorHandlerMiddleware(debug=True)
+        for exc_cls, handler in self._exception_handlers.items():
+            error_middleware.add_handler(exc_cls, handler)
+
+        # =================================================================
+        # @Controller 라우트 등록
+        # =================================================================
+
         for container in self.container_manager.get_all_containers():
             cls = container.target
             if not getattr(cls, "__bloom_controller__", False):
@@ -204,11 +378,10 @@ class Application:
                 method_name = route["name"]
 
                 # Route 객체 생성 (closure용)
-                # dummy handler - 실제로 사용되지 않음
                 route_obj = Route(
                     path=path,
                     method=methods[0] if methods else "GET",
-                    handler=lambda r: None,
+                    handler=lambda r: r,  # dummy
                     name=method_name,
                 )
 
@@ -218,29 +391,49 @@ class Application:
                     ctrl_cls: type = cls,
                     mname: str = method_name,
                     route_for_match: Route = route_obj,
+                    _di_middlewares: list = di_middlewares,
+                    _func_middlewares: list = func_middlewares,
                 ) -> Any:
+                    from .core.decorators import _prepare_call_scope_dependencies
+
                     # CALL 스코프 시작
                     scope_manager = app.container_manager.scope_manager
                     frame_id = scope_manager.start_call()
 
                     try:
-                        controller = await app.container_manager.get_instance_async(
-                            ctrl_cls
-                        )
-                        method = getattr(controller, mname)
+                        # DI/함수 미들웨어 체인 실행
+                        async def final_handler(req: Request) -> Any:
+                            controller = await app.container_manager.get_instance_async(
+                                ctrl_cls
+                            )
 
-                        # RouteMatch 생성 (path variables 추출)
-                        match = RouteMatch(
-                            route=route_for_match,
-                            path_params=request.path_params,
-                        )
+                            # Controller와 그 의존성 체인의 CALL 스코프 의존성 미리 생성
+                            await _prepare_call_scope_dependencies(
+                                app.container_manager, controller
+                            )
 
-                        # 파라미터 해결
-                        params = await resolver_registry.resolve_parameters(
-                            method, request, match
-                        )
+                            method = getattr(controller, mname)
 
-                        return await method(**params)
+                            # RouteMatch 생성 (path variables 추출)
+                            match = RouteMatch(
+                                route=route_for_match,
+                                path_params=req.path_params,
+                            )
+
+                            # 파라미터 해결
+                            params = await resolver_registry.resolve_parameters(
+                                method, req, match
+                            )
+
+                            return await method(**params)
+
+                        # 미들웨어 체인 실행
+                        return await app._execute_middleware_chain(
+                            request,
+                            final_handler,
+                            _di_middlewares,
+                            _func_middlewares,
+                        )
                     finally:
                         # CALL 스코프 종료 (정리)
                         await scope_manager.end_call(frame_id)
@@ -251,6 +444,57 @@ class Application:
 
         # Lifespan을 처리하는 ASGI wrapper 반환
         return _LifespanASGIWrapper(asgi, self)
+
+    async def _execute_middleware_chain(
+        self,
+        request: Any,
+        final_handler: Any,
+        di_middlewares: list,
+        func_middlewares: list,
+        index: int = 0,
+    ) -> Any:
+        """DI/함수 미들웨어 체인 실행"""
+        import fnmatch
+
+        # 모든 미들웨어 합치고 정렬
+        all_middlewares = sorted(
+            di_middlewares + func_middlewares,
+            key=lambda e: e.order,
+        )
+
+        if index >= len(all_middlewares):
+            # 모든 미들웨어 통과 - 최종 핸들러 실행
+            return await final_handler(request)
+
+        entry = all_middlewares[index]
+
+        # 경로 패턴 체크
+        if entry.path_pattern and not fnmatch.fnmatch(request.path, entry.path_pattern):
+            # 이 미들웨어는 건너뜀
+            return await self._execute_middleware_chain(
+                request, final_handler, di_middlewares, func_middlewares, index + 1
+            )
+
+        # call_next 생성
+        async def call_next(req: Any) -> Any:
+            return await self._execute_middleware_chain(
+                req, final_handler, di_middlewares, func_middlewares, index + 1
+            )
+
+        # 미들웨어 실행
+        if entry.di_middleware_cls:
+            # DI 연동 미들웨어
+            instance = await self.container_manager.get_instance_async(
+                entry.di_middleware_cls
+            )
+            return await instance(request, call_next)
+        elif entry.func_middleware:
+            # 함수 미들웨어
+            return await entry.func_middleware(request, call_next)
+
+        return await self._execute_middleware_chain(
+            request, final_handler, di_middlewares, func_middlewares, index + 1
+        )
 
     @property
     def container_manager(self) -> Any:
@@ -469,6 +713,9 @@ class Application:
 
         # @Task 메서드 자동 등록
         await self._register_task_methods()
+
+        # ASGI 앱 캐시 무효화 (미들웨어 수집을 위해)
+        self._asgi = None
 
         self._is_ready = True
         logger.info(f"Application {self.name} is ready")

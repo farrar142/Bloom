@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from functools import wraps
 from typing import Any, Callable, TypeVar, overload, TYPE_CHECKING
 
@@ -73,6 +74,19 @@ def Component[T: type](
     """
 
     def decorator(cls: T) -> T:
+        # 생성자 파라미터 검사 (self 제외) - 클래스 자체에 정의된 __init__만 확인
+        init_method = cls.__dict__.get("__init__", None)
+        if init_method is not None:
+            sig = inspect.signature(init_method)
+            params = [p for p in sig.parameters.values() if p.name != "self"]
+            if params:
+                param_names = [p.name for p in params]
+                raise TypeError(
+                    f"@Component는 생성자 의존성 주입을 지원하지 않습니다. "
+                    f"'{cls.__name__}'에서 생성자 파라미터 {param_names}를 제거하고 "
+                    f"필드 주입을 사용하세요. 예: `service: SomeService`"
+                )
+
         # __bloom_scope__가 이미 설정되어 있으면 우선 사용 (@Scope 데코레이터)
         # 이를 통해 @Scope를 먼저 적용하든 나중에 적용하든 동작
         actual_scope = getattr(cls, "__bloom_scope__", None) or scope
@@ -270,7 +284,7 @@ async def _prepare_call_scope_dependencies(
     """
     인스턴스의 CALL 스코프 의존성을 미리 생성합니다.
     LazyProxy로 주입된 필드 중 CALL 스코프인 것들을 찾아서 미리 resolve합니다.
-    재귀적으로 중첩 의존성도 처리합니다 (깊이 우선 - 의존성 먼저).
+    SINGLETON 의존성도 재귀적으로 탐색하여 그 안의 CALL 스코프 의존성을 찾습니다.
     """
     from .proxy import LazyProxy
 
@@ -287,11 +301,22 @@ async def _prepare_call_scope_dependencies(
     for attr_name, attr_value in vars(instance).items():
         if isinstance(attr_value, LazyProxy):
             container = object.__getattribute__(attr_value, "_lp_container")
+
             if container.scope == ScopeEnum.CALL:
-                # Container의 의존성 정보를 이용해 먼저 중첩 의존성 처리 (깊이 우선)
+                # CALL 스코프: 깊이 우선으로 의존성 생성
                 await _prepare_dependencies_depth_first(
                     manager, container.target, visited.copy()
                 )
+            else:
+                # SINGLETON/REQUEST: 이미 생성된 인스턴스를 가져와서 재귀 탐색
+                # (그 안에 CALL 스코프 의존성이 있을 수 있음)
+                dep_instance = manager.scope_manager.get_instance(
+                    container.target, container.scope
+                )
+                if dep_instance is not None:
+                    await _prepare_call_scope_dependencies(
+                        manager, dep_instance, visited
+                    )
 
 
 async def _prepare_dependencies_depth_first(

@@ -223,7 +223,7 @@ class Container(Generic[T]):
         manager: "ContainerManager",
     ) -> None:
         """필드에 의존성 주입
-        
+
         - CALL 스코프 (CALL 컨텍스트 내): eager resolve
         - CALL 스코프 (CALL 컨텍스트 외): LazyProxy로 주입
         - SINGLETON/REQUEST: LazyProxy로 주입 (순환 의존성 지원)

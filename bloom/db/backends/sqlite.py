@@ -316,6 +316,7 @@ class SQLiteBackend(DatabaseBackend):
         # 메모리 DB
         backend = SQLiteBackend(":memory:")
         backend = SQLiteBackend()  # 기본값 :memory:
+        backend = SQLiteBackend("sqlite:///demo.db?mode=memory")  # 쿼리 파라미터 지원
 
         # 연결 사용
         with backend.connection() as conn:
@@ -337,6 +338,15 @@ class SQLiteBackend(DatabaseBackend):
             database = database[len("sqlite:///") :]
         elif database.startswith("sqlite://"):
             database = database[len("sqlite://") :]
+
+        # 쿼리 파라미터 분리 (예: demo.db?mode=memory -> demo.db)
+        if "?" in database:
+            db_path, query_string = database.split("?", 1)
+            # mode=memory인 경우 :memory: 사용
+            if "mode=memory" in query_string:
+                database = ":memory:"
+            else:
+                database = db_path
 
         config = ConnectionConfig(
             driver="sqlite",
