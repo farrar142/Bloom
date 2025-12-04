@@ -10,6 +10,7 @@ from .request import Request
 from .response import Response, JSONResponse
 from .middleware.base import Middleware, MiddlewareStack
 from .middleware.request_scope import RequestScopeMiddleware
+from .routing.response_converter import get_response_converter_registry
 
 if TYPE_CHECKING:
     pass
@@ -185,15 +186,9 @@ class ASGIApplication:
             # 핸들러 실행
             result = await handler(request)
 
-            # 응답 처리
-            if isinstance(result, Response):
-                response = result
-            elif isinstance(result, dict):
-                response = JSONResponse(result)
-            elif isinstance(result, str):
-                response = Response(content=result, media_type="text/plain")
-            else:
-                response = JSONResponse(result)
+            # 응답 처리 - ResponseConverterRegistry 사용
+            converter_registry = get_response_converter_registry()
+            response = converter_registry.convert(result)
 
             await response(scope, receive, send)
 
