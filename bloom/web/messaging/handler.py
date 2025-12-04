@@ -109,8 +109,9 @@ class MessageParameterInfo:
             annotation = Any
 
         # Annotated[T, Marker] 형태에서 마커와 실제 타입 추출
-        marker = get_message_param_marker(annotation)
-        actual_type = get_message_param_type(annotation) or Any
+        actual_type, marker = get_message_param_marker(annotation)
+        if actual_type is None:
+            actual_type = get_message_param_type(annotation) or Any
 
         # Optional[T] 처리
         is_opt = False
@@ -131,6 +132,13 @@ class MessageParameterInfo:
 
         has_default = param.default is not inspect.Parameter.empty
         default = param.default if has_default else None
+
+        # param.default가 MessageParamMarker인 경우
+        from .params import MessageParamMarker
+        if isinstance(default, MessageParamMarker):
+            marker = default
+            has_default = False
+            default = None
 
         return cls(
             name=param.name,
