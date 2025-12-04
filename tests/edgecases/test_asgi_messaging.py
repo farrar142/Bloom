@@ -7,7 +7,7 @@ import pytest
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Annotated, Optional
+from typing import Optional
 
 from bloom.core import (
     Component,
@@ -150,7 +150,7 @@ class TestEmptyAndNullValues:
             @MessageMapping("/anon")
             async def handle_anon(
                 self,
-                principal: Annotated[str | None, Principal] = None,
+                principal: Principal[str | None] = None,
             ) -> dict:
                 return {"user": principal or "anonymous"}
 
@@ -659,7 +659,7 @@ class TestHandlerResolutionEdgeCases:
             @MessageMapping("/default")
             async def handle_default(
                 self,
-                message: Annotated[dict | None, MessagePayload] = None,
+                message: MessagePayload[dict | None] = None,
             ) -> dict:
                 return {"value": message.get("text") if message else "default"}
 

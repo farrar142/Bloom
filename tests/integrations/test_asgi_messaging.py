@@ -8,7 +8,6 @@ import pytest
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Annotated
 
 from bloom import Application
 from bloom.core import (
@@ -142,7 +141,7 @@ class TestMessagingDIIntegration:
             async def handle_notify(
                 self,
                 user_id: str,
-                message: Annotated[dict, MessagePayload],
+                message: MessagePayload[dict],
             ) -> dict:
                 self.notification_service.add_notification(f"{user_id}: {message}")
                 return {"status": "ok", "user_id": user_id}
@@ -208,8 +207,8 @@ class TestMessagingDIIntegration:
             async def handle_chat(
                 self,
                 room: str,
-                message: Annotated[TestChatMessage, MessagePayload],
-                principal: Annotated[str | None, Principal] = None,
+                message: MessagePayload[TestChatMessage],
+                principal: Principal[str | None] = None,
             ) -> TestChatResponse:
                 self.received_messages.append(message)
                 return TestChatResponse(
@@ -325,8 +324,8 @@ class TestBrokerDispatcherIntegration:
             async def handle_chat(
                 self,
                 room: str,
-                message: Annotated[BroadcastMessage, MessagePayload],
-                principal: Annotated[str | None, Principal] = None,
+                message: MessagePayload[BroadcastMessage],
+                principal: Principal[str | None] = None,
             ) -> BroadcastResponse:
                 return BroadcastResponse(
                     text=message.text,
@@ -416,7 +415,7 @@ class TestMultipleControllersIntegration:
             async def handle_chat(
                 self,
                 room: str,
-                message: Annotated[ChatMsg, MessagePayload],
+                message: MessagePayload[ChatMsg],
             ) -> ChatResp:
                 return ChatResp(text=message.text, room=room)
 
@@ -433,7 +432,7 @@ class TestMultipleControllersIntegration:
             async def handle_notify(
                 self,
                 user_id: str,
-                message: Annotated[dict, MessagePayload],
+                message: MessagePayload[dict],
             ) -> dict:
                 self.notification_service.notifications.append(f"{user_id}: {message}")
                 return {"status": "ok", "user_id": user_id}
@@ -564,7 +563,7 @@ class TestStompProtocolIntegration:
             async def handle_chat(
                 self,
                 room: str,
-                message: Annotated[StompChatMessage, MessagePayload],
+                message: MessagePayload[StompChatMessage],
             ) -> StompChatResponse:
                 return StompChatResponse(text=message.text, room=room)
 
@@ -731,7 +730,7 @@ class TestErrorHandlingIntegration:
             @MessageMapping("/test")
             async def handle(
                 self,
-                message: Annotated[InvalidJsonMessage, MessagePayload],
+                message: MessagePayload[InvalidJsonMessage],
             ) -> dict:
                 return {"received": message.text}
 
