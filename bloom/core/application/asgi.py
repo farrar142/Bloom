@@ -194,7 +194,7 @@ class ASGIManager:
                     route_for_match: Route = route_obj,
                     _di_middlewares: list = di_middlewares,
                     _func_middlewares: list = func_middlewares,
-                    _container_manager: Any = container_manager,
+                    _container_manager: "ContainerManager" = container_manager,
                     _middleware_manager: "MiddlewareManager" = middleware_manager,
                     _resolver_registry: Any = resolver_registry,
                 ) -> Any:

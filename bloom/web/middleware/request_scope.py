@@ -37,6 +37,8 @@ class RequestScopeMiddleware(Middleware):
         self._manager = get_container_manager()
 
     async def __call__(self, scope: "Scope", receive: "Receive", send: "Send") -> None:
+        if self.app is None:
+            raise NotImplementedError("App is None in RequestScopeMiddleware")
         """
         HTTP 요청에 대해 REQUEST 스코프 컨텍스트를 관리합니다.
 
