@@ -18,7 +18,7 @@ class UserRepository(Repository[User, int]):
 
     async def find_by_email_async(self, email: str) -> User | None:
         """이메일로 사용자 조회"""
-        session = self._get_async_session()
+        session = await self._get_async_session()
         async for row in session.execute(
             "SELECT * FROM user WHERE email = :email", {"email": email}
         ):
@@ -29,7 +29,7 @@ class UserRepository(Repository[User, int]):
 
     async def find_active_users_async(self) -> list[User]:
         """활성 사용자 조회"""
-        session = self._get_async_session()
+        session = await self._get_async_session()
         rows = []
         async for row in session.execute("SELECT * FROM user WHERE is_active = 1", {}):
             rows.append(row)
@@ -44,7 +44,7 @@ class PostRepository(Repository[Post, int]):
 
     async def find_by_author_async(self, author_id: int) -> list[Post]:
         """작성자로 게시글 조회"""
-        session = self._get_async_session()
+        session = await self._get_async_session()
         rows = []
         async for row in session.execute(
             "SELECT * FROM post WHERE author_id = :author_id",

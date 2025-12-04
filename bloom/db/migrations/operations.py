@@ -65,11 +65,13 @@ class CreateTable(Operation):
 
     def to_sql(self, dialect: Dialect | None) -> str:
         """CREATE TABLE SQL 생성"""
+        # 테이블 이름을 인용부호로 감싸서 예약어 충돌 방지
+        quoted_table = f'"{self.table_name}"'
         col_defs = [f"    {name} {definition}" for name, definition in self.columns]
         if self.constraints:
             col_defs.extend(f"    {c}" for c in self.constraints)
         cols_sql = ",\n".join(col_defs)
-        return f"CREATE TABLE {self.table_name} (\n{cols_sql}\n)"
+        return f"CREATE TABLE {quoted_table} (\n{cols_sql}\n)"
 
 
 @dataclass
@@ -93,7 +95,7 @@ class DropTable(Operation):
 
     def to_sql(self, dialect: Dialect | None) -> str:
         """DROP TABLE SQL 생성"""
-        return f"DROP TABLE {self.table_name}"
+        return f'DROP TABLE "{self.table_name}"'
 
 
 @dataclass
@@ -115,7 +117,7 @@ class AddColumn(Operation):
 
     def to_sql(self, dialect: Dialect | None) -> str:
         """ALTER TABLE ADD COLUMN SQL 생성"""
-        return f"ALTER TABLE {self.table_name} ADD COLUMN {self.column_name} {self.column_definition}"
+        return f'ALTER TABLE "{self.table_name}" ADD COLUMN {self.column_name} {self.column_definition}'
 
 
 @dataclass
@@ -139,7 +141,7 @@ class DropColumn(Operation):
 
     def to_sql(self, dialect: Dialect | None) -> str:
         """ALTER TABLE DROP COLUMN SQL 생성"""
-        return f"ALTER TABLE {self.table_name} DROP COLUMN {self.column_name}"
+        return f'ALTER TABLE "{self.table_name}" DROP COLUMN {self.column_name}'
 
 
 @dataclass
@@ -163,7 +165,7 @@ class AlterColumn(Operation):
 
     def to_sql(self, dialect: Dialect | None) -> str:
         """ALTER TABLE ALTER COLUMN SQL 생성"""
-        return f"ALTER TABLE {self.table_name} ALTER COLUMN {self.column_name} {self.new_definition}"
+        return f'ALTER TABLE "{self.table_name}" ALTER COLUMN {self.column_name} {self.new_definition}'
 
 
 @dataclass
@@ -185,7 +187,7 @@ class RenameColumn(Operation):
 
     def to_sql(self, dialect: Dialect | None) -> str:
         """ALTER TABLE RENAME COLUMN SQL 생성"""
-        return f"ALTER TABLE {self.table_name} RENAME COLUMN {self.old_name} TO {self.new_name}"
+        return f'ALTER TABLE "{self.table_name}" RENAME COLUMN {self.old_name} TO {self.new_name}'
 
 
 @dataclass
@@ -206,7 +208,7 @@ class RenameTable(Operation):
 
     def to_sql(self, dialect: Dialect | None) -> str:
         """ALTER TABLE RENAME SQL 생성"""
-        return f"ALTER TABLE {self.old_name} RENAME TO {self.new_name}"
+        return f'ALTER TABLE "{self.old_name}" RENAME TO "{self.new_name}"'
 
 
 @dataclass
@@ -232,9 +234,7 @@ class CreateIndex(Operation):
         """CREATE INDEX SQL 생성"""
         unique_str = "UNIQUE " if self.unique else ""
         cols = ", ".join(self.columns)
-        return (
-            f"CREATE {unique_str}INDEX {self.index_name} ON {self.table_name} ({cols})"
-        )
+        return f'CREATE {unique_str}INDEX {self.index_name} ON "{self.table_name}" ({cols})'
 
 
 @dataclass
@@ -285,7 +285,7 @@ class AddConstraint(Operation):
 
     def to_sql(self, dialect: Dialect | None) -> str:
         """ALTER TABLE ADD CONSTRAINT SQL 생성"""
-        return f"ALTER TABLE {self.table_name} ADD CONSTRAINT {self.constraint_name} {self.constraint_sql}"
+        return f'ALTER TABLE "{self.table_name}" ADD CONSTRAINT {self.constraint_name} {self.constraint_sql}'
 
 
 @dataclass
@@ -310,7 +310,7 @@ class DropConstraint(Operation):
 
     def to_sql(self, dialect: Dialect | None) -> str:
         """ALTER TABLE DROP CONSTRAINT SQL 생성"""
-        return f"ALTER TABLE {self.table_name} DROP CONSTRAINT {self.constraint_name}"
+        return f'ALTER TABLE "{self.table_name}" DROP CONSTRAINT {self.constraint_name}'
 
 
 @dataclass

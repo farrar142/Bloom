@@ -21,9 +21,11 @@ class DependencyInfo:
     """의존성 정보"""
 
     field_name: str  # 필드명
-    field_type: type  # 타입
+    field_type: type  # 타입 (AsyncProxy[T]인 경우 T)
     is_optional: bool = False  # Optional 여부
     default_value: Any = None  # 기본값
+    is_async_proxy: bool = False  # AsyncProxy[T]로 선언되었는지 여부
+    raw_type_hint: Any = None  # 원본 타입 힌트 (AsyncProxy[T] 등)
 
 
 @dataclass
@@ -59,6 +61,8 @@ class Container(Generic[T]):
 
     def _analyze_dependencies(self) -> list[DependencyInfo]:
         """클래스 필드에서 의존성 분석"""
+        from typing import get_origin, get_args
+
         deps: list[DependencyInfo] = []
 
         # 타입 힌트에서 의존성 추출
@@ -78,17 +82,35 @@ class Container(Generic[T]):
             default = getattr(self.target, name, _MISSING)
             is_optional = default is not _MISSING
 
+            # AsyncProxy[T] 타입 확인
+            is_async_proxy = False
+            actual_type = hint
+
+            # AsyncProxy 체크 (런타임에 제네릭 타입 분석)
+            origin = get_origin(hint)
+            if origin is not None:
+                # 제네릭 타입인 경우
+                from .proxy import AsyncProxy
+
+                if origin is AsyncProxy:
+                    is_async_proxy = True
+                    args = get_args(hint)
+                    if args:
+                        actual_type = args[0]  # AsyncProxy[T]에서 T 추출
+
             # 내장 타입은 제외 (str, int, list 등)
-            if _is_builtin_type(hint):
+            if _is_builtin_type(actual_type):
                 continue
 
             # 문자열(forward reference)은 나중에 런타임에 해결
             deps.append(
                 DependencyInfo(
                     field_name=name,
-                    field_type=hint,
+                    field_type=actual_type,
                     is_optional=is_optional,
                     default_value=default if is_optional else None,
+                    is_async_proxy=is_async_proxy,
+                    raw_type_hint=hint,
                 )
             )
 
@@ -224,11 +246,13 @@ class Container(Generic[T]):
     ) -> None:
         """필드에 의존성 주입
 
-        - CALL 스코프 (CALL 컨텍스트 내): eager resolve
-        - CALL 스코프 (CALL 컨텍스트 외): LazyProxy로 주입
-        - SINGLETON/REQUEST: LazyProxy로 주입 (순환 의존성 지원)
+        - AsyncProxy[T]로 선언된 필드: AsyncProxy로 주입 (await resolve() 필요)
+        - CALL 스코프 + async factory: AsyncProxy 필수 (에러 발생)
+        - SINGLETON/REQUEST/CALL: LazyProxy로 주입 (순환 의존성 지원)
+        
+        CALL 스코프 async factory 컴포넌트는 반드시 AsyncProxy[T]로 선언해야 합니다.
         """
-        from .proxy import LazyProxy
+        from .proxy import AsyncProxy, LazyProxy
         from .scope import ScopeEnum
 
         for dep in self.dependencies:
@@ -264,20 +288,28 @@ class Container(Generic[T]):
                     f"for component '{self.target.__name__}'"
                 )
 
-            # CALL 스코프 의존성: CALL 컨텍스트 내에 있으면 바로 resolve
-            # 그렇지 않으면 LazyProxy로 주입 (나중에 CALL 컨텍스트에서 접근 시 resolve)
-            if dep_container.scope == ScopeEnum.CALL:
-                if manager.scope_manager.is_in_call_context():
-                    # CALL 컨텍스트 내: 바로 resolve
-                    dep_instance = await manager.get_instance_async(field_type)
-                    setattr(instance, dep.field_name, dep_instance)
-                else:
-                    # CALL 컨텍스트 외: LazyProxy로 주입
-                    proxy: LazyProxy[Any] = LazyProxy(dep_container, manager)
-                    setattr(instance, dep.field_name, proxy)
+            # CALL 스코프 + async factory 체크
+            if dep_container.scope == ScopeEnum.CALL and not dep.is_async_proxy:
+                # async factory인지 확인
+                is_async_factory = (
+                    dep_container.factory is not None
+                    and inspect.iscoroutinefunction(dep_container.factory.method)
+                )
+                if is_async_factory:
+                    raise RuntimeError(
+                        f"CALL scoped async factory '{field_type.__name__}' must be declared as "
+                        f"AsyncProxy[{field_type.__name__}] in '{self.target.__name__}.{dep.field_name}'. "
+                        f"Use: {dep.field_name}: AsyncProxy[{field_type.__name__}]"
+                    )
+
+            # AsyncProxy[T]로 명시적으로 선언된 경우: AsyncProxy 주입
+            if dep.is_async_proxy:
+                async_proxy: AsyncProxy[Any] = AsyncProxy(dep_container, manager)
+                setattr(instance, dep.field_name, async_proxy)
             else:
-                # SINGLETON/REQUEST: LazyProxy로 주입 (순환 의존성 지원)
-                proxy = LazyProxy(dep_container, manager)
+                # SINGLETON/REQUEST/CALL 모두: LazyProxy로 주입
+                # CALL 스코프는 접근 시점에 컨텍스트 체크 후 resolve
+                proxy: LazyProxy[Any] = LazyProxy(dep_container, manager)
                 setattr(instance, dep.field_name, proxy)
 
     def _resolve_forward_ref(

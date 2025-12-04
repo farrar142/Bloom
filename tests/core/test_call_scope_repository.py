@@ -21,7 +21,7 @@ from bloom.core import (
 )
 from bloom.core.scope import ScopeEnum
 from bloom.core.manager import ContainerManager
-from bloom.core.proxy import LazyProxy
+from bloom.core.proxy import LazyProxy, AsyncProxy
 from bloom.core.decorators import register_factories_from_configuration
 from bloom.web import Controller, GetMapping, PostMapping, RequestMapping, JSONResponse
 
@@ -79,14 +79,15 @@ class TestCallScopeRepositoryChain:
                 TestDatabaseConfig._session_counter += 1
                 return MockAsyncSession(id=TestDatabaseConfig._session_counter)
 
-        # Repository - AsyncSession 의존성
+        # Repository - AsyncSession 의존성 (AsyncProxy로 선언 필수)
         @Component
         class TestUserRepository:
-            async_session: MockAsyncSession  # CALL 스코프 의존성
+            async_session: AsyncProxy[MockAsyncSession]  # CALL 스코프 async factory
 
             async def find_by_email(self, email: str) -> dict | None:
-                # async_session.dialect 접근 시 LazyProxy가 resolve되어야 함
-                sql = self.async_session.dialect.select_sql(
+                # AsyncProxy는 await resolve()로 인스턴스 접근
+                session = await self.async_session.resolve()
+                sql = session.dialect.select_sql(
                     None, where=f"email='{email}'"
                 )
                 return {"email": email, "sql": sql}
@@ -104,15 +105,14 @@ class TestCallScopeRepositoryChain:
             # Repository 인스턴스 가져오기
             repo = await manager.get_instance_async(TestUserRepository)
 
-            # CALL 스코프 의존성은 LazyProxy가 아니라 실제 인스턴스가 주입됨
+            # CALL 스코프 async factory는 AsyncProxy로 주입됨
             async_session_field = vars(repo).get("async_session")
             print(f"async_session field type: {type(async_session_field)}")
-            # CALL 스코프는 eager하게 resolve되므로 실제 MockAsyncSession이어야 함
             assert isinstance(
-                async_session_field, MockAsyncSession
-            ), "async_session should be MockAsyncSession (eager resolved)"
+                async_session_field, AsyncProxy
+            ), "async_session should be AsyncProxy"
 
-            # find_by_email 호출 시 async_session.dialect 접근
+            # find_by_email 호출 시 await resolve()로 접근
             result = await repo.find_by_email("test@example.com")
 
             print(f"Result: {result}")
@@ -137,10 +137,11 @@ class TestCallScopeRepositoryChain:
 
         @Component
         class TestUserRepository2:
-            async_session: MockAsyncSession
+            async_session: AsyncProxy[MockAsyncSession]
 
             async def find_by_email(self, email: str) -> dict | None:
-                sql = self.async_session.dialect.select_sql(
+                session = await self.async_session.resolve()
+                sql = session.dialect.select_sql(
                     None, where=f"email='{email}'"
                 )
                 return {"email": email, "sql": sql}
@@ -191,10 +192,11 @@ class TestCallScopeRepositoryChain:
 
         @Component
         class TestUserRepository3:
-            async_session: MockAsyncSession
+            async_session: AsyncProxy[MockAsyncSession]
 
             async def find_by_email(self, email: str) -> dict | None:
-                sql = self.async_session.dialect.select_sql(
+                session = await self.async_session.resolve()
+                sql = session.dialect.select_sql(
                     None, where=f"email='{email}'"
                 )
                 return {"email": email, "sql": sql}
@@ -294,10 +296,11 @@ class TestCallScopeRepositoryChain:
 
         @Component
         class TestUserRepository5:
-            async_session: MockAsyncSession
+            async_session: AsyncProxy[MockAsyncSession]
 
             async def find_by_email(self, email: str) -> dict | None:
-                sql = self.async_session.dialect.select_sql(
+                session = await self.async_session.resolve()
+                sql = session.dialect.select_sql(
                     None, where=f"email='{email}'"
                 )
                 return {"email": email, "sql": sql}
@@ -385,14 +388,15 @@ class TestCallScopeWithASGI:
 
         @Component
         class ASGITestUserRepository:
-            async_session: MockAsyncSession
+            async_session: AsyncProxy[MockAsyncSession]
 
             async def find_by_email(self, email: str) -> dict | None:
-                # 여기서 async_session.dialect 접근 시 LazyProxy가 resolve되어야 함
-                sql = self.async_session.dialect.select_sql(
+                # AsyncProxy는 await resolve()로 인스턴스 접근
+                session = await self.async_session.resolve()
+                sql = session.dialect.select_sql(
                     None, where=f"email='{email}'"
                 )
-                return {"email": email, "sql": sql, "session_id": self.async_session.id}
+                return {"email": email, "sql": sql, "session_id": session.id}
 
         @Service
         class ASGITestUserService:
@@ -468,10 +472,11 @@ class TestCallScopeWithASGI:
 
         @Component
         class IsolationTestRepository:
-            async_session: MockAsyncSession
+            async_session: AsyncProxy[MockAsyncSession]
 
             async def get_session_id(self) -> int:
-                return self.async_session.id
+                session = await self.async_session.resolve()
+                return session.id
 
         @Service
         class IsolationTestService:
@@ -548,13 +553,14 @@ class TestCallScopeWithASGI:
 
         @Component
         class PostTestRepository:
-            async_session: MockAsyncSession
+            async_session: AsyncProxy[MockAsyncSession]
 
             async def create(self, name: str, email: str) -> dict:
+                session = await self.async_session.resolve()
                 return {
                     "name": name,
                     "email": email,
-                    "session_id": self.async_session.id,
+                    "session_id": session.id,
                 }
 
         @Service

@@ -147,7 +147,11 @@ class ContainerManager:
         return self._resolve_instance(container)
 
     def _resolve_instance[T](self, container: Container[T]) -> T:
-        """컨테이너에서 인스턴스 resolve"""
+        """컨테이너에서 인스턴스 resolve (동기)
+        
+        CALL 스코프 async factory의 경우, 이 메서드 대신 
+        get_instance_async()를 사용하거나 AsyncProxy를 사용해야 합니다.
+        """
         scope = container.scope
         cls = container.target
 
@@ -166,13 +170,18 @@ class ContainerManager:
         if scope == ScopeEnum.CALL and not self._scope_manager.is_in_call_context():
             raise CallScopeError(cls)
 
-        # 새 인스턴스 생성 (동기 래퍼 - 실제론 async create_instance 호출 필요)
+        # 새 인스턴스 생성
         import asyncio
 
         try:
             asyncio.get_running_loop()
-            # 이미 이벤트 루프가 실행 중이면 async 메서드 사용 필요
-            raise RuntimeError("Use async get_instance_async in async context")
+            # async 컨텍스트: run_until_complete 사용 불가
+            # 이 경우 get_instance_async()를 사용해야 함
+            # CALL/REQUEST 스코프 async factory는 AsyncProxy를 사용 권장
+            raise RuntimeError(
+                f"Cannot resolve '{cls.__name__}' synchronously in async context. "
+                f"Use await manager.get_instance_async() or AsyncProxy[{cls.__name__}] instead."
+            )
         except RuntimeError as e:
             if "no running event loop" in str(e):
                 # 이벤트 루프가 없으면 새로 실행

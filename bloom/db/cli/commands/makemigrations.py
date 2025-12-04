@@ -102,7 +102,10 @@ def _make_migration_from_models(
     from bloom.db.entity import get_entity_meta
     from bloom.db.migrations import Migration
     from bloom.db.migrations.operations import CreateTable
-    from bloom.db.columns import ForeignKey
+    from bloom.db.columns import ForeignKey, ManyToOne, OneToMany
+
+    # 기존 마이그레이션에서 이미 생성된 테이블 목록 수집
+    existing_tables = _get_existing_tables_from_migrations(migrations_dir)
 
     operations = []
 
@@ -111,10 +114,18 @@ def _make_migration_from_models(
         if meta is None:
             continue
 
-        columns = [
-            (col_name, col.get_column_definition())
-            for col_name, col in meta.columns.items()
-        ]
+        # 이미 마이그레이션에 존재하는 테이블은 스킵
+        if meta.table_name in existing_tables:
+            continue
+
+        columns = []
+        for col_name, col in meta.columns.items():
+            # 관계 필드는 제외 (ManyToOne, OneToMany)
+            if isinstance(col, (ManyToOne, OneToMany)):
+                continue
+            # Column 계열만 추가
+            if hasattr(col, "get_column_definition"):
+                columns.append((col_name, col.get_column_definition()))
 
         constraints = []
         for col in meta.columns.values():
@@ -142,6 +153,40 @@ def _make_migration_from_models(
         dependencies=_get_latest_migration(migrations_dir),
         operations=operations,
     )
+
+
+def _get_existing_tables_from_migrations(migrations_dir: Path) -> set[str]:
+    """기존 마이그레이션 파일에서 생성된 테이블 목록 수집"""
+    import ast
+
+    tables: set[str] = set()
+
+    for migration_file in migrations_dir.glob("*.py"):
+        if migration_file.name == "__init__.py":
+            continue
+
+        try:
+            content = migration_file.read_text(encoding="utf-8")
+            tree = ast.parse(content)
+
+            # Migration 클래스 또는 migration 변수에서 operations 찾기
+            for node in ast.walk(tree):
+                # CreateTable('table_name', ...) 패턴 찾기
+                if isinstance(node, ast.Call):
+                    func = node.func
+                    # CreateTable 호출 확인
+                    if isinstance(func, ast.Name) and func.id == "CreateTable":
+                        if node.args and isinstance(node.args[0], ast.Constant):
+                            tables.add(node.args[0].value)
+                    elif isinstance(func, ast.Attribute) and func.attr == "CreateTable":
+                        if node.args and isinstance(node.args[0], ast.Constant):
+                            tables.add(node.args[0].value)
+
+        except Exception:
+            # 파싱 실패 시 무시
+            continue
+
+    return tables
 
 
 def _write_migration(migration: Any, migrations_dir: Path) -> Path:

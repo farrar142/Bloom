@@ -196,32 +196,35 @@ class SchemaEditor:
         """테이블 생성"""
         col_defs = [f"{name} {definition}" for name, definition in columns]
         all_defs = col_defs + (constraints or [])
-        sql = f"CREATE TABLE IF NOT EXISTS {table_name} (\n    {','.join(all_defs)}\n)"
+        col_str = ",\n    ".join(all_defs)
+        sql = f'CREATE TABLE IF NOT EXISTS "{table_name}" (\n    {col_str}\n)'
         self.execute(sql)
 
     def drop_table(self, table_name: str) -> None:
         """테이블 삭제"""
-        self.execute(f"DROP TABLE IF EXISTS {table_name}")
+        self.execute(f'DROP TABLE IF EXISTS "{table_name}"')
 
     def rename_table(self, old_name: str, new_name: str) -> None:
         """테이블 이름 변경"""
-        self.execute(f"ALTER TABLE {old_name} RENAME TO {new_name}")
+        self.execute(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"')
 
     def add_column(
         self, table_name: str, column_name: str, column_definition: str
     ) -> None:
         """컬럼 추가"""
         self.execute(
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+            f'ALTER TABLE "{table_name}" ADD COLUMN {column_name} {column_definition}'
         )
 
     def drop_column(self, table_name: str, column_name: str) -> None:
         """컬럼 삭제 (SQLite 3.35+)"""
-        self.execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
+        self.execute(f'ALTER TABLE "{table_name}" DROP COLUMN {column_name}')
 
     def rename_column(self, table_name: str, old_name: str, new_name: str) -> None:
         """컬럼 이름 변경"""
-        self.execute(f"ALTER TABLE {table_name} RENAME COLUMN {old_name} TO {new_name}")
+        self.execute(
+            f'ALTER TABLE "{table_name}" RENAME COLUMN {old_name} TO {new_name}'
+        )
 
     def alter_column(
         self, table_name: str, column_name: str, new_definition: str
@@ -253,7 +256,7 @@ class SchemaEditor:
         unique_str = "UNIQUE " if unique else ""
         cols = ", ".join(columns)
         self.execute(
-            f"CREATE {unique_str}INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols})"
+            f'CREATE {unique_str}INDEX IF NOT EXISTS {index_name} ON "{table_name}" ({cols})'
         )
 
     def drop_index(self, index_name: str) -> None:

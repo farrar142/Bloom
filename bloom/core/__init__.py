@@ -68,6 +68,7 @@ __all__ = [
     "CallScope",
     "Singleton",
     # Proxy
+    "AsyncProxy",
     "LazyProxy",
     "MethodProxy",
     "MethodHooks",
@@ -238,6 +239,11 @@ def __getattr__(name: str):
         return Singleton
 
     # Proxy
+    if name == "AsyncProxy":
+        from .proxy import AsyncProxy
+
+        return AsyncProxy
+
     if name == "LazyProxy":
         from .proxy import LazyProxy
 
@@ -341,7 +347,7 @@ if TYPE_CHECKING:
         CallScope,
         Singleton,
     )
-    from .proxy import LazyProxy, MethodProxy, MethodHooks
+    from .proxy import AsyncProxy, LazyProxy, MethodProxy, MethodHooks
     from .scanner import Scanner, scan_modules, discover_components
     from .resolver import DependencyResolver, DependencyGraph
     from .scope_manager import ScopeManager

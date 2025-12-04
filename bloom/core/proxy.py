@@ -1,4 +1,4 @@
-"""bloom.core.proxy - Lazy Proxy & Method Proxy"""
+"""bloom.core.proxy - Lazy Proxy, Async Proxy & Method Proxy"""
 
 from __future__ import annotations
 
@@ -14,6 +14,112 @@ if TYPE_CHECKING:
 
 
 T = TypeVar("T")
+
+
+class AsyncProxy(Generic[T]):
+    """
+    비동기 컴포넌트용 프록시.
+
+    CALL/REQUEST 스코프의 비동기 컴포넌트(예: AsyncSession)에 사용.
+    `await proxy.resolve()`로 인스턴스에 접근.
+
+    사용 예:
+        @Component
+        class UserRepository:
+            _session: AsyncProxy[AsyncSession]
+
+            async def find_all(self) -> list[User]:
+                session = await self._session.resolve()
+                return await session.execute(select(User))
+
+    LazyProxy와의 차이:
+        - LazyProxy: 동기 접근 (`proxy.method()`)
+        - AsyncProxy: 비동기 접근 (`await proxy.resolve()`)
+
+    스코프별 동작:
+        - SINGLETON: 한 번 resolve 후 캐싱
+        - REQUEST: 요청마다 새 인스턴스
+        - CALL: Handler 호출마다 새 인스턴스
+    """
+
+    __slots__ = ("_ap_container", "_ap_manager", "_ap_instance", "_ap_resolved")
+
+    def __init__(
+        self,
+        container: "Container[T]",
+        manager: "ContainerManager",
+    ) -> None:
+        object.__setattr__(self, "_ap_container", container)
+        object.__setattr__(self, "_ap_manager", manager)
+        object.__setattr__(self, "_ap_instance", None)
+        object.__setattr__(self, "_ap_resolved", False)
+
+    async def resolve(self) -> T:
+        """
+        비동기로 실제 인스턴스 획득.
+
+        @PostConstruct가 async인 경우에도 안전하게 처리됨.
+
+        Returns:
+            실제 인스턴스
+        """
+        container: Container[T] = object.__getattribute__(self, "_ap_container")
+        manager: ContainerManager = object.__getattribute__(self, "_ap_manager")
+
+        # SINGLETON이 아닌 스코프는 매번 ScopeManager에서 조회
+        if container.scope != ScopeEnum.SINGLETON:
+            # 현재 컨텍스트에서 인스턴스 조회
+            cached = manager.scope_manager.get_instance(
+                container.target, container.scope
+            )
+            if cached is not None:
+                return cached
+
+            # 캐시에 없으면 새로 생성
+            if container.scope == ScopeEnum.CALL:
+                if not manager.scope_manager.is_in_call_context():
+                    raise RuntimeError(
+                        f"Cannot access CALL scoped component '{container.target.__name__}' "
+                        f"outside of @Handler context"
+                    )
+            elif container.scope == ScopeEnum.REQUEST:
+                if not manager.scope_manager.is_in_request_context():
+                    raise RuntimeError(
+                        f"Cannot access REQUEST scoped component '{container.target.__name__}' "
+                        f"outside of request context"
+                    )
+
+            # async로 인스턴스 생성 (PostConstruct 포함)
+            instance = await manager.get_instance_async(container.target)
+            return cast(T, instance)
+
+        # SINGLETON: 한 번만 resolve하고 캐싱
+        if not object.__getattribute__(self, "_ap_resolved"):
+            cached = manager.scope_manager.get_instance(
+                container.target, container.scope
+            )
+            if cached is not None:
+                object.__setattr__(self, "_ap_instance", cached)
+                object.__setattr__(self, "_ap_resolved", True)
+                return cached
+
+            # 새로 생성
+            instance = await manager.get_instance_async(container.target)
+            object.__setattr__(self, "_ap_instance", instance)
+            object.__setattr__(self, "_ap_resolved", True)
+
+        return object.__getattribute__(self, "_ap_instance")
+
+    def _ap_get_target_type(self) -> type[T]:
+        """프록시 대상 타입 반환"""
+        container: Container[T] = object.__getattribute__(self, "_ap_container")
+        return container.target
+
+    def __repr__(self) -> str:
+        container: Container[T] = object.__getattribute__(self, "_ap_container")
+        resolved = object.__getattribute__(self, "_ap_resolved")
+        status = "resolved" if resolved else "pending"
+        return f"<AsyncProxy[{container.target.__name__}] {status}>"
 
 
 class LazyProxy(Generic[T]):
@@ -85,35 +191,23 @@ class LazyProxy(Generic[T]):
             if cached is not None:
                 return cached
 
-            # 캐시에 없으면 새로 생성 - async 컨텍스트 확인
-            try:
-                asyncio.get_running_loop()
-                # async 컨텍스트: CALL 스코프는 컨텍스트 체크
-                if container.scope == ScopeEnum.CALL:
-                    if not manager.scope_manager.is_in_call_context():
-                        raise RuntimeError(
-                            f"Cannot access CALL scoped component '{container.target.__name__}' "
-                            f"outside of @Handler context"
-                        )
-                    # CALL 컨텍스트 내이지만 캐시에 없음
-                    # 이는 컴포넌트가 아직 생성되지 않았음을 의미
-                    # 사용자에게 get_instance_async를 먼저 호출하도록 안내
+            # 캐시에 없으면 새로 생성
+            if container.scope == ScopeEnum.CALL:
+                if not manager.scope_manager.is_in_call_context():
                     raise RuntimeError(
-                        f"CALL scoped component '{container.target.__name__}' not yet created in current context. "
-                        f"Ensure all CALL scoped dependencies are created via get_instance_async() "
-                        f"before accessing them through LazyProxy."
+                        f"Cannot access CALL scoped component '{container.target.__name__}' "
+                        f"outside of @Handler context"
                     )
-                # REQUEST 스코프도 비슷하게 처리
-                raise RuntimeError(
-                    f"LazyProxy for {container.target.__name__} (scope={container.scope.name}) "
-                    f"accessed in async context before initialization. "
-                    f"Ensure the component is created within the appropriate scope context."
-                )
-            except RuntimeError as e:
-                if "no running event loop" in str(e):
-                    # 이벤트 루프 없음: 동기적으로 처리
-                    return manager.get_instance(container.target)
-                raise
+            elif container.scope == ScopeEnum.REQUEST:
+                if not manager.scope_manager.is_in_request_context():
+                    raise RuntimeError(
+                        f"Cannot access REQUEST scoped component '{container.target.__name__}' "
+                        f"outside of request context"
+                    )
+
+            # 컨텍스트 내에서 동기적으로 인스턴스 생성
+            # (async factory인 경우 내부적으로 처리됨)
+            return manager.get_instance(container.target)
 
         # SINGLETON: 한 번만 resolve하고 캐싱
         if not object.__getattribute__(self, "_lp_resolved"):

@@ -13,6 +13,8 @@ from typing import (
     Self,
 )
 
+from bloom.core.proxy import AsyncProxy
+
 from .entity import get_entity_meta, get_entity_pk, get_pk_value, EntityMeta
 from .query import Query
 from .session import Session, AsyncSession, SessionFactory
@@ -92,9 +94,10 @@ class Repository(ABC, Generic[T, ID]):
                 return await self.find_one_by_async(email=email)
     """
 
-    # 필드 주입용 - Session/AsyncSession은 Factory로 주입됨
+    # 필드 주입용 - Session은 LazyProxy, AsyncSession은 AsyncProxy로 주입됨
+    # AsyncProxy는 await resolve()로 인스턴스에 접근해야 함
     session: "Session"
-    async_session: "AsyncSession"
+    async_session: AsyncProxy["AsyncSession"]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Repository를 상속하면 자동으로 @Component로 등록"""
@@ -135,11 +138,19 @@ class Repository(ABC, Generic[T, ID]):
         return repo
 
     def _get_session(self) -> Session:
-        """Session 반환 (DI로 주입됨)"""
+        """Session 반환 (DI로 LazyProxy로 주입됨)"""
         return self.session
 
-    def _get_async_session(self) -> AsyncSession:
-        """AsyncSession 반환 (DI로 주입됨)"""
+    async def _get_async_session(self) -> AsyncSession:
+        """AsyncSession 반환 (DI로 AsyncProxy로 주입됨)
+
+        AsyncProxy는 await resolve()로 인스턴스에 접근해야 함.
+        테스트 등에서 직접 AsyncSession을 주입한 경우도 지원.
+        """
+        from bloom.core.proxy import AsyncProxy
+
+        if isinstance(self.async_session, AsyncProxy):
+            return await self.async_session.resolve()
         return self.async_session
 
     def _get_entity_class(self) -> type[T]:
@@ -316,13 +327,14 @@ class Repository(ABC, Generic[T, ID]):
 
     async def find_by_id_async(self, id: ID) -> T | None:
         """ID로 엔티티 조회 (비동기)"""
-        return await self._get_async_session().get(self._get_entity_class(), id)
+        session = await self._get_async_session()
+        return await session.get(self._get_entity_class(), id)
 
     async def find_all_async(self) -> list[T]:
         """모든 엔티티 조회 (비동기)"""
         entity_cls = self._get_entity_class()
         meta = self._get_meta()
-        session = self._get_async_session()
+        session = await self._get_async_session()
 
         sql = session.dialect.select_sql(meta)
         rows = [row async for row in session.execute(sql)]
@@ -342,7 +354,7 @@ class Repository(ABC, Generic[T, ID]):
             raise ValueError(f"{entity_cls.__name__} has no primary key")
 
         meta = self._get_meta()
-        session = self._get_async_session()
+        session = await self._get_async_session()
 
         # IN 조건 생성
         placeholders = ", ".join(f":id{i}" for i in range(len(ids)))
@@ -362,7 +374,7 @@ class Repository(ABC, Generic[T, ID]):
         새 엔티티면 INSERT, 기존이면 UPDATE
         """
         pk = get_pk_value(entity)
-        session = self._get_async_session()
+        session = await self._get_async_session()
 
         if pk is None:
             session.add(entity)
@@ -378,7 +390,7 @@ class Repository(ABC, Generic[T, ID]):
 
     async def delete_async(self, entity: T) -> None:
         """엔티티 삭제 (비동기)"""
-        session = self._get_async_session()
+        session = await self._get_async_session()
         session.delete(entity)
         await session.flush()
 
@@ -395,7 +407,7 @@ class Repository(ABC, Generic[T, ID]):
         if entities is None:
             # 전체 삭제
             meta = self._get_meta()
-            session = self._get_async_session()
+            session = await self._get_async_session()
             sql = f'DELETE FROM "{meta.table_name}"'
             await session.execute_update(sql)
         else:
@@ -413,7 +425,7 @@ class Repository(ABC, Generic[T, ID]):
             raise ValueError(f"{entity_cls.__name__} has no primary key")
 
         meta = self._get_meta()
-        session = self._get_async_session()
+        session = await self._get_async_session()
 
         placeholders = ", ".join(f":id{i}" for i in range(len(ids)))
         sql = f'DELETE FROM "{meta.table_name}" WHERE "{pk_name}" IN ({placeholders})'
@@ -429,7 +441,7 @@ class Repository(ABC, Generic[T, ID]):
             raise ValueError(f"{entity_cls.__name__} has no primary key")
 
         meta = self._get_meta()
-        session = self._get_async_session()
+        session = await self._get_async_session()
 
         sql = f'SELECT 1 FROM "{meta.table_name}" WHERE "{pk_name}" = :pk LIMIT 1'
         rows = [row async for row in session.execute(sql, {"pk": id})]
@@ -438,7 +450,7 @@ class Repository(ABC, Generic[T, ID]):
     async def count_async(self) -> int:
         """전체 개수 (비동기)"""
         meta = self._get_meta()
-        session = self._get_async_session()
+        session = await self._get_async_session()
 
         sql = f'SELECT COUNT(*) as cnt FROM "{meta.table_name}"'
         rows = [row async for row in session.execute(sql)]
@@ -461,7 +473,7 @@ class Repository(ABC, Generic[T, ID]):
 
         entity_cls = self._get_entity_class()
         meta = self._get_meta()
-        session = self._get_async_session()
+        session = await self._get_async_session()
 
         # WHERE 조건 생성
         conditions = [f'"{k}" = :{k}' for k in kwargs.keys()]
@@ -483,7 +495,7 @@ class Repository(ABC, Generic[T, ID]):
         """정렬하여 전체 조회 (비동기)"""
         entity_cls = self._get_entity_class()
         meta = self._get_meta()
-        session = self._get_async_session()
+        session = await self._get_async_session()
 
         # ORDER BY 생성
         order_clauses = []
@@ -512,7 +524,7 @@ class Repository(ABC, Generic[T, ID]):
         """슬라이스 조회 (비동기)"""
         entity_cls = self._get_entity_class()
         meta = self._get_meta()
-        session = self._get_async_session()
+        session = await self._get_async_session()
 
         sql = session.dialect.select_sql(meta, limit=limit, offset=offset)
         rows = [row async for row in session.execute(sql)]

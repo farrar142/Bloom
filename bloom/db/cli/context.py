@@ -69,7 +69,8 @@ class DBContext:
                         continue
 
             # 3. DI 컨테이너에서 Entity로 등록된 클래스들 수집
-            for cls in self.application.manager.container_registry.keys():
+            for container in self.application.container_manager.get_all_containers():
+                cls = container.target
                 if isinstance(cls, type) and get_entity_meta(cls):
                     if cls not in entities:
                         entities.append(cls)
@@ -110,6 +111,7 @@ class DBContext:
         if self._session_factory is not None:
             return self._session_factory
 
+        import asyncio
         from bloom.db.session import SessionFactory
         from bloom.db.dialect import SQLiteDialect
         from bloom.db.backends import SQLiteBackend
@@ -117,12 +119,30 @@ class DBContext:
         # 1. Application DI에서 SessionFactory 찾기
         if self.application:
             try:
-                self._session_factory = self.application.manager.get_instance(
-                    SessionFactory, raise_exception=False
+                # 동기 컨텍스트에서 비동기 호출
+                self._session_factory = asyncio.get_event_loop().run_until_complete(
+                    self.application.container_manager.get_instance_async(
+                        SessionFactory, required=False
+                    )
                 )
                 if self._session_factory:
                     self._show_connection_info(self._session_factory)
                     return self._session_factory
+            except RuntimeError:
+                # 이미 이벤트 루프가 실행 중인 경우
+                try:
+                    loop = asyncio.new_event_loop()
+                    self._session_factory = loop.run_until_complete(
+                        self.application.container_manager.get_instance_async(
+                            SessionFactory, required=False
+                        )
+                    )
+                    loop.close()
+                    if self._session_factory:
+                        self._show_connection_info(self._session_factory)
+                        return self._session_factory
+                except Exception:
+                    pass
             except Exception:
                 pass
 

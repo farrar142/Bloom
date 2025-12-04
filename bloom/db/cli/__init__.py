@@ -139,6 +139,7 @@ def load_application(app_path: str) -> tuple["Application", Any]:
 @click.group()
 @click.option(
     "--application",
+    "-A",
     "-a",
     type=str,
     default=None,
@@ -237,7 +238,22 @@ def db(
                 )
 
     # 옵션 우선, 없으면 설정 파일, 없으면 기본값
-    mig_dir = migrations_dir or Path(config.get("migrations_dir", "migrations"))
+    # migrations_dir: Application 모듈 위치 기준으로 설정
+    if migrations_dir:
+        mig_dir = migrations_dir
+    elif config.get("migrations_dir"):
+        mig_dir = Path(config["migrations_dir"])
+    elif app_module:
+        # Application 모듈이 있는 디렉토리의 migrations 폴더
+        module_file = getattr(app_module, "__file__", None)
+        if module_file:
+            app_dir = Path(module_file).parent
+            mig_dir = app_dir / "migrations"
+        else:
+            mig_dir = Path("migrations")
+    else:
+        mig_dir = Path("migrations")
+
     ent_module = entities or config.get("entities_module")
     db_url = database or config.get("database_url", "sqlite:///db.sqlite3")
 
