@@ -554,6 +554,7 @@ class TestTrieRealClassIntegration:
 
     def test_route_is_path_included(self):
         """Route가 PathIncluded 프로토콜 구현"""
+
         async def dummy_handler():
             pass
 
@@ -570,6 +571,7 @@ class TestTrieRealClassIntegration:
 
     def test_route_with_trie(self):
         """Route와 PathTrie 통합"""
+
         async def get_users():
             pass
 
@@ -612,11 +614,14 @@ class TestTrieRealClassIntegration:
         @dataclass
         class MessageMappingWrapper(PathIncluded):
             """MessageMappingInfo를 PathIncluded로 래핑"""
+
             path: str
             info: MessageMappingInfo
 
         def create_mapping(destination: str) -> MessageMappingWrapper:
-            pattern = re.compile(destination.replace("{", "(?P<").replace("}", ">[^/]+)"))
+            pattern = re.compile(
+                destination.replace("{", "(?P<").replace("}", ">[^/]+)")
+            )
             variables = re.findall(r"\{(\w+)\}", destination)
             info = MessageMappingInfo(
                 destination=destination,
@@ -652,6 +657,7 @@ class TestTrieRealClassIntegration:
 
     def test_mixed_static_and_dynamic_routes(self):
         """정적/동적 경로 혼합 실제 시나리오"""
+
         async def handler():
             pass
 
@@ -665,8 +671,14 @@ class TestTrieRealClassIntegration:
             Route(path="/api/v1/users/{id}/profile", method="GET", handler=handler),
             Route(path="/api/v1/orders", method="GET", handler=handler),
             Route(path="/api/v1/orders/{order_id}", method="GET", handler=handler),
-            Route(path="/api/v1/orders/{order_id}/items", method="GET", handler=handler),
-            Route(path="/api/v1/orders/{order_id}/items/{item_id}", method="GET", handler=handler),
+            Route(
+                path="/api/v1/orders/{order_id}/items", method="GET", handler=handler
+            ),
+            Route(
+                path="/api/v1/orders/{order_id}/items/{item_id}",
+                method="GET",
+                handler=handler,
+            ),
         ]
 
         for route in routes:
@@ -674,9 +686,14 @@ class TestTrieRealClassIntegration:
 
         # 테스트
         assert trie.find("/api/v1/users").item.path == "/api/v1/users"
-        assert trie.find("/api/v1/users/me").item.path == "/api/v1/users/me"  # 정적 우선
+        assert (
+            trie.find("/api/v1/users/me").item.path == "/api/v1/users/me"
+        )  # 정적 우선
         assert trie.find("/api/v1/users/123").item.path == "/api/v1/users/{id}"
-        assert trie.find("/api/v1/users/456/profile").item.path == "/api/v1/users/{id}/profile"
+        assert (
+            trie.find("/api/v1/users/456/profile").item.path
+            == "/api/v1/users/{id}/profile"
+        )
 
         result = trie.find("/api/v1/orders/1/items/2")
         assert result is not None

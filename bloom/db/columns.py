@@ -705,7 +705,7 @@ class ManyToOne[T]:
     def __get__(self, obj: object | None, objtype: type) -> T | None | FieldExpression:
         if obj is None:
             # 클래스 레벨 접근 - FK 컬럼에 대한 FieldExpression 반환 (쿼리용)
-            return FieldExpression(self.db_name, self)
+            return FieldExpression(self.db_name, self)  # type:ignore
 
         # 캐시에 있으면 반환
         if obj in self._cache:
@@ -763,7 +763,9 @@ class ManyToOne[T]:
         self._cache[obj] = None
 
         if hasattr(obj, "__bloom_tracker__"):
-            obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, None)
+            obj.__bloom_tracker__.mark_dirty(  # type:ignore
+                self._field_name, old_fk_value, None
+            )
 
     def _set_fk_value_directly(
         self, obj: object, value: int, old_fk_value: Any
@@ -776,7 +778,11 @@ class ManyToOne[T]:
             del self._cache[obj]
 
         if hasattr(obj, "__bloom_tracker__"):
-            obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, value)
+            obj.__bloom_tracker__.mark_dirty(  # type:ignore
+                self._field_name,
+                old_fk_value,
+                value,
+            )
 
     def _set_relation_object(self, obj: object, value: T, old_fk_value: Any) -> None:
         """관계 객체 설정"""
@@ -797,7 +803,9 @@ class ManyToOne[T]:
 
         # dirty tracking
         if hasattr(obj, "__bloom_tracker__"):
-            obj.__bloom_tracker__.mark_dirty(self._field_name, old_fk_value, fk_value)
+            obj.__bloom_tracker__.mark_dirty(  # type:ignore
+                self._field_name, old_fk_value, fk_value
+            )
 
         # value가 세션에 바인딩되어 있으면 obj도 세션에 추가
         value_session: "Session | None" = getattr(value, "__bloom_session__", None)
@@ -1000,7 +1008,7 @@ class OneToMany[T]:
         self._owner: type | None = None
         self._resolved_target: type[T] | None = None
         # 로딩된 데이터 캐시 (Lazy/Eager 모두 사용)
-        self._cache: WeakKeyDictionary[Any, list[T]] = WeakKeyDictionary()
+        self._cache: WeakKeyDictionary[Any, TrackedList[T]] = WeakKeyDictionary()
 
     def __set_name__(self, owner: type, name: str) -> None:
         self._field_name = name

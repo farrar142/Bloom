@@ -375,8 +375,12 @@ class TestEndToEndIntegration:
         for path, method, expected_handler, expected_params in test_cases:
             match = router.match(path, method)
             assert match is not None, f"Failed to match {method} {path}"
-            assert match.handler == expected_handler, f"Wrong handler for {method} {path}"
-            assert match.path_params == expected_params, f"Wrong params for {method} {path}"
+            assert (
+                match.handler == expected_handler
+            ), f"Wrong handler for {method} {path}"
+            assert (
+                match.path_params == expected_params
+            ), f"Wrong params for {method} {path}"
 
     def test_complete_websocket_messaging(self):
         """완전한 WebSocket 메시징 시나리오"""

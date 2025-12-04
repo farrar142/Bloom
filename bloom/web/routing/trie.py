@@ -244,9 +244,7 @@ class PathTrie(Generic[T]):
 
             # wildcard 노드에서 끝나야 함
             if node.wildcard_child.item is not None:
-                return TrieMatch(
-                    item=node.wildcard_child.item, path_params=new_params
-                )
+                return TrieMatch(item=node.wildcard_child.item, path_params=new_params)
 
         return None
 
@@ -287,9 +285,7 @@ class PathTrie(Generic[T]):
                     )
             else:
                 if node.param_child is not None:
-                    return self._remove_recursive(
-                        node.param_child, segments, index + 1
-                    )
+                    return self._remove_recursive(node.param_child, segments, index + 1)
         else:
             if segment in node.children:
                 return self._remove_recursive(

@@ -65,8 +65,8 @@ class DependencyGraph:
                     # 순환 발견! 경로 재구성
                     cycle = [neighbor, node]
                     current = node
-                    while parent[current] and parent[current] != neighbor:
-                        current = parent[current]
+                    while (_current := parent.get(current)) and current != neighbor:
+                        current = _current
                         cycle.append(current)
                     cycle.append(neighbor)
                     return list(reversed(cycle))

@@ -98,7 +98,7 @@ class ContainerManager:
         """모든 컨테이너 목록"""
         return list(self._containers.values())
 
-    def get_containers_by_scope(self, scope: Scope) -> list[Container[Any]]:
+    def get_containers_by_scope(self, scope: ScopeEnum) -> list[Container[Any]]:
         """특정 스코프의 컨테이너 목록"""
         return [c for c in self._containers.values() if c.scope == scope]
 

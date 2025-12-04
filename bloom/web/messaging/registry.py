@@ -11,7 +11,11 @@ from typing import Any, Callable, TYPE_CHECKING
 from bloom.web.routing.trie import PathTrie, TrieMatch, PathIncluded
 
 if TYPE_CHECKING:
-    from .decorators import MessageMappingInfo, SubscribeMappingInfo, MessageControllerInfo
+    from .decorators import (
+        MessageMappingInfo,
+        SubscribeMappingInfo,
+        MessageControllerInfo,
+    )
 
 
 # =============================================================================
