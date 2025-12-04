@@ -222,8 +222,14 @@ class Container(Generic[T]):
         instance: T,
         manager: "ContainerManager",
     ) -> None:
-        """필드에 의존성 주입 (Lazy Proxy)"""
+        """필드에 의존성 주입
+        
+        - CALL 스코프 (CALL 컨텍스트 내): eager resolve
+        - CALL 스코프 (CALL 컨텍스트 외): LazyProxy로 주입
+        - SINGLETON/REQUEST: LazyProxy로 주입 (순환 의존성 지원)
+        """
         from .proxy import LazyProxy
+        from .scope import ScopeEnum
 
         for dep in self.dependencies:
             # 이미 값이 있으면 스킵
@@ -258,9 +264,21 @@ class Container(Generic[T]):
                     f"for component '{self.target.__name__}'"
                 )
 
-            # LazyProxy로 주입
-            proxy: LazyProxy[Any] = LazyProxy(dep_container, manager)
-            setattr(instance, dep.field_name, proxy)
+            # CALL 스코프 의존성: CALL 컨텍스트 내에 있으면 바로 resolve
+            # 그렇지 않으면 LazyProxy로 주입 (나중에 CALL 컨텍스트에서 접근 시 resolve)
+            if dep_container.scope == ScopeEnum.CALL:
+                if manager.scope_manager.is_in_call_context():
+                    # CALL 컨텍스트 내: 바로 resolve
+                    dep_instance = await manager.get_instance_async(field_type)
+                    setattr(instance, dep.field_name, dep_instance)
+                else:
+                    # CALL 컨텍스트 외: LazyProxy로 주입
+                    proxy: LazyProxy[Any] = LazyProxy(dep_container, manager)
+                    setattr(instance, dep.field_name, proxy)
+            else:
+                # SINGLETON/REQUEST: LazyProxy로 주입 (순환 의존성 지원)
+                proxy = LazyProxy(dep_container, manager)
+                setattr(instance, dep.field_name, proxy)
 
     def _resolve_forward_ref(
         self,

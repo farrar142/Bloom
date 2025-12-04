@@ -85,8 +85,28 @@ class LazyProxy(Generic[T]):
             if cached is not None:
                 return cached
 
-            # 캐시에 없으면 새로 생성 (get_instance가 처리)
-            return manager.get_instance(container.target)
+            # 캐시에 없으면 새로 생성 - async 컨텍스트 확인
+            try:
+                asyncio.get_running_loop()
+                # async 컨텍스트: CALL 스코프는 컨텍스트 체크
+                if container.scope == ScopeEnum.CALL:
+                    if not manager.scope_manager.is_in_call_context():
+                        raise RuntimeError(
+                            f"Cannot access CALL scoped component '{container.target.__name__}' "
+                            f"outside of @Handler context"
+                        )
+                # async 컨텍스트에서 동기 get_instance 호출하면 내부에서 에러 발생
+                # ScopeManager 캐시가 비어있으면 생성이 필요한데 이는 async로 해야 함
+                raise RuntimeError(
+                    f"LazyProxy for {container.target.__name__} (scope={container.scope.name}) "
+                    f"accessed in async context before initialization. "
+                    f"Ensure the component is created within the appropriate scope context."
+                )
+            except RuntimeError as e:
+                if "no running event loop" in str(e):
+                    # 이벤트 루프 없음: 동기적으로 처리
+                    return manager.get_instance(container.target)
+                raise
 
         # SINGLETON: 한 번만 resolve하고 캐싱
         if not object.__getattribute__(self, "_lp_resolved"):
@@ -103,11 +123,12 @@ class LazyProxy(Generic[T]):
             # async 컨텍스트에서는 동기 get_instance가 실패할 수 있음
             try:
                 asyncio.get_running_loop()
-                # async 컨텍스트: 동기적으로 인스턴스 생성 시도
-                # Container에서 직접 동기 생성 (의존성 없는 경우만)
+                # async 컨텍스트: ScopeManager 캐시에 없으면 에러
+                # Application.initialize()가 SINGLETON을 미리 생성해야 함
                 raise RuntimeError(
                     f"LazyProxy for {container.target.__name__} accessed in async context "
-                    f"before initialization. Call ready_async() first."
+                    f"before initialization. Call Application.initialize() or "
+                    f"manager.initialize() first to pre-create SINGLETON components."
                 )
             except RuntimeError as e:
                 if "no running event loop" in str(e):
