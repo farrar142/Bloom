@@ -101,12 +101,20 @@ class Container(Generic[T]):
         # __annotations__에서 직접 가져오기
         annotations = getattr(self.target, "__annotations__", {})
 
-        # globalns 구성 (모듈 글로벌 + 클래스 자신)
+        # globalns 구성 (모듈 글로벌 + 클래스 자신 + 부모 클래스 모듈들)
         module = inspect.getmodule(self.target)
         globalns: dict[str, Any] = {}
         if module:
             globalns.update(vars(module))
         globalns[self.target.__name__] = self.target
+
+        # 부모 클래스들의 모듈도 추가 (상속받은 필드의 forward reference 해결용)
+        for base in self.target.__mro__[1:]:
+            if base is object:
+                continue
+            base_module = inspect.getmodule(base)
+            if base_module:
+                globalns.update(vars(base_module))
 
         for name, hint in annotations.items():
             if isinstance(hint, str):

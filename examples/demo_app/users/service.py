@@ -37,7 +37,7 @@ class UserService:
         user.name = name
         user.email = email
         user.is_active = True
-        user = await self.user_repo.save(user)
+        user = await self.user_repo.save_async(user)
 
         # 이벤트 발행
         await self.event_bus.publish(
@@ -56,8 +56,8 @@ class UserService:
 
     async def get_user(self, user_id: int) -> Optional[User]:
         """사용자 조회"""
-        return await self.user_repo.find_by_id(user_id)
+        return await self.user_repo.find_by_id_async(user_id)
 
     async def get_all_users(self) -> list[User]:
         """모든 사용자 조회"""
-        return await self.user_repo.find_all()
+        return await self.user_repo.find_all_async()

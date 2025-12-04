@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # 환경 설정
 # =============================================================================
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///demo.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///demo.db?mode=memory")
 
 
 @Configuration
