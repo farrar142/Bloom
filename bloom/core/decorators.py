@@ -236,16 +236,16 @@ def register_factories_from_configuration[T](
 def Handler[F: Callable[..., Any]](func: F) -> F:
     """
     핸들러 메서드 데코레이터.
-    CALL 스코프 라이프사이클 관리 및 콜스택 추적.
+    CALL 스코프 라이프사이클 관리.
 
     사용 예:
         @Component
         class UserService:
-            tx: TransactionContext  # CALL 스코프
+            tx: AsyncProxy[TransactionContext]  # CALL 스코프 async factory
 
             @Handler
             async def create_user(self, name: str):
-                # tx는 이 호출 내에서만 유효
+                session = await self.tx.resolve()  # 여기서 생성됨
                 pass
     """
 
@@ -258,12 +258,10 @@ def Handler[F: Callable[..., Any]](func: F) -> F:
         frame_id = scope_manager.start_call()
 
         try:
-            # self가 있으면 CALL 스코프 의존성 미리 생성
-            if args:
-                self_instance = args[0]
-                await _prepare_call_scope_dependencies(manager, self_instance)
-
             # 원본 함수 호출
+            # CALL 스코프 의존성은 접근 시점에 생성됨:
+            # - AsyncProxy: await resolve() 시점
+            # - LazyProxy: 필드 접근 시점 (동기 factory만)
             result = func(*args, **kwargs)
             if asyncio.iscoroutine(result):
                 result = await result
@@ -277,89 +275,6 @@ def Handler[F: Callable[..., Any]](func: F) -> F:
 
     return wrapper  # type: ignore
 
-
-async def _prepare_call_scope_dependencies(
-    manager: "ContainerManager", instance: Any, visited: set[type] | None = None
-) -> None:
-    """
-    인스턴스의 CALL 스코프 의존성을 미리 생성합니다.
-    LazyProxy로 주입된 필드 중 CALL 스코프인 것들을 찾아서 미리 resolve합니다.
-    SINGLETON 의존성도 재귀적으로 탐색하여 그 안의 CALL 스코프 의존성을 찾습니다.
-    """
-    from .proxy import LazyProxy
-
-    if visited is None:
-        visited = set()
-
-    # 순환 참조 방지
-    instance_type = type(instance)
-    if instance_type in visited:
-        return
-    visited.add(instance_type)
-
-    # 인스턴스의 __dict__에서 LazyProxy 찾기
-    for attr_name, attr_value in vars(instance).items():
-        if isinstance(attr_value, LazyProxy):
-            container = object.__getattribute__(attr_value, "_lp_container")
-
-            if container.scope == ScopeEnum.CALL:
-                # CALL 스코프: 깊이 우선으로 의존성 생성
-                await _prepare_dependencies_depth_first(
-                    manager, container.target, visited.copy()
-                )
-            else:
-                # SINGLETON/REQUEST: 이미 생성된 인스턴스를 가져와서 재귀 탐색
-                # (그 안에 CALL 스코프 의존성이 있을 수 있음)
-                dep_instance = manager.scope_manager.get_instance(
-                    container.target, container.scope
-                )
-                if dep_instance is not None:
-                    await _prepare_call_scope_dependencies(
-                        manager, dep_instance, visited
-                    )
-
-
-async def _prepare_dependencies_depth_first(
-    manager: "ContainerManager", cls: type, visited: set[type]
-) -> None:
-    """
-    깊이 우선으로 CALL 스코프 의존성을 생성합니다.
-    의존성을 먼저 생성한 후 현재 클래스 인스턴스를 생성합니다.
-    """
-    if cls in visited:
-        return
-    visited.add(cls)
-
-    container = manager.get_container(cls)
-    if container is None or container.scope != ScopeEnum.CALL:
-        return
-
-    # 이미 현재 frame에 인스턴스가 있으면 스킵
-    existing = manager.scope_manager.get_call_scoped(cls)
-    if existing is not None:
-        return
-
-    # 먼저 이 클래스의 의존성들을 재귀적으로 처리
-    for dep in container.dependencies:
-        dep_type = dep.field_type
-        if isinstance(dep_type, str):
-            # forward reference - 해결 시도
-            dep_container = None
-            for c in manager._containers.values():
-                if c.target.__name__ == dep_type:
-                    dep_container = c
-                    break
-            if dep_container:
-                dep_type = dep_container.target
-            else:
-                continue
-
-        dep_container = manager.get_container(dep_type)
-        if dep_container and dep_container.scope == ScopeEnum.CALL:
-            await _prepare_dependencies_depth_first(manager, dep_type, visited)
-
-    # 의존성이 모두 생성된 후 현재 클래스 인스턴스 생성
-    await manager.get_instance_async(cls)
 
 
 # === @Value ===

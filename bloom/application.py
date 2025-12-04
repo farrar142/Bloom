@@ -394,8 +394,6 @@ class Application:
                     _di_middlewares: list = di_middlewares,
                     _func_middlewares: list = func_middlewares,
                 ) -> Any:
-                    from .core.decorators import _prepare_call_scope_dependencies
-
                     # CALL 스코프 시작
                     scope_manager = app.container_manager.scope_manager
                     frame_id = scope_manager.start_call()
@@ -407,10 +405,8 @@ class Application:
                                 ctrl_cls
                             )
 
-                            # Controller와 그 의존성 체인의 CALL 스코프 의존성 미리 생성
-                            await _prepare_call_scope_dependencies(
-                                app.container_manager, controller
-                            )
+                            # CALL 스코프 의존성은 AsyncProxy.resolve() 또는 
+                            # LazyProxy 접근 시점에 자동 생성됨
 
                             method = getattr(controller, mname)
 

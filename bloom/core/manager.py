@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, TypeVar, overload
 
 from .container import Container
@@ -149,8 +150,8 @@ class ContainerManager:
     def _resolve_instance[T](self, container: Container[T]) -> T:
         """컨테이너에서 인스턴스 resolve (동기)
         
-        CALL 스코프 async factory의 경우, 이 메서드 대신 
-        get_instance_async()를 사용하거나 AsyncProxy를 사용해야 합니다.
+        async factory의 경우 AsyncProxy를 사용해야 합니다.
+        동기 factory는 async 컨텍스트에서도 생성 가능합니다.
         """
         scope = container.scope
         cls = container.target
@@ -170,24 +171,100 @@ class ContainerManager:
         if scope == ScopeEnum.CALL and not self._scope_manager.is_in_call_context():
             raise CallScopeError(cls)
 
-        # 새 인스턴스 생성
+        # async factory 체크: async factory는 동기적으로 생성 불가
+        is_async_factory = (
+            container.factory is not None
+            and inspect.iscoroutinefunction(container.factory.method)
+        )
+        if is_async_factory:
+            raise RuntimeError(
+                f"Cannot resolve async factory '{cls.__name__}' synchronously. "
+                f"Use AsyncProxy[{cls.__name__}] and await proxy.resolve() instead."
+            )
+
+        # 동기 factory 또는 일반 컴포넌트: 동기적으로 생성
         import asyncio
 
         try:
             asyncio.get_running_loop()
-            # async 컨텍스트: run_until_complete 사용 불가
-            # 이 경우 get_instance_async()를 사용해야 함
-            # CALL/REQUEST 스코프 async factory는 AsyncProxy를 사용 권장
-            raise RuntimeError(
-                f"Cannot resolve '{cls.__name__}' synchronously in async context. "
-                f"Use await manager.get_instance_async() or AsyncProxy[{cls.__name__}] instead."
-            )
+            # async 컨텍스트에서 동기 factory 호출
+            # create_instance는 async지만 동기 factory면 바로 반환됨
+            # nest_asyncio 없이는 불가능하므로 동기적으로 처리
+            instance = self._create_instance_sync(container)
+            self._scope_manager.set_instance(cls, instance, scope)
+            return instance
         except RuntimeError as e:
             if "no running event loop" in str(e):
-                # 이벤트 루프가 없으면 새로 실행
+                # 이벤트 루프가 없으면 asyncio.run 사용
                 instance = asyncio.run(self._create_and_cache_instance(container))
                 return instance
             raise
+
+    def _create_instance_sync[T](self, container: Container[T]) -> T:
+        """동기적으로 인스턴스 생성 (동기 factory 전용)"""
+        if container.factory:
+            # Factory 메서드로 생성
+            config_instance = self._scope_manager.get_instance(
+                container.factory.owner, ScopeEnum.SINGLETON
+            )
+            if config_instance is None:
+                # Configuration이 아직 없으면 생성
+                config_container = self._containers.get(container.factory.owner)
+                if config_container:
+                    config_instance = config_container.target()
+                    self._scope_manager.set_instance(
+                        container.factory.owner, config_instance, ScopeEnum.SINGLETON
+                    )
+                else:
+                    raise RuntimeError(
+                        f"Configuration class {container.factory.owner.__name__} not found"
+                    )
+            
+            method = getattr(config_instance, container.factory.method.__name__)
+            
+            # Factory 파라미터 의존성 해결
+            factory_args = {}
+            for dep in container.factory.dependencies:
+                dep_instance = self.get_instance(dep.field_type)
+                factory_args[dep.field_name] = dep_instance
+            
+            instance = method(**factory_args)
+        else:
+            # 일반 컴포넌트 생성
+            instance = container.target()
+            # 필드 주입은 동기적으로 처리 (LazyProxy 주입)
+            self._inject_fields_sync(container, instance)
+            # PostConstruct는 동기 메서드만 호출 (async는 스킵)
+            from .lifecycle import LifecycleManager
+            for method in LifecycleManager.get_post_construct_methods(instance):
+                if not inspect.iscoroutinefunction(method):
+                    method()
+        
+        return instance
+
+    def _inject_fields_sync[T](self, container: Container[T], instance: T) -> None:
+        """동기적으로 필드에 LazyProxy 주입"""
+        from .proxy import LazyProxy, AsyncProxy
+        
+        for dep in container.dependencies:
+            current_value = getattr(instance, dep.field_name, None)
+            if current_value is not None:
+                continue
+            
+            dep_container = self._containers.get(dep.field_type)
+            if dep_container is None:
+                if dep.is_optional:
+                    continue
+                raise RuntimeError(
+                    f"Cannot resolve dependency '{dep.field_name}' for '{container.target.__name__}'"
+                )
+            
+            if dep.is_async_proxy:
+                proxy: AsyncProxy[Any] = AsyncProxy(dep_container, self)
+                setattr(instance, dep.field_name, proxy)
+            else:
+                proxy_lp: LazyProxy[Any] = LazyProxy(dep_container, self)
+                setattr(instance, dep.field_name, proxy_lp)
 
     async def get_instance_async[T](
         self, cls: type[T], *, required: bool = True

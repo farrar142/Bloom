@@ -278,12 +278,12 @@ class TestCallScopeRepositoryChain:
         assert session1_id != session2_id
 
     @pytest.mark.asyncio
-    async def test_prepare_call_scope_dependencies_nested(self):
-        """_prepare_call_scope_dependencies가 SINGLETON 의존성 체인을 따라
-        중첩된 CALL 스코프 의존성을 찾아 미리 생성하는지 테스트
+    async def test_call_scope_async_proxy_chain(self):
+        """AsyncProxy를 통한 CALL 스코프 의존성 체인 테스트
+        
+        Controller → Service → Repository → AsyncSession 체인에서
+        AsyncProxy로 선언된 CALL 스코프 의존성이 제대로 동작하는지 확인합니다.
         """
-        from bloom.core.decorators import _prepare_call_scope_dependencies
-        from bloom.core.proxy import LazyProxy
 
         @Configuration
         class TestDatabaseConfig5:
@@ -330,12 +330,12 @@ class TestCallScopeRepositoryChain:
         frame_id = scope_manager.start_call()
 
         try:
-            # 의존성 체인의 모든 컴포넌트 생성 (CALL 컨텍스트 내이므로 async_session은 eager resolve)
+            # 의존성 체인의 모든 컴포넌트 생성
             await manager.get_instance_async(TestUserRepository5)
             await manager.get_instance_async(TestUserService5)
             controller = await manager.get_instance_async(TestUserController5)
 
-            # 메서드 호출
+            # 메서드 호출 - AsyncProxy.resolve() 시점에 CALL 스코프 의존성 생성
             result = await controller.get_user("test@example.com")
 
             print(f"Result: {result}")

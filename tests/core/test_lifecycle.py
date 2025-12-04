@@ -72,15 +72,15 @@ class TestCallScopeLifecycle:
 
     @pytest.mark.asyncio
     async def test_call_scope_basic_lifecycle(self):
-        """CALL 스코프 기본 라이프사이클"""
+        """CALL 스코프 기본 라이프사이클 (동기 PostConstruct)"""
         events = []
 
-        # 순서 중요: @Component가 나중에 실행되어야 __bloom_scope__ 확인 가능
+        # 동기 factory, 동기 PostConstruct인 경우 LazyProxy로 접근 가능
         @Component
         @Scope(ScopeEnum.CALL)
         class CallScopedService:
             @PostConstruct
-            async def init(self):
+            def init(self):  # 동기 메서드
                 events.append("init")
 
             @PreDestroy
