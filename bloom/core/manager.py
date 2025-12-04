@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, TypeVar, overload
+from typing import Any, Literal, TypeVar, overload
 
 from .container import Container
 from .scope import ScopeEnum
@@ -267,6 +267,12 @@ class ContainerManager:
                 proxy_lp: LazyProxy[Any] = LazyProxy(dep_container, self)
                 setattr(instance, dep.field_name, proxy_lp)
 
+    @overload
+    async def get_instance_async[T](self, cls: type[T]) -> T | None: ...
+    @overload
+    async def get_instance_async[T](
+        self, cls: type[T], *, required: Literal[True]
+    ) -> T: ...
     async def get_instance_async[T](
         self, cls: type[T], *, required: bool = True
     ) -> T | None:

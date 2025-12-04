@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Awaitable, TYPE_CHECKING
 
+from .trie import PathTrie, TrieMatch
+
 if TYPE_CHECKING:
     from ..request import Request
     from ..response import Response
@@ -36,7 +38,7 @@ class Route:
     handler: RouteHandler
     name: str | None = None
 
-    # 컴파일된 패턴 (지연 초기화)
+    # 컴파일된 패턴 (지연 초기화) - 하위 호환성을 위해 유지
     _pattern: re.Pattern[str] | None = field(default=None, repr=False)
     _param_names: list[str] = field(default_factory=list, repr=False)
 
@@ -101,7 +103,7 @@ class Route:
 class Router:
     """URL 라우터
 
-    Spring MVC / FastAPI 스타일의 라우팅을 지원합니다.
+    PathTrie 기반의 Spring MVC / FastAPI 스타일 라우팅을 지원합니다.
 
     사용 예:
         router = Router()
@@ -123,6 +125,15 @@ class Router:
         self.prefix = prefix.rstrip("/")
         self.routes: list[Route] = []
         self._sub_routers: list[tuple[str, Router]] = []
+        # HTTP 메서드별 PathTrie
+        self._tries: dict[str, PathTrie[Route]] = {}
+
+    def _get_trie(self, method: str) -> PathTrie[Route]:
+        """HTTP 메서드별 Trie 가져오기 (없으면 생성)"""
+        method = method.upper()
+        if method not in self._tries:
+            self._tries[method] = PathTrie()
+        return self._tries[method]
 
     def add_route(
         self,
@@ -140,6 +151,8 @@ class Router:
             name=name or handler.__name__,
         )
         self.routes.append(route)
+        # Trie에 추가
+        self._get_trie(method).insert(route)
         return route
 
     def route(
@@ -189,24 +202,47 @@ class Router:
         return self.route(path, methods=["PATCH"], name=name)
 
     def include_router(self, router: "Router", prefix: str = "") -> None:
-        """서브 라우터 추가"""
+        """서브 라우터 추가
+
+        서브 라우터의 모든 라우트를 현재 라우터의 Trie에 병합합니다.
+        """
         self._sub_routers.append((prefix, router))
 
-    def match(self, path: str, method: str) -> RouteMatch | None:
-        """경로와 메서드로 라우트 찾기"""
-        # 자신의 라우트 먼저 검색
-        for route in self.routes:
-            match = route.match(path, method)
-            if match is not None:
-                return match
+        # 서브 라우터의 라우트들을 현재 라우터의 Trie에 병합
+        for route in router.routes:
+            # prefix 적용 (서브 라우터의 prefix는 이미 적용되어 있음)
+            full_path = prefix + route.path if prefix else route.path
+            merged_route = Route(
+                path=full_path,
+                method=route.method,
+                handler=route.handler,
+                name=route.name,
+            )
+            self._get_trie(route.method).insert(merged_route)
 
-        # 서브 라우터 검색
-        for prefix, router in self._sub_routers:
-            if path.startswith(prefix):
-                sub_path = path[len(prefix) :] or "/"
-                match = router.match(sub_path, method)
-                if match is not None:
-                    return match
+    def match(self, path: str, method: str) -> RouteMatch | None:
+        """경로와 메서드로 라우트 찾기 (PathTrie 사용)"""
+        method = method.upper()
+
+        # Trie에서 검색
+        trie = self._tries.get(method)
+        if trie:
+            result = trie.find(path)
+            if result:
+                return RouteMatch(
+                    route=result.item,
+                    path_params=result.path_params,
+                )
+
+        # wildcard (*) 메서드 검색
+        wildcard_trie = self._tries.get("*")
+        if wildcard_trie:
+            result = wildcard_trie.find(path)
+            if result:
+                return RouteMatch(
+                    route=result.item,
+                    path_params=result.path_params,
+                )
 
         return None
 
@@ -216,7 +252,7 @@ class Router:
         for prefix, router in self._sub_routers:
             for route in router.get_routes():
                 # 서브 라우터의 라우트에 prefix 추가
-                full_path = prefix + route.path
+                full_path = prefix + route.path if prefix else route.path
                 all_routes.append(
                     Route(
                         path=full_path,

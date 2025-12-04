@@ -83,6 +83,13 @@ from .handler import (
     StompMessageHandler,
     MessageDispatcher,
 )
+from .registry import (
+    MessageMappingRegistry,
+    MessageMappingEntry,
+    SubscribeMappingEntry,
+    MessageHandlerMatch,
+    SubscribeHandlerMatch,
+)
 
 __all__ = [
     # WebSocket
@@ -118,4 +125,10 @@ __all__ = [
     # Handler
     "StompMessageHandler",
     "MessageDispatcher",
+    # Registry
+    "MessageMappingRegistry",
+    "MessageMappingEntry",
+    "SubscribeMappingEntry",
+    "MessageHandlerMatch",
+    "SubscribeHandlerMatch",
 ]

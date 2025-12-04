@@ -1,6 +1,7 @@
 """bloom.web.routing - Routing and Controller support"""
 
 from .router import Router, Route, RouteMatch
+from .trie import PathTrie, PathIncluded, TrieMatch
 from .decorators import (
     Controller,
     RequestMapping,
@@ -40,6 +41,10 @@ __all__ = [
     "Router",
     "Route",
     "RouteMatch",
+    # Trie
+    "PathTrie",
+    "PathIncluded",
+    "TrieMatch",
     # Decorators
     "Controller",
     "RequestMapping",

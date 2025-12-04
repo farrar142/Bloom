@@ -179,7 +179,9 @@ class TestMessagingDIIntegration:
         assert result["user_id"] == "user-123"
 
         # NotificationService가 호출되었는지 확인
-        notification_service = await manager.get_instance_async(TestNotificationService)
+        notification_service = await manager.get_instance_async(
+            TestNotificationService, required=True
+        )
         assert len(notification_service.notifications) == 1
 
     @pytest.mark.asyncio
