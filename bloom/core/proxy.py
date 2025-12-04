@@ -95,8 +95,15 @@ class LazyProxy(Generic[T]):
                             f"Cannot access CALL scoped component '{container.target.__name__}' "
                             f"outside of @Handler context"
                         )
-                # async 컨텍스트에서 동기 get_instance 호출하면 내부에서 에러 발생
-                # ScopeManager 캐시가 비어있으면 생성이 필요한데 이는 async로 해야 함
+                    # CALL 컨텍스트 내이지만 캐시에 없음
+                    # 이는 컴포넌트가 아직 생성되지 않았음을 의미
+                    # 사용자에게 get_instance_async를 먼저 호출하도록 안내
+                    raise RuntimeError(
+                        f"CALL scoped component '{container.target.__name__}' not yet created in current context. "
+                        f"Ensure all CALL scoped dependencies are created via get_instance_async() "
+                        f"before accessing them through LazyProxy."
+                    )
+                # REQUEST 스코프도 비슷하게 처리
                 raise RuntimeError(
                     f"LazyProxy for {container.target.__name__} (scope={container.scope.name}) "
                     f"accessed in async context before initialization. "
