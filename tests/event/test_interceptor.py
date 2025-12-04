@@ -4,10 +4,10 @@ import pytest
 from unittest.mock import MagicMock
 from typing import Any
 
-from bloom.core.event import Event, LocalEventBus
-from bloom.core.event.bus import SubscriptionMode
-from bloom.core.event.interceptor import EventEmitterInterceptor
-from bloom.core.event.decorators import EventEmitter
+from bloom.event import Event, LocalEventBus
+from bloom.event.bus import SubscriptionMode
+from bloom.event.interceptor import EventEmitterInterceptor
+from bloom.event.decorators import EventEmitter
 
 
 class MockMethodInvocation:
@@ -86,7 +86,9 @@ class TestEventEmitterInterceptor:
             published_events.append(event)
 
         # SYNC 모드로 구독해야 즉시 실행됨
-        await event_bus.subscribe("user.created", capture_event, mode=SubscriptionMode.SYNC)
+        await event_bus.subscribe(
+            "user.created", capture_event, mode=SubscriptionMode.SYNC
+        )
 
         invocation = MockMethodInvocation(
             target=service,
@@ -131,7 +133,9 @@ class TestEventEmitterInterceptor:
         async def capture_event(event: Event):
             published_events.append(event)
 
-        await event_bus.subscribe("order.placed", capture_event, mode=SubscriptionMode.SYNC)
+        await event_bus.subscribe(
+            "order.placed", capture_event, mode=SubscriptionMode.SYNC
+        )
 
         order_data = {"product": "item-1", "quantity": 2}
         invocation = MockMethodInvocation(
@@ -156,7 +160,9 @@ class TestEventEmitterInterceptor:
         async def capture_event(event: Event):
             published_events.append(event)
 
-        await event_bus.subscribe("notification.sent", capture_event, mode=SubscriptionMode.SYNC)
+        await event_bus.subscribe(
+            "notification.sent", capture_event, mode=SubscriptionMode.SYNC
+        )
 
         invocation = MockMethodInvocation(
             target=service,
@@ -179,7 +185,9 @@ class TestEventEmitterInterceptor:
         async def capture_event(event: Event):
             published_events.append(event)
 
-        await event_bus.subscribe("notification.sent", capture_event, mode=SubscriptionMode.SYNC)
+        await event_bus.subscribe(
+            "notification.sent", capture_event, mode=SubscriptionMode.SYNC
+        )
 
         # 조건: result.get('sent', False) -> False이면 미발행
         invocation = MockMethodInvocation(
@@ -203,7 +211,9 @@ class TestEventEmitterInterceptor:
         async def capture_event(event: Event):
             published_events.append(event)
 
-        await event_bus.subscribe("user.created", capture_event, mode=SubscriptionMode.SYNC)
+        await event_bus.subscribe(
+            "user.created", capture_event, mode=SubscriptionMode.SYNC
+        )
 
         class ErrorInvocation(MockMethodInvocation):
             async def proceed(self):
@@ -254,7 +264,9 @@ class TestInterceptorEdgeCases:
         async def capture_event(event: Event):
             published_events.append(event)
 
-        await event_bus.subscribe("user.created", capture_event, mode=SubscriptionMode.SYNC)
+        await event_bus.subscribe(
+            "user.created", capture_event, mode=SubscriptionMode.SYNC
+        )
 
         invocation = MockMethodInvocation(
             target=service,

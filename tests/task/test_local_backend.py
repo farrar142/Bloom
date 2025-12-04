@@ -1,11 +1,11 @@
-"""bloom.core.task.backends.local 테스트"""
+"""bloom.task.backends.local 테스트"""
 
 import pytest
 import asyncio
 from datetime import datetime, timedelta
 
-from bloom.core.task.backends.local import LocalBroker, LocalBackend
-from bloom.core.task.models import (
+from bloom.task.backends.local import LocalBroker, LocalBackend
+from bloom.task.models import (
     TaskMessage,
     TaskResult,
     TaskStatus,

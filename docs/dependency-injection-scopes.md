@@ -70,15 +70,15 @@ class DatabaseConnection:
         print("Database disconnected")
 ```
 
-### AutoClosable 인터페이스
+### AutoCloseable 인터페이스
 
-`@PreDestroy` 대신 `AutoClosable` 인터페이스를 구현할 수도 있습니다:
+`@PreDestroy` 대신 `AutoCloseable` 인터페이스를 구현할 수도 있습니다:
 
 ```python
-from bloom.core import Component, AutoClosable
+from bloom.core import Component, AutoCloseable
 
 @Component
-class FileHandler(AutoClosable):
+class FileHandler(AutoCloseable):
     async def close(self):
         """앱 종료 시 자동 호출"""
         await self.file.close()

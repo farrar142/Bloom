@@ -1,4 +1,4 @@
-"""bloom.core.task.backends.local - 로컬 인메모리 브로커/백엔드
+"""bloom.task.backends.local - 로컬 인메모리 브로커/백엔드
 
 단일 프로세스 내에서 동작하는 인메모리 브로커와 백엔드입니다.
 개발 및 테스트용으로 사용됩니다.
@@ -101,9 +101,7 @@ class LocalBroker(TaskBroker):
             delivery_tag = f"local-{self._delivery_counter}"
 
             # 우선순위 아이템 생성
-            eta_timestamp = (
-                message.eta.timestamp() if message.eta else 0
-            )
+            eta_timestamp = message.eta.timestamp() if message.eta else 0
             created_timestamp = message.created_at.timestamp()
 
             item = PriorityItem(
@@ -163,7 +161,10 @@ class LocalBroker(TaskBroker):
 
                             # 메시지 팝
                             item = heapq.heappop(heap)
-                            self._pending[item.delivery_tag] = (queue_name, item.message)
+                            self._pending[item.delivery_tag] = (
+                                queue_name,
+                                item.message,
+                            )
                             message_to_yield = (item.message, item.delivery_tag)
                             break
 

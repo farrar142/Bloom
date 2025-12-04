@@ -4,10 +4,10 @@ import pytest
 from unittest.mock import MagicMock
 from typing import Any
 
-from bloom.core.event import Event, LocalEventBus
-from bloom.core.event.bus import SubscriptionMode
-from bloom.core.event.decorators import EventListener, SyncEventListener
-from bloom.core.event.registrar import EventListenerRegistrar, EventListenerScanner
+from bloom.event import Event, LocalEventBus
+from bloom.event.bus import SubscriptionMode
+from bloom.event.decorators import EventListener, SyncEventListener
+from bloom.event.registrar import EventListenerRegistrar, EventListenerScanner
 
 
 class SampleService:

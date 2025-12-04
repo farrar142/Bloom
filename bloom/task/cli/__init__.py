@@ -1,4 +1,4 @@
-"""bloom.core.task.cli - Task Queue CLI
+"""bloom.task.cli - Task Queue CLI
 
 bloom queue 명령어를 제공합니다.
 

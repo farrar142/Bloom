@@ -988,7 +988,7 @@ class DatabaseConfig:
     def session(self) -> Session:
         """Session은 요청마다 생성
 
-        Session은 AutoClosable을 구현하므로
+        Session은 AutoCloseable을 구현하므로
         요청 종료 시 자동으로 close()가 호출됩니다.
         """
         return self._factory.create()
@@ -1082,7 +1082,7 @@ class UserController:
 2. **Session 생성**: 첫 접근 시 `DatabaseConfig.session()`으로 Session 생성
 3. **Session 공유**: 같은 요청 내 모든 컴포넌트가 동일 Session 사용
 4. **요청 종료**: 스코프 종료 시 `Session.close()` 자동 호출
-   - `AutoClosable` 인터페이스를 통해 DI가 자동으로 정리
+   - `AutoCloseable` 인터페이스를 통해 DI가 자동으로 정리
 
 ### 장점
 

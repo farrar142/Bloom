@@ -1,4 +1,4 @@
-"""bloom.core.task.decorators - 태스크 데코레이터
+"""bloom.task.decorators - 태스크 데코레이터
 
 @Component 클래스 내부에서 사용할 수 있는 @Task 데코레이터입니다.
 """
@@ -61,13 +61,11 @@ def task(
     priority: TaskPriority = TaskPriority.NORMAL,
     bind: bool = False,
     ignore_result: bool = False,
-) -> Callable[[Callable[..., Any]], "BoundTask[Any]"]:
-    ...
+) -> Callable[[Callable[..., Any]], "BoundTask[Any]"]: ...
 
 
 @overload
-def task(app: "TaskApp") -> Callable[[Callable[..., Any]], "BoundTask[Any]"]:
-    ...
+def task(app: "TaskApp") -> Callable[[Callable[..., Any]], "BoundTask[Any]"]: ...
 
 
 def task(
@@ -92,7 +90,7 @@ def task(
     TaskApp.task()를 사용하는 것이 더 일반적입니다.
 
     Examples:
-        from bloom.core.task import TaskApp, task
+        from bloom.task import TaskApp, task
 
         app = TaskApp("my_app")
 
@@ -130,7 +128,7 @@ class Task:
 
     Examples:
         from bloom import Component
-        from bloom.core.task import Task
+        from bloom.task import Task
 
         @Component
         class EmailService:

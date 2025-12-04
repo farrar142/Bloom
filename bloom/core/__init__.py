@@ -15,7 +15,7 @@ Spring-like 의존성 주입 컨테이너.
         Scope,
         PostConstruct,
         PreDestroy,
-        AutoClosable,
+        AutoCloseable,
         ContainerManager,
     )
 
@@ -42,7 +42,7 @@ __all__ = [
     # Lifecycle
     "PostConstruct",
     "PreDestroy",
-    "AutoClosable",
+    "AutoCloseable",
     "LifecycleManager",
     # Container
     "Container",
@@ -118,10 +118,10 @@ def __getattr__(name: str):
 
         return PreDestroy
 
-    if name == "AutoClosable":
-        from .lifecycle import AutoClosable
+    if name == "AutoCloseable":
+        from .lifecycle import AutoCloseable
 
-        return AutoClosable
+        return AutoCloseable
 
     if name == "LifecycleManager":
         from .lifecycle import LifecycleManager
@@ -311,7 +311,7 @@ def __getattr__(name: str):
 # TYPE_CHECKING용 (IDE 지원)
 if TYPE_CHECKING:
     from .scope import Scope
-    from .lifecycle import PostConstruct, PreDestroy, AutoClosable, LifecycleManager
+    from .lifecycle import PostConstruct, PreDestroy, AutoCloseable, LifecycleManager
     from .container import Container, DependencyInfo, FactoryInfo
     from .manager import (
         ContainerManager,

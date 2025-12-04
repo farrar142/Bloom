@@ -19,7 +19,7 @@ from .tracker import DirtyTracker, EntityState
 from .dialect import Dialect
 from .query import Query, QueryBuilder
 from .backends.base import DatabaseBackend, Connection, AsyncConnection, ConnectionPool
-from bloom.core.lifecycle import AutoClosable
+from bloom.core.lifecycle import AutoCloseable
 
 if TYPE_CHECKING:
     from .columns import Column
@@ -196,10 +196,10 @@ class SessionMixin:
 # =============================================================================
 
 
-class Session(SessionMixin, AutoClosable):
+class Session(SessionMixin, AutoCloseable):
     """세션 - Unit of Work 패턴 구현
 
-    AutoClosable을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
+    AutoCloseable을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
     REQUEST 또는 CALL 스코프로 사용 시 스코프 종료 시 자동으로 close()가 호출됩니다.
 
     엔티티의 생명주기를 관리하고, 변경 사항을 추적하여
@@ -530,10 +530,10 @@ class Session(SessionMixin, AutoClosable):
 # =============================================================================
 
 
-class AsyncSession(SessionMixin, AutoClosable):
+class AsyncSession(SessionMixin, AutoCloseable):
     """비동기 세션 - Unit of Work 패턴 구현 (Async)
 
-    AutoClosable을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
+    AutoCloseable을 구현하여 DI 컨테이너에서 자동으로 정리됩니다.
     AsyncConnection을 사용하여 비동기 DB 작업을 지원합니다.
 
     Examples:

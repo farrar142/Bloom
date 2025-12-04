@@ -1,4 +1,4 @@
-"""bloom.core.event.models - 이벤트 모델 정의
+"""bloom.event.models - 이벤트 모델 정의
 
 이벤트 시스템의 핵심 데이터 클래스를 정의합니다.
 """
@@ -133,9 +133,11 @@ class Event:
             event_id=data.get("event_id", str(uuid.uuid4())),
             event_type=data["event_type"],
             payload=data.get("payload"),
-            timestamp=datetime.fromisoformat(data["timestamp"])
-            if isinstance(data.get("timestamp"), str)
-            else data.get("timestamp", datetime.now()),
+            timestamp=(
+                datetime.fromisoformat(data["timestamp"])
+                if isinstance(data.get("timestamp"), str)
+                else data.get("timestamp", datetime.now())
+            ),
             correlation_id=data.get("correlation_id"),
             causation_id=data.get("causation_id"),
             source=data.get("source"),

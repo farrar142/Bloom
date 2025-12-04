@@ -1,4 +1,4 @@
-"""bloom.core.event.decorators - 이벤트 데코레이터
+"""bloom.event.decorators - 이벤트 데코레이터
 
 @EventListener, @EventEmitter 데코레이터를 제공합니다.
 """
@@ -289,7 +289,11 @@ def resolve_event_type(
             if param.name == "self":
                 continue
             param_type = hints.get(param.name)
-            if param_type and isinstance(param_type, type) and issubclass(param_type, Event):
+            if (
+                param_type
+                and isinstance(param_type, type)
+                and issubclass(param_type, Event)
+            ):
                 return get_event_type(param_type)
             break
     except Exception:

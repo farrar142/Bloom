@@ -1,4 +1,4 @@
-"""bloom.core.task - Celery 스타일 분산 태스크 큐 시스템
+"""bloom.task - Celery 스타일 분산 태스크 큐 시스템
 
 Celery와 유사한 분산 태스크 큐 시스템을 제공합니다.
 
@@ -19,7 +19,7 @@ Components:
 
 Usage:
     # 1. TaskApp 생성
-    from bloom.core.task import TaskApp
+    from bloom.task import TaskApp
 
     task_app = TaskApp("my_tasks")
 
@@ -49,7 +49,7 @@ Usage:
 
 Example with Bloom Application:
     from bloom import Application, Component
-    from bloom.core.task import TaskApp, Task
+    from bloom.task import TaskApp, Task
 
     task_app = TaskApp("email_tasks")
 
@@ -65,25 +65,7 @@ Example with Bloom Application:
     app.register_task_app(task_app)
 """
 
-from .models import (
-    Task,
-    TaskMessage,
-    TaskResult,
-    TaskStatus,
-    TaskPriority,
-    TaskState,
-    TaskError,
-    TaskRetryError,
-    TaskRejectError,
-    TaskTimeoutError,
-    TaskRevokedError,
-    create_task_message,
-)
-from .broker import TaskBroker
-from .backend import TaskBackend
-from .app import TaskApp, TaskRegistry, AsyncResult, BoundTask, Signature, Chain
-from .decorators import task, Task as TaskDecorator, get_task_methods, scan_task_methods
-from .worker import Worker, WorkerConfig, run_worker
+from typing import TYPE_CHECKING
 
 __all__ = [
     # Models
@@ -119,3 +101,90 @@ __all__ = [
     "WorkerConfig",
     "run_worker",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy import"""
+
+    # Models
+    if name in (
+        "Task",
+        "TaskMessage",
+        "TaskResult",
+        "TaskStatus",
+        "TaskPriority",
+        "TaskState",
+        "TaskError",
+        "TaskRetryError",
+        "TaskRejectError",
+        "TaskTimeoutError",
+        "TaskRevokedError",
+        "create_task_message",
+    ):
+        from . import models
+
+        return getattr(models, name)
+
+    # Interfaces
+    if name == "TaskBroker":
+        from .broker import TaskBroker
+
+        return TaskBroker
+
+    if name == "TaskBackend":
+        from .backend import TaskBackend
+
+        return TaskBackend
+
+    # App
+    if name in ("TaskApp", "TaskRegistry", "AsyncResult", "BoundTask", "Signature", "Chain"):
+        from . import app
+
+        return getattr(app, name)
+
+    # Decorators
+    if name == "task":
+        from .decorators import task
+
+        return task
+
+    if name == "TaskDecorator":
+        from .decorators import Task as TaskDecorator
+
+        return TaskDecorator
+
+    if name in ("get_task_methods", "scan_task_methods"):
+        from . import decorators
+
+        return getattr(decorators, name)
+
+    # Worker
+    if name in ("Worker", "WorkerConfig", "run_worker"):
+        from . import worker
+
+        return getattr(worker, name)
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# TYPE_CHECKING용 (IDE 지원)
+if TYPE_CHECKING:
+    from .models import (
+        Task,
+        TaskMessage,
+        TaskResult,
+        TaskStatus,
+        TaskPriority,
+        TaskState,
+        TaskError,
+        TaskRetryError,
+        TaskRejectError,
+        TaskTimeoutError,
+        TaskRevokedError,
+        create_task_message,
+    )
+    from .broker import TaskBroker
+    from .backend import TaskBackend
+    from .app import TaskApp, TaskRegistry, AsyncResult, BoundTask, Signature, Chain
+    from .decorators import task, Task as TaskDecorator, get_task_methods, scan_task_methods
+    from .worker import Worker, WorkerConfig, run_worker

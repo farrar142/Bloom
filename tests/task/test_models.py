@@ -1,9 +1,9 @@
-"""bloom.core.task.models 테스트"""
+"""bloom.task.models 테스트"""
 
 import pytest
 from datetime import datetime, timedelta
 
-from bloom.core.task.models import (
+from bloom.task.models import (
     Task,
     TaskMessage,
     TaskResult,
@@ -162,7 +162,9 @@ class TestTaskMessage:
         after = datetime.now()
 
         assert msg.eta is not None
-        assert before + timedelta(seconds=60) <= msg.eta <= after + timedelta(seconds=60)
+        assert (
+            before + timedelta(seconds=60) <= msg.eta <= after + timedelta(seconds=60)
+        )
 
     def test_message_eta(self):
         """eta 직접 지정"""

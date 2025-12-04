@@ -12,86 +12,7 @@ Features:
 - Window functions (ROW_NUMBER, RANK, LAG, LEAD, etc.)
 """
 
-from .expressions import (
-    FieldExpression,
-    Condition,
-    ConditionGroup,
-    OrderBy,
-    # Aggregate functions
-    AggregateFunction,
-    Count,
-    Sum,
-    Avg,
-    Min,
-    Max,
-    HavingCondition,
-    HavingConditionGroup,
-    # Subquery
-    Subquery,
-    SubqueryCondition,
-    SubqueryInCondition,
-    ScalarSubquery,
-    # JOIN
-    JoinType,
-    JoinClause,
-    JoinCondition,
-    on,
-    # Window functions
-    FrameBound,
-    WindowFrame,
-    WindowSpec,
-    WindowFunction,
-    RowNumber,
-    Rank,
-    DenseRank,
-    NTile,
-    PercentRank,
-    CumeDist,
-    Lag,
-    Lead,
-    FirstValue,
-    LastValue,
-    NthValue,
-    SumOver,
-    AvgOver,
-    CountOver,
-    MinOver,
-    MaxOver,
-)
-from .columns import (
-    Column,
-    PrimaryKey,
-    ForeignKey,
-    ManyToOne,
-    IntegerColumn,
-    StringColumn,
-    BooleanColumn,
-    DateTimeColumn,
-    DecimalColumn,
-    TextColumn,
-    JSONColumn,
-    OneToMany,
-    FetchType,
-    TrackedList,
-)
-from .tracker import DirtyTracker
-from .entity import Entity, EntityMeta, create
-from .dialect import Dialect, SQLiteDialect, PostgreSQLDialect, MySQLDialect
-from .query import QueryBuilder, Query, FilterCondition, JoinOnCondition
-from .session import Session, AsyncSession, SessionFactory
-from .repository import CrudRepository, Repository
-from .migrations import (
-    Migration,
-    MigrationManager,
-    MigrationRegistry,
-    CreateTable,
-    DropTable,
-    AddColumn,
-    DropColumn,
-    AlterColumn,
-    CreateIndex,
-    DropIndex,
-)
+from typing import TYPE_CHECKING
 
 __all__ = [
     # Expressions
@@ -189,3 +110,210 @@ __all__ = [
     "CreateIndex",
     "DropIndex",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy import"""
+
+    # Expressions
+    if name in (
+        "FieldExpression",
+        "Condition",
+        "ConditionGroup",
+        "OrderBy",
+        "AggregateFunction",
+        "Count",
+        "Sum",
+        "Avg",
+        "Min",
+        "Max",
+        "HavingCondition",
+        "HavingConditionGroup",
+        "Subquery",
+        "SubqueryCondition",
+        "SubqueryInCondition",
+        "ScalarSubquery",
+        "JoinType",
+        "JoinClause",
+        "JoinCondition",
+        "on",
+        "FrameBound",
+        "WindowFrame",
+        "WindowSpec",
+        "WindowFunction",
+        "RowNumber",
+        "Rank",
+        "DenseRank",
+        "NTile",
+        "PercentRank",
+        "CumeDist",
+        "Lag",
+        "Lead",
+        "FirstValue",
+        "LastValue",
+        "NthValue",
+        "SumOver",
+        "AvgOver",
+        "CountOver",
+        "MinOver",
+        "MaxOver",
+    ):
+        from . import expressions
+
+        return getattr(expressions, name)
+
+    # Columns
+    if name in (
+        "Column",
+        "PrimaryKey",
+        "ForeignKey",
+        "ManyToOne",
+        "IntegerColumn",
+        "StringColumn",
+        "BooleanColumn",
+        "DateTimeColumn",
+        "DecimalColumn",
+        "TextColumn",
+        "JSONColumn",
+        "OneToMany",
+        "FetchType",
+        "TrackedList",
+    ):
+        from . import columns
+
+        return getattr(columns, name)
+
+    # Tracking
+    if name == "DirtyTracker":
+        from .tracker import DirtyTracker
+
+        return DirtyTracker
+
+    # Entity
+    if name in ("Entity", "EntityMeta", "create"):
+        from . import entity
+
+        return getattr(entity, name)
+
+    # Dialect
+    if name in ("Dialect", "SQLiteDialect", "PostgreSQLDialect", "MySQLDialect"):
+        from . import dialect
+
+        return getattr(dialect, name)
+
+    # Query
+    if name in ("QueryBuilder", "Query", "FilterCondition", "JoinOnCondition"):
+        from . import query
+
+        return getattr(query, name)
+
+    # Session
+    if name in ("Session", "AsyncSession", "SessionFactory"):
+        from . import session
+
+        return getattr(session, name)
+
+    # Repository
+    if name in ("CrudRepository", "Repository"):
+        from . import repository
+
+        return getattr(repository, name)
+
+    # Migrations
+    if name in (
+        "Migration",
+        "MigrationManager",
+        "MigrationRegistry",
+        "CreateTable",
+        "DropTable",
+        "AddColumn",
+        "DropColumn",
+        "AlterColumn",
+        "CreateIndex",
+        "DropIndex",
+    ):
+        from . import migrations
+
+        return getattr(migrations, name)
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# TYPE_CHECKING용 (IDE 지원)
+if TYPE_CHECKING:
+    from .expressions import (
+        FieldExpression,
+        Condition,
+        ConditionGroup,
+        OrderBy,
+        AggregateFunction,
+        Count,
+        Sum,
+        Avg,
+        Min,
+        Max,
+        HavingCondition,
+        HavingConditionGroup,
+        Subquery,
+        SubqueryCondition,
+        SubqueryInCondition,
+        ScalarSubquery,
+        JoinType,
+        JoinClause,
+        JoinCondition,
+        on,
+        FrameBound,
+        WindowFrame,
+        WindowSpec,
+        WindowFunction,
+        RowNumber,
+        Rank,
+        DenseRank,
+        NTile,
+        PercentRank,
+        CumeDist,
+        Lag,
+        Lead,
+        FirstValue,
+        LastValue,
+        NthValue,
+        SumOver,
+        AvgOver,
+        CountOver,
+        MinOver,
+        MaxOver,
+    )
+    from .columns import (
+        Column,
+        PrimaryKey,
+        ForeignKey,
+        ManyToOne,
+        IntegerColumn,
+        StringColumn,
+        BooleanColumn,
+        DateTimeColumn,
+        DecimalColumn,
+        TextColumn,
+        JSONColumn,
+        OneToMany,
+        FetchType,
+        TrackedList,
+    )
+    from .tracker import DirtyTracker
+    from .entity import Entity, EntityMeta, create
+    from .dialect import Dialect, SQLiteDialect, PostgreSQLDialect, MySQLDialect
+    from .query import QueryBuilder, Query, FilterCondition, JoinOnCondition
+    from .session import Session, AsyncSession, SessionFactory
+    from .repository import CrudRepository, Repository
+    from .migrations import (
+        Migration,
+        MigrationManager,
+        MigrationRegistry,
+        CreateTable,
+        DropTable,
+        AddColumn,
+        DropColumn,
+        AlterColumn,
+        CreateIndex,
+        DropIndex,
+    )

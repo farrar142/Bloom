@@ -1,4 +1,4 @@
-"""bloom.core.task.app - TaskApp 및 TaskRegistry
+"""bloom.task.app - TaskApp 및 TaskRegistry
 
 태스크 정의, 등록, 관리를 담당합니다.
 Celery의 Celery 클래스와 유사한 역할입니다.
@@ -45,11 +45,11 @@ class AsyncResult(Generic[T]):
 
     Examples:
         result = my_task.delay("arg1", "arg2")
-        
+
         # 상태 확인
         if result.ready():
             print(result.get())
-        
+
         # 결과 대기 (blocking)
         value = await result.get_async(timeout=10)
     """
@@ -146,7 +146,9 @@ class AsyncResult(Generic[T]):
         )
 
         if result is None:
-            raise TimeoutError(f"Task {self.task_id} did not complete within {timeout}s")
+            raise TimeoutError(
+                f"Task {self.task_id} did not complete within {timeout}s"
+            )
 
         return result.get()
 
@@ -219,7 +221,7 @@ class BoundTask(Generic[T]):
         """직접 호출 (로컬 실행)"""
         if self.task.func is None:
             raise RuntimeError(f"Task {self.name} has no function")
-        
+
         result = self.task.func(*args, **kwargs)
         if hasattr(result, "__await__"):
             return await result
@@ -514,8 +516,7 @@ class TaskApp:
                     self._config[key.lower()] = getattr(config, key)
 
     @overload
-    def task(self, func: TaskFunc) -> BoundTask[Any]:
-        ...
+    def task(self, func: TaskFunc) -> BoundTask[Any]: ...
 
     @overload
     def task(
@@ -529,8 +530,7 @@ class TaskApp:
         priority: TaskPriority = TaskPriority.NORMAL,
         bind: bool = False,
         ignore_result: bool = False,
-    ) -> Callable[[TaskFunc], BoundTask[Any]]:
-        ...
+    ) -> Callable[[TaskFunc], BoundTask[Any]]: ...
 
     def task(
         self,

@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime
 from dataclasses import dataclass
 
-from bloom.core.event import (
+from bloom.event import (
     Event,
     DomainEvent,
     EventPriority,
@@ -104,7 +104,9 @@ class TestDomainEvent:
 
     def test_user_created_event(self):
         """UserCreatedEvent 테스트"""
-        payload = UserCreatedPayload(user_id=1, username="john", email="john@example.com")
+        payload = UserCreatedPayload(
+            user_id=1, username="john", email="john@example.com"
+        )
         event = UserCreatedEvent(payload=payload)
 
         assert event.event_type == "user.created"

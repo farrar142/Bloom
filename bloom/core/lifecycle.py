@@ -20,17 +20,17 @@ def PreDestroy[F: Callable[..., Any]](func: F) -> F:
     return func
 
 
-# === AutoClosable Interface ===
+# === AutoCloseable Interface ===
 
 
-class AutoClosable(ABC):
+class AutoCloseable(ABC):
     """
     자동 정리가 필요한 리소스를 위한 인터페이스.
     @PreDestroy 대신 이 인터페이스를 구현해도 라이프사이클이 자동 관리됨.
 
     사용 예:
         @Component
-        class DatabasePool(AutoClosable):
+        class DatabasePool(AutoCloseable):
             async def close(self):
                 await self.pool.close()
     """
@@ -90,7 +90,7 @@ class LifecycleManager:
 
     @staticmethod
     async def invoke_pre_destroy(instance: object) -> None:
-        """@PreDestroy 메서드 및 AutoClosable.close() 호출"""
+        """@PreDestroy 메서드 및 AutoCloseable.close() 호출"""
         # @PreDestroy 메서드 호출
         methods = LifecycleManager.get_pre_destroy_methods(instance)
         for method in methods:
@@ -102,8 +102,8 @@ class LifecycleManager:
                 # 소멸 시 예외는 로깅만 하고 계속 진행
                 pass
 
-        # AutoClosable.close() 호출
-        if isinstance(instance, AutoClosable):
+        # AutoCloseable.close() 호출
+        if isinstance(instance, AutoCloseable):
             try:
                 result = instance.close()
                 if asyncio.iscoroutine(result):
@@ -113,5 +113,5 @@ class LifecycleManager:
 
     @staticmethod
     def is_auto_closable(target: type) -> bool:
-        """AutoClosable 구현 여부"""
-        return issubclass(target, AutoClosable) if isinstance(target, type) else False
+        """AutoCloseable 구현 여부"""
+        return issubclass(target, AutoCloseable) if isinstance(target, type) else False

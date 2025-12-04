@@ -4,7 +4,17 @@ JOIN, GROUP BY, aggregate 함수, AND/OR 조건 등의 쿼리를 테스트합니
 """
 
 import pytest
-from bloom.db import Query, Condition, ConditionGroup, OrderBy, Count, Sum, Avg, Min, Max
+from bloom.db import (
+    Query,
+    Condition,
+    ConditionGroup,
+    OrderBy,
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
+)
 
 from .conftest import (
     Employee,
@@ -47,17 +57,12 @@ class TestLevel2IntermediateQueries:
         """2. OR 조건 그룹"""
         query = (
             Query(Employee)
-            .filter(
-                (Employee.salary >= 80000) | (Employee.is_manager == True)
-            )
+            .filter((Employee.salary >= 80000) | (Employee.is_manager == True))
             .with_session(seeded_session)
         )
         employees = await query.async_all()
 
-        assert all(
-            emp.salary >= 80000 or emp.is_manager
-            for emp in employees
-        )
+        assert all(emp.salary >= 80000 or emp.is_manager for emp in employees)
 
     @pytest.mark.asyncio
     async def test_03_filter_complex_and_or(self, seeded_session: AsyncSession):
@@ -74,8 +79,7 @@ class TestLevel2IntermediateQueries:
         employees = await query.async_all()
 
         assert all(
-            (emp.salary > 70000 and emp.age < 40) or emp.is_manager
-            for emp in employees
+            (emp.salary > 70000 and emp.age < 40) or emp.is_manager for emp in employees
         )
 
     @pytest.mark.asyncio
@@ -111,7 +115,8 @@ class TestLevel2IntermediateQueries:
         """6. INNER JOIN"""
         query = (
             Query(Employee)
-            .join(Department).on(Employee.department_id, Department.id)
+            .join(Department)
+            .on(Employee.department_id, Department.id)
             .filter(Department.name == "Engineering")
             .with_session(seeded_session)
         )
@@ -125,7 +130,8 @@ class TestLevel2IntermediateQueries:
         """7. LEFT JOIN (부서 없는 직원 포함)"""
         query = (
             Query(Employee)
-            .left_join(Department).on(Employee.department_id, Department.id)
+            .left_join(Department)
+            .on(Employee.department_id, Department.id)
             .with_session(seeded_session)
         )
         employees = await query.async_all()
@@ -138,7 +144,8 @@ class TestLevel2IntermediateQueries:
         """8. JOIN + WHERE 조건"""
         query = (
             Query(Order)
-            .join(Customer).on(Order.customer_id, Customer.id)
+            .join(Customer)
+            .on(Order.customer_id, Customer.id)
             .filter(Customer.tier == "platinum")
             .filter(Order.status == "delivered")
             .with_session(seeded_session)
@@ -153,8 +160,10 @@ class TestLevel2IntermediateQueries:
         """9. 다중 JOIN"""
         query = (
             Query(OrderItem)
-            .join(Order).on(OrderItem.order_id, Order.id)
-            .join(Product).on(OrderItem.product_id, Product.id)
+            .join(Order)
+            .on(OrderItem.order_id, Order.id)
+            .join(Product)
+            .on(OrderItem.product_id, Product.id)
             .filter(Product.category == "Electronics")
             .with_session(seeded_session)
         )
@@ -167,8 +176,9 @@ class TestLevel2IntermediateQueries:
         """10. JOIN ON 복합 조건"""
         query = (
             Query(Employee)
-            .join(Department).on(
-                (Employee.department_id == Department.id) 
+            .join(Department)
+            .on(
+                (Employee.department_id == Department.id)
                 & (Department.is_active == True)
             )
             .with_session(seeded_session)
@@ -228,10 +238,7 @@ class TestLevel2IntermediateQueries:
         """14. MIN/MAX 집계"""
         query = (
             Query(Product)
-            .annotate(
-                min_price=Min(Product.price),
-                max_price=Max(Product.price)
-            )
+            .annotate(min_price=Min(Product.price), max_price=Max(Product.price))
             .group_by(Product.category)
             .with_session(seeded_session)
         )
@@ -251,7 +258,7 @@ class TestLevel2IntermediateQueries:
             .annotate(
                 sale_count=Count(SalesRecord.id),
                 total_amount=Sum(SalesRecord.amount),
-                avg_amount=Avg(SalesRecord.amount)
+                avg_amount=Avg(SalesRecord.amount),
             )
             .group_by(SalesRecord.region)
             .with_session(seeded_session)
@@ -331,9 +338,7 @@ class TestLevel2IntermediateQueries:
     async def test_20_exists_check(self, seeded_session: AsyncSession):
         """20. EXISTS 체크"""
         query = (
-            Query(Employee)
-            .filter(Employee.salary > 70000)
-            .with_session(seeded_session)
+            Query(Employee).filter(Employee.salary > 70000).with_session(seeded_session)
         )
         exists = await query.async_exists()
 

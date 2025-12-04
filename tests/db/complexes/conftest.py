@@ -331,19 +331,19 @@ async def seeded_session(async_session: AsyncSession) -> AsyncSession:
     """샘플 데이터가 미리 삽입된 세션"""
     await _seed_departments(async_session)
     await async_session.commit()  # Department FK 의존성 해결
-    
+
     await _seed_employees(async_session)
     await async_session.commit()  # Employee FK 의존성 해결
-    
+
     await _seed_products(async_session)
     await async_session.commit()  # Product FK 의존성 해결
-    
+
     await _seed_customers(async_session)
     await async_session.commit()  # Customer FK 의존성 해결
-    
+
     await _seed_orders(async_session)
     # _seed_orders 내부에서 order commit 후 order_items 추가
-    
+
     await _seed_sales_records(async_session)
     await _seed_scores(async_session)
     await async_session.commit()
@@ -373,28 +373,189 @@ async def _seed_departments(session: AsyncSession) -> None:
 
 async def _seed_employees(session: AsyncSession) -> None:
     """직원 샘플 데이터"""
-    # 1단계: 매니저 없는 직원들 먼저 삽입 (id 1-12, 13)
+    # 부서 ID를 이름으로 조회
+    dept_result = await session._connection.execute("SELECT id, name FROM department")
+    dept_rows = await dept_result.fetchall()
+    dept_id_map = {row["name"]: row["id"] for row in dept_rows}
+
+    eng_id = dept_id_map.get("Engineering")
+    sales_id = dept_id_map.get("Sales")
+    mkt_id = dept_id_map.get("Marketing")
+    fin_id = dept_id_map.get("Finance")
+
+    # 1단계: 매니저 없는 직원들 먼저 삽입
+    # department_id: 1=Engineering, 2=Sales, 3=Marketing, 5=Finance
     managers_data = [
-        ("Alice Kim", "alice@example.com", 80000, "2020-01-15", True, 35, 95, 1, None),  # id=1
-        ("Bob Lee", "bob@example.com", 65000, "2021-03-20", False, 28, 75, 1, None),  # id=2, 나중에 manager_id 업데이트
-        ("Carol Park", "carol@example.com", 70000, "2019-06-10", True, 42, 88, 2, None),  # id=3
-        ("David Choi", "david@example.com", 55000, "2022-01-05", False, 25, 60, 2, None),  # id=4
-        ("Eve Jung", "eve@example.com", 72000, "2020-08-12", False, 31, 82, 1, None),  # id=5
-        ("Frank Oh", "frank@example.com", 58000, "2021-11-30", False, 29, 70, 3, None),  # id=6
-        ("Grace Han", "grace@example.com", 85000, "2018-04-22", True, 45, 92, 3, None),  # id=7
-        ("Henry Yoo", "henry@example.com", 62000, "2022-06-15", False, 27, 65, 2, None),  # id=8
-        ("Iris Shin", "iris@example.com", 68000, "2020-09-01", False, 33, 78, 1, None),  # id=9
-        ("Jack Kwon", "jack@example.com", 75000, "2019-12-10", True, 38, 85, 5, None),  # id=10
-        ("Kate Moon", "kate@example.com", 52000, "2023-02-28", False, 24, 55, 5, None),  # id=11
-        ("Leo Baek", "leo@example.com", 90000, "2017-07-01", True, 48, 98, 1, None),  # id=12
-        ("Mia Song", "mia@example.com", 48000, "2023-05-10", False, 23, 45, None, None),  # id=13
-        ("Noah Jang", "noah@example.com", 63000, "2021-08-20", False, 30, 72, 2, None),  # id=14
-        ("Olivia Ryu", "olivia@example.com", 71000, "2020-04-05", False, 34, 80, 3, None),  # id=15
+        (
+            "Alice Kim",
+            "alice@example.com",
+            80000,
+            "2020-01-15",
+            True,
+            35,
+            95,
+            eng_id,
+            None,
+        ),
+        (
+            "Bob Lee",
+            "bob@example.com",
+            65000,
+            "2021-03-20",
+            False,
+            28,
+            75,
+            eng_id,
+            None,
+        ),
+        (
+            "Carol Park",
+            "carol@example.com",
+            70000,
+            "2019-06-10",
+            True,
+            42,
+            88,
+            sales_id,
+            None,
+        ),
+        (
+            "David Choi",
+            "david@example.com",
+            55000,
+            "2022-01-05",
+            False,
+            25,
+            60,
+            sales_id,
+            None,
+        ),
+        (
+            "Eve Jung",
+            "eve@example.com",
+            72000,
+            "2020-08-12",
+            False,
+            31,
+            82,
+            eng_id,
+            None,
+        ),
+        (
+            "Frank Oh",
+            "frank@example.com",
+            58000,
+            "2021-11-30",
+            False,
+            29,
+            70,
+            mkt_id,
+            None,
+        ),
+        (
+            "Grace Han",
+            "grace@example.com",
+            85000,
+            "2018-04-22",
+            True,
+            45,
+            92,
+            mkt_id,
+            None,
+        ),
+        (
+            "Henry Yoo",
+            "henry@example.com",
+            62000,
+            "2022-06-15",
+            False,
+            27,
+            65,
+            sales_id,
+            None,
+        ),
+        (
+            "Iris Shin",
+            "iris@example.com",
+            68000,
+            "2020-09-01",
+            False,
+            33,
+            78,
+            eng_id,
+            None,
+        ),
+        (
+            "Jack Kwon",
+            "jack@example.com",
+            75000,
+            "2019-12-10",
+            True,
+            38,
+            85,
+            fin_id,
+            None,
+        ),
+        (
+            "Kate Moon",
+            "kate@example.com",
+            52000,
+            "2023-02-28",
+            False,
+            24,
+            55,
+            fin_id,
+            None,
+        ),
+        (
+            "Leo Baek",
+            "leo@example.com",
+            90000,
+            "2017-07-01",
+            True,
+            48,
+            98,
+            eng_id,
+            None,
+        ),
+        ("Mia Song", "mia@example.com", 48000, "2023-05-10", False, 23, 45, None, None),
+        (
+            "Noah Jang",
+            "noah@example.com",
+            63000,
+            "2021-08-20",
+            False,
+            30,
+            72,
+            sales_id,
+            None,
+        ),
+        (
+            "Olivia Ryu",
+            "olivia@example.com",
+            71000,
+            "2020-04-05",
+            False,
+            34,
+            80,
+            mkt_id,
+            None,
+        ),
     ]
 
     for data in managers_data:
         emp = Employee()
-        emp.name, emp.email, emp.salary, emp.hire_date, emp.is_manager, emp.age, emp.performance_score, emp.department_id, emp.manager_id = data
+        (
+            emp.name,
+            emp.email,
+            emp.salary,
+            emp.hire_date,
+            emp.is_manager,
+            emp.age,
+            emp.performance_score,
+            emp.department_id,
+            emp.manager_id,
+        ) = data
         session.add(emp)
 
 
@@ -420,7 +581,14 @@ async def _seed_products(session: AsyncSession) -> None:
 
     for data in products_data:
         prod = Product()
-        prod.name, prod.category, prod.price, prod.stock, prod.is_available, prod.rating = data
+        (
+            prod.name,
+            prod.category,
+            prod.price,
+            prod.stock,
+            prod.is_available,
+            prod.rating,
+        ) = data
         session.add(prod)
 
 
@@ -441,7 +609,14 @@ async def _seed_customers(session: AsyncSession) -> None:
 
     for data in customers_data:
         cust = Customer()
-        cust.name, cust.email, cust.tier, cust.total_spent, cust.signup_date, cust.is_vip = data
+        (
+            cust.name,
+            cust.email,
+            cust.tier,
+            cust.total_spent,
+            cust.signup_date,
+            cust.is_vip,
+        ) = data
         session.add(cust)
 
 
@@ -467,7 +642,13 @@ async def _seed_orders(session: AsyncSession) -> None:
 
     for data in orders_data:
         order = Order()
-        order.order_date, order.status, order.total_amount, order.discount, order.customer_id = data
+        (
+            order.order_date,
+            order.status,
+            order.total_amount,
+            order.discount,
+            order.customer_id,
+        ) = data
         session.add(order)
 
     await session.commit()

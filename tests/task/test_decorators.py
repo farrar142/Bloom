@@ -1,16 +1,16 @@
-"""bloom.core.task.decorators 테스트"""
+"""bloom.task.decorators 테스트"""
 
 import pytest
 
-from bloom.core.task.app import TaskApp, BoundTask
-from bloom.core.task.decorators import (
+from bloom.task.app import TaskApp, BoundTask
+from bloom.task.decorators import (
     Task,
     get_task_metadata,
     has_task_metadata,
     get_task_methods,
     scan_task_methods,
 )
-from bloom.core.task.models import TaskPriority
+from bloom.task.models import TaskPriority
 
 
 class TestTaskDecorator:

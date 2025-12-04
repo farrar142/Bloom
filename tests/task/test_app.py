@@ -1,11 +1,11 @@
-"""bloom.core.task.app 테스트"""
+"""bloom.task.app 테스트"""
 
 import pytest
 import asyncio
 
-from bloom.core.task.app import TaskApp, TaskRegistry, AsyncResult, BoundTask
-from bloom.core.task.backends.local import LocalBroker, LocalBackend
-from bloom.core.task.models import TaskStatus, TaskPriority
+from bloom.task.app import TaskApp, TaskRegistry, AsyncResult, BoundTask
+from bloom.task.backends.local import LocalBroker, LocalBackend
+from bloom.task.models import TaskStatus, TaskPriority
 
 
 class TestTaskRegistry:
@@ -13,7 +13,7 @@ class TestTaskRegistry:
 
     def test_register_task(self):
         """태스크 등록"""
-        from bloom.core.task.models import Task
+        from bloom.task.models import Task
 
         registry = TaskRegistry()
         task = Task(name="test.task")
@@ -24,7 +24,7 @@ class TestTaskRegistry:
 
     def test_get_task(self):
         """태스크 조회"""
-        from bloom.core.task.models import Task
+        from bloom.task.models import Task
 
         registry = TaskRegistry()
         task = Task(name="test.task")
@@ -40,7 +40,7 @@ class TestTaskRegistry:
 
     def test_unregister_task(self):
         """태스크 등록 해제"""
-        from bloom.core.task.models import Task
+        from bloom.task.models import Task
 
         registry = TaskRegistry()
         task = Task(name="test.task")
@@ -52,7 +52,7 @@ class TestTaskRegistry:
 
     def test_get_all_tasks(self):
         """모든 태스크 조회"""
-        from bloom.core.task.models import Task
+        from bloom.task.models import Task
 
         registry = TaskRegistry()
         task1 = Task(name="task1")
@@ -245,7 +245,7 @@ class TestAsyncResult:
 
     async def test_status(self, app):
         """상태 조회"""
-        from bloom.core.task.models import TaskResult
+        from bloom.task.models import TaskResult
 
         # 결과 저장
         task_result = TaskResult(
@@ -262,7 +262,7 @@ class TestAsyncResult:
 
     async def test_ready(self, app):
         """완료 여부"""
-        from bloom.core.task.models import TaskResult
+        from bloom.task.models import TaskResult
 
         # PENDING
         pending = TaskResult(task_id="pending", status=TaskStatus.PENDING)
@@ -280,7 +280,7 @@ class TestAsyncResult:
 
     async def test_successful(self, app):
         """성공 여부"""
-        from bloom.core.task.models import TaskResult
+        from bloom.task.models import TaskResult
 
         success = TaskResult(
             task_id="success",
@@ -294,7 +294,7 @@ class TestAsyncResult:
 
     async def test_failed(self, app):
         """실패 여부"""
-        from bloom.core.task.models import TaskResult
+        from bloom.task.models import TaskResult
 
         failure = TaskResult(
             task_id="failure",
@@ -308,7 +308,7 @@ class TestAsyncResult:
 
     async def test_get_success(self, app):
         """성공 결과 가져오기"""
-        from bloom.core.task.models import TaskResult
+        from bloom.task.models import TaskResult
 
         task_result = TaskResult(
             task_id="test-123",

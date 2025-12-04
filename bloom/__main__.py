@@ -34,7 +34,7 @@ main.add_command(db, name="db")
 
 # Task Queue CLI
 try:
-    from bloom.core.task.cli import queue_cli
+    from bloom.task.cli import queue_cli
 
     main.add_command(queue_cli, name="queue")
 except ImportError:

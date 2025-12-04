@@ -1,4 +1,4 @@
-"""bloom.core.task.worker - 태스크 워커
+"""bloom.task.worker - 태스크 워커
 
 태스크를 소비하고 실행하는 워커 프로세스입니다.
 """
@@ -103,8 +103,8 @@ class Worker:
         - 결과 저장
 
     Examples:
-        from bloom.core.task import TaskApp, Worker, WorkerConfig
-        from bloom.core.task.backends import LocalBroker, LocalBackend
+        from bloom.task import TaskApp, Worker, WorkerConfig
+        from bloom.task.backends import LocalBroker, LocalBackend
 
         task_app = TaskApp("my_app")
         task_app.broker = LocalBroker()

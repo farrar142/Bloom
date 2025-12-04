@@ -4,7 +4,7 @@ import pytest
 from typing import Any
 from dataclasses import dataclass
 
-from bloom.core.event import (
+from bloom.event import (
     Event,
     DomainEvent,
     EventListener,
@@ -166,7 +166,9 @@ class TestEventEmitterDecorator:
         assert info.payload_extractor is not None
 
         # 추출기 테스트
-        result = info.payload_extractor({"id": 1, "name": "John", "email": "john@example.com"})
+        result = info.payload_extractor(
+            {"id": 1, "name": "John", "email": "john@example.com"}
+        )
         assert result == {"id": 1, "name": "John"}
 
     def test_multiple_emitters(self):

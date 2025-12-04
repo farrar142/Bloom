@@ -1,4 +1,4 @@
-"""bloom.core.event.backends.local - 로컬 인메모리 이벤트 버스
+"""bloom.event.backends.local - 로컬 인메모리 이벤트 버스
 
 단일 프로세스 내에서 동작하는 인메모리 이벤트 버스입니다.
 동기 및 비동기 핸들러를 모두 지원합니다.
@@ -125,9 +125,7 @@ class LocalEventBus(EventBus):
             if async_handlers:
                 if wait_for_handlers:
                     # 모든 비동기 핸들러 실행 후 대기
-                    async_results = await self._execute_handlers(
-                        event, async_handlers
-                    )
+                    async_results = await self._execute_handlers(event, async_handlers)
                     results.extend(async_results)
                 else:
                     # 큐에 추가 (백그라운드 처리)
@@ -267,9 +265,7 @@ class LocalEventBus(EventBus):
             try:
                 # 큐에서 이벤트 가져오기 (타임아웃으로 종료 체크)
                 try:
-                    event = await asyncio.wait_for(
-                        self._queue.get(), timeout=1.0
-                    )
+                    event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
                 except asyncio.TimeoutError:
                     continue
 

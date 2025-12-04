@@ -1,4 +1,4 @@
-"""bloom.core.event.interceptor - 이벤트 AOP 인터셉터
+"""bloom.event.interceptor - 이벤트 AOP 인터셉터
 
 @EventEmitter 데코레이터를 처리하는 AOP 인터셉터입니다.
 """
@@ -80,7 +80,7 @@ class EventEmitterInterceptor:
 
             # 이벤트 생성
             event_type_str = get_event_type(info.event_type)
-            
+
             # method 이름 추출 (bound method 지원)
             method = invocation.method
             if hasattr(method, "__func__"):
@@ -89,7 +89,7 @@ class EventEmitterInterceptor:
                 method_name = method.__name__
             else:
                 method_name = str(method)
-            
+
             event = create_event(
                 event_type_str,
                 payload=payload,

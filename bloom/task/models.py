@@ -1,4 +1,4 @@
-"""bloom.core.task.models - 태스크 모델 정의
+"""bloom.task.models - 태스크 모델 정의
 
 태스크 메시지, 결과, 상태 등의 데이터 모델을 정의합니다.
 """

@@ -1,12 +1,12 @@
-"""bloom.core.task.worker 테스트"""
+"""bloom.task.worker 테스트"""
 
 import pytest
 import asyncio
 
-from bloom.core.task.app import TaskApp
-from bloom.core.task.worker import Worker, WorkerConfig, WorkerState
-from bloom.core.task.backends.local import LocalBroker, LocalBackend
-from bloom.core.task.models import TaskStatus, TaskRetryError
+from bloom.task.app import TaskApp
+from bloom.task.worker import Worker, WorkerConfig, WorkerState
+from bloom.task.backends.local import LocalBroker, LocalBackend
+from bloom.task.models import TaskStatus, TaskRetryError
 
 
 class TestWorkerConfig:
@@ -228,7 +228,7 @@ class TestWorker:
                 return "success"
 
             # 태스크 전송 (max_retries 설정)
-            from bloom.core.task.models import TaskMessage
+            from bloom.task.models import TaskMessage
 
             msg = TaskMessage(
                 task_name=retry_task.name,
@@ -238,7 +238,7 @@ class TestWorker:
             await broker.publish(msg)
             await backend.store_result(
                 msg.task_id,
-                __import__("bloom.core.task.models", fromlist=["TaskResult"]).TaskResult(
+                __import__("bloom.task.models", fromlist=["TaskResult"]).TaskResult(
                     task_id=msg.task_id, status=TaskStatus.PENDING
                 ),
             )

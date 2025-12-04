@@ -1,4 +1,4 @@
-"""@PostConstruct, @PreDestroy, AutoClosable 라이프사이클 테스트"""
+"""@PostConstruct, @PreDestroy, AutoCloseable 라이프사이클 테스트"""
 
 import pytest
 
@@ -6,7 +6,7 @@ from bloom.core import (
     Component,
     PostConstruct,
     PreDestroy,
-    AutoClosable,
+    AutoCloseable,
     Scope,
     Handler,
     get_container_manager,
@@ -15,7 +15,7 @@ from bloom.core.decorators import scope_decorator
 
 
 class TestLifecycle:
-    """@PostConstruct, @PreDestroy, AutoClosable 테스트"""
+    """@PostConstruct, @PreDestroy, AutoCloseable 테스트"""
 
     @pytest.mark.asyncio
     async def test_post_construct_called(self):
@@ -52,11 +52,11 @@ class TestLifecycle:
 
     @pytest.mark.asyncio
     async def test_auto_closable(self):
-        """AutoClosable.close()가 종료 시 호출되는지"""
+        """AutoCloseable.close()가 종료 시 호출되는지"""
         called = {"close": False}
 
         @Component
-        class ResourceService(AutoClosable):
+        class ResourceService(AutoCloseable):
             async def close(self):
                 called["close"] = True
 

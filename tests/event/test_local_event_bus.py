@@ -4,7 +4,7 @@ import pytest
 import asyncio
 from typing import Any
 
-from bloom.core.event import (
+from bloom.event import (
     LocalEventBus,
     Event,
     EventResult,
@@ -130,6 +130,7 @@ class TestLocalEventBus:
     @pytest.mark.asyncio
     async def test_get_subscriptions(self, event_bus: LocalEventBus):
         """구독 목록 조회 테스트"""
+
         async def handler(event: Event):
             pass
 
@@ -213,11 +214,15 @@ class TestSyncAsyncHandlers:
         async def async_handler(event: Event):
             results.append("async")
 
-        await event_bus.subscribe("test.event", sync_handler, mode=SubscriptionMode.SYNC)
-        await event_bus.subscribe("test.event", async_handler, mode=SubscriptionMode.ASYNC)
+        await event_bus.subscribe(
+            "test.event", sync_handler, mode=SubscriptionMode.SYNC
+        )
+        await event_bus.subscribe(
+            "test.event", async_handler, mode=SubscriptionMode.ASYNC
+        )
 
         event = Event(event_type="test.event", payload=None)
-        
+
         # wait_for_handlers=True로 모든 핸들러 대기
         await event_bus.publish(event, wait_for_handlers=True)
 
@@ -256,7 +261,7 @@ class TestErrorHandling:
         assert len(event_results) == 2
         assert any(r.status == EventStatus.FAILED for r in event_results)
         assert any(r.status == EventStatus.COMPLETED for r in event_results)
-        
+
         # 성공 핸들러는 여전히 실행됨
         assert "success" in results
 
@@ -366,6 +371,7 @@ class TestEventResults:
     @pytest.mark.asyncio
     async def test_event_result_success(self, event_bus: LocalEventBus):
         """성공 결과 테스트"""
+
         async def handler(event: Event):
             return {"processed": True}
 
@@ -384,6 +390,7 @@ class TestEventResults:
     @pytest.mark.asyncio
     async def test_event_result_failure(self, event_bus: LocalEventBus):
         """실패 결과 테스트"""
+
         async def handler(event: Event):
             raise ValueError("Test error")
 
