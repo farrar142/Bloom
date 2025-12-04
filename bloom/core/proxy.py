@@ -130,6 +130,27 @@ class LazyProxy(Generic[T]):
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_lp_"):
             return object.__getattribute__(self, name)
+
+        # CALL 스코프 컴포넌트는 Handler 컨텍스트 외부에서 접근 불가
+        # hasattr() 등의 호출에서 에러 대신 AttributeError를 발생시켜
+        # 해당 속성이 없는 것처럼 동작하게 함
+        from .scope import ScopeEnum
+        from .scope_manager import _frame_id_stack
+
+        container: Container[T] = object.__getattribute__(self, "_lp_container")
+        if container.scope == ScopeEnum.CALL:
+            resolved = object.__getattribute__(self, "_lp_resolved")
+            if not resolved:
+                # CALL 스코프이고 아직 resolve되지 않은 경우
+                # Handler 컨텍스트에서만 접근 가능
+                stack = _frame_id_stack.get()
+                if not stack or len(stack) == 0:
+                    # Handler 컨텍스트 외부: 속성이 없는 것처럼 동작
+                    raise AttributeError(
+                        f"'{container.target.__name__}' is a CALL scoped component "
+                        f"and cannot be accessed outside of @Handler context"
+                    )
+
         instance = self._lp_resolve()
         return getattr(instance, name)
 
