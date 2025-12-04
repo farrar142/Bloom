@@ -500,7 +500,7 @@ class Repository(ABC, Generic[T, ID]):
         # ORDER BY 생성
         order_clauses = []
         for order in orders:
-            direction = "DESC" if order.desc else "ASC"
+            direction = "DESC" if order.desc else "ASC"  # type: ignore
             order_clauses.append(f'"{order.field}" {direction}')
 
         order_by = ", ".join(order_clauses) if order_clauses else None

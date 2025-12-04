@@ -28,6 +28,8 @@ class TaskBroker(ABC):
         - 메시지 확인 (ack, nack)
     """
 
+    _connected: bool
+
     @abstractmethod
     async def connect(self) -> None:
         """브로커 연결"""

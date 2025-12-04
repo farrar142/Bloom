@@ -24,23 +24,23 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class MessageMappingEntry(PathIncluded):
+class MessageMappingEntry[**P, R](PathIncluded):
     """MessageMapping을 PathTrie에 저장하기 위한 래퍼"""
 
     path: str  # destination
     info: "MessageMappingInfo"
     controller_class: type
-    method: Callable[..., Any]
+    method: Callable[P, R]
 
 
 @dataclass
-class SubscribeMappingEntry(PathIncluded):
+class SubscribeMappingEntry[**P, R](PathIncluded):
     """SubscribeMapping을 PathTrie에 저장하기 위한 래퍼"""
 
     path: str  # destination
     info: "SubscribeMappingInfo"
     controller_class: type
-    method: Callable[..., Any]
+    method: Callable[P, R]
 
 
 # =============================================================================
@@ -136,6 +136,8 @@ class MessageMappingRegistry:
 
         # MessageMapping 등록
         for mapping in info.message_mappings:
+            if mapping.method is None:
+                raise ValueError("MessageMapping method is None")
             entry = MessageMappingEntry(
                 path=mapping.destination,
                 info=mapping,
@@ -146,6 +148,8 @@ class MessageMappingRegistry:
 
         # SubscribeMapping 등록
         for mapping in info.subscribe_mappings:
+            if mapping.method is None:
+                raise ValueError("SubscribeMapping method is None")
             entry = SubscribeMappingEntry(
                 path=mapping.destination,
                 info=mapping,

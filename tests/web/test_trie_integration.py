@@ -17,6 +17,12 @@ from bloom.web.messaging.decorators import (
 )
 
 
+def n[T](item: T | None) -> T:
+    """Non-None 단언 헬퍼"""
+    assert item is not None
+    return item
+
+
 # =============================================================================
 # 1. Router with PathTrie 테스트
 # =============================================================================
@@ -121,15 +127,15 @@ class TestRouterWithTrie:
             return {}
 
         # GET /users
-        assert router.match("/users", "GET").handler == list_users
+        assert n(router.match("/users", "GET")).handler == list_users
         # POST /users
-        assert router.match("/users", "POST").handler == create_user
+        assert n(router.match("/users", "POST")).handler == create_user
         # GET /users/1
-        assert router.match("/users/1", "GET").handler == get_user
+        assert n(router.match("/users/1", "GET")).handler == get_user
         # PUT /users/1
-        assert router.match("/users/1", "PUT").handler == update_user
+        assert n(router.match("/users/1", "PUT")).handler == update_user
         # DELETE /users/1
-        assert router.match("/users/1", "DELETE").handler == delete_user
+        assert n(router.match("/users/1", "DELETE")).handler == delete_user
 
     def test_router_trie_with_sub_router(self):
         """서브 라우터와 Trie 통합"""

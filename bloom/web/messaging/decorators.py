@@ -19,23 +19,23 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 @dataclass
-class MessageMappingInfo:
+class MessageMappingInfo[**P, R]:
     """메시지 매핑 정보"""
 
     destination: str
     pattern: re.Pattern[str]
     variables: list[str]  # 경로 변수 이름들
-    method: Callable[..., Any] | None = None
+    method: Callable[P, R] | None = None
 
 
 @dataclass
-class SubscribeMappingInfo:
+class SubscribeMappingInfo[**P, R]:
     """구독 매핑 정보"""
 
     destination: str
     pattern: re.Pattern[str]
     variables: list[str]
-    method: Callable[..., Any] | None = None
+    method: Callable[P, R] | None = None
 
 
 @dataclass

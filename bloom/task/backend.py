@@ -27,6 +27,8 @@ class TaskBackend(ABC):
         - TTL 관리
     """
 
+    _connected: bool
+
     @abstractmethod
     async def connect(self) -> None:
         """백엔드 연결"""

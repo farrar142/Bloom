@@ -1,8 +1,7 @@
 """Query expressions - Condition, ConditionGroup, OrderBy, FieldExpression, Aggregates"""
 
 from __future__ import annotations
-from dataclasses import dataclass, field as dataclass_field
-from typing import Any, TYPE_CHECKING, Union, overload
+from typing import Any, TYPE_CHECKING, Union, overload, Self
 
 if TYPE_CHECKING:
     from .columns import Column
@@ -21,7 +20,6 @@ ConditionLike = Union["Condition", "ConditionGroup", "JoinCondition"]
 # =============================================================================
 
 
-@dataclass(eq=False)
 class AggregateFunction:
     """집계 함수 기본 클래스
 
@@ -32,19 +30,34 @@ class AggregateFunction:
         Count(User.id).as_("cnt") →  COUNT("users"."id") AS cnt
     """
 
-    field: str | FieldExpression[Any]
-    alias: str | None = None
-    _func_name: str = dataclass_field(default="", init=False)
-    _table_name: str | None = dataclass_field(default=None, init=False)
+    __slots__ = ("field", "alias", "_table_name")
 
-    def __post_init__(self) -> None:
-        # FieldExpression에서 field name과 table_name 추출
-        if hasattr(self.field, "name"):
-            if hasattr(self.field, "table_name"):
-                self._table_name = self.field.table_name  # type: ignore[union-attr]
-            self.field = self.field.name  # type: ignore[assignment]
+    _func_name: str = ""
 
-    def as_(self, alias: str) -> AggregateFunction:
+    def __init__(
+        self,
+        field: str | FieldExpression[Any],
+        alias: str | None = None,
+    ) -> None:
+        self.alias = alias
+        self._table_name: str | None = None
+
+        if isinstance(field, str):
+            self.field = field
+        else:
+            self.field = field.name
+            if hasattr(field, "table_name"):
+                self._table_name = field.table_name  # type: ignore
+
+        # # FieldExpression에서 field name과 table_name 추출
+        # if hasattr(field, "name"):
+        #     if hasattr(field, "table_name"):
+        #         self._table_name = field.table_name  # type: ignore
+        #     self.field: str = field.name  # type: ignore[union-attr]
+        # else:
+        #     self.field = field  # type: ignore[assignment]
+
+    def as_(self, alias: str) -> Self:
         """별칭 지정 (SQL AS)"""
         self.alias = alias
         return self
@@ -74,10 +87,10 @@ class AggregateFunction:
     # 비교 연산자 (HAVING 절용)
     # -------------------------------------------------------------------------
 
-    def __eq__(self, other: Any) -> HavingCondition:
+    def __eq__(self, other: Any) -> HavingCondition:  # type: ignore[override]
         return HavingCondition(self, "=", other)
 
-    def __ne__(self, other: Any) -> HavingCondition:
+    def __ne__(self, other: Any) -> HavingCondition:  # type: ignore[override]
         return HavingCondition(self, "!=", other)
 
     def __gt__(self, other: Any) -> HavingCondition:
@@ -93,7 +106,6 @@ class AggregateFunction:
         return HavingCondition(self, "<=", other)
 
 
-@dataclass(eq=False)
 class Count(AggregateFunction):
     """COUNT 집계 함수
 
@@ -103,12 +115,9 @@ class Count(AggregateFunction):
         Count(User.id).as_("n")  →  COUNT(id) AS n
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "COUNT"
-        super().__post_init__()
+    _func_name = "COUNT"
 
 
-@dataclass(eq=False)
 class Sum(AggregateFunction):
     """SUM 집계 함수
 
@@ -117,12 +126,9 @@ class Sum(AggregateFunction):
         Sum(Order.amount).as_("total") →  SUM(amount) AS total
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "SUM"
-        super().__post_init__()
+    _func_name = "SUM"
 
 
-@dataclass(eq=False)
 class Avg(AggregateFunction):
     """AVG 집계 함수
 
@@ -131,12 +137,9 @@ class Avg(AggregateFunction):
         Avg(Product.price).as_("avg_p")  →  AVG(price) AS avg_p
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "AVG"
-        super().__post_init__()
+    _func_name = "AVG"
 
 
-@dataclass(eq=False)
 class Min(AggregateFunction):
     """MIN 집계 함수
 
@@ -145,12 +148,9 @@ class Min(AggregateFunction):
         Min(Product.price).as_("min_p") →  MIN(price) AS min_p
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "MIN"
-        super().__post_init__()
+    _func_name = "MIN"
 
 
-@dataclass(eq=False)
 class Max(AggregateFunction):
     """MAX 집계 함수
 
@@ -159,12 +159,9 @@ class Max(AggregateFunction):
         Max(Product.price).as_("max_p") →  MAX(price) AS max_p
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "MAX"
-        super().__post_init__()
+    _func_name = "MAX"
 
 
-@dataclass
 class HavingCondition:
     """HAVING 절 조건 - 집계 함수 결과 필터링
 
@@ -172,9 +169,17 @@ class HavingCondition:
         Count(User.id) > 5  →  HavingCondition(Count(User.id), ">", 5)
     """
 
-    aggregate: AggregateFunction
-    operator: str
-    value: Any
+    __slots__ = ("aggregate", "operator", "value")
+
+    def __init__(
+        self,
+        aggregate: AggregateFunction,
+        operator: str,
+        value: Any,
+    ) -> None:
+        self.aggregate = aggregate
+        self.operator = operator
+        self.value = value
 
     def __and__(
         self, other: HavingCondition | HavingConditionGroup
@@ -193,14 +198,20 @@ class HavingCondition:
         return f"{agg_sql} {self.operator} :{param_name}", {param_name: self.value}
 
 
-@dataclass
 class HavingConditionGroup:
     """HAVING 조건 그룹 (AND/OR)"""
 
-    operator: str  # "AND" or "OR"
-    conditions: list[HavingCondition | HavingConditionGroup] = dataclass_field(
-        default_factory=list
-    )
+    __slots__ = ("operator", "conditions")
+
+    def __init__(
+        self,
+        operator: str,
+        conditions: list[HavingCondition | HavingConditionGroup] | None = None,
+    ) -> None:
+        self.operator = operator  # "AND" or "OR"
+        self.conditions: list[HavingCondition | HavingConditionGroup] = (
+            conditions if conditions is not None else []
+        )
 
     def __and__(
         self, other: HavingCondition | HavingConditionGroup
@@ -246,7 +257,6 @@ class HavingConditionGroup:
 # =============================================================================
 
 
-@dataclass
 class Condition:
     """쿼리 조건 - SQL WHERE 절 표현
 
@@ -255,10 +265,19 @@ class Condition:
         User.age > 18         →  Condition("age", ">", 18, table_name="users")
     """
 
-    field: str
-    operator: str
-    value: Any
-    table_name: str | None = None  # JOIN 시 테이블 접두사
+    __slots__ = ("field", "operator", "value", "table_name")
+
+    def __init__(
+        self,
+        field: str,
+        operator: str,
+        value: Any,
+        table_name: str | None = None,
+    ) -> None:
+        self.field = field
+        self.operator = operator
+        self.value = value
+        self.table_name = table_name  # JOIN 시 테이블 접두사
 
     def __and__(self, other: ConditionLike) -> ConditionGroup:
         return ConditionGroup("AND", [self, other])
@@ -318,7 +337,6 @@ class Condition:
         return f"{field_ref} {self.operator} :{param_name}", {param_name: self.value}
 
 
-@dataclass
 class ConditionGroup:
     """조건 그룹 (AND/OR)
 
@@ -327,8 +345,17 @@ class ConditionGroup:
         (User.status == "active") | (User.role == "admin")
     """
 
-    operator: str  # "AND" or "OR"
-    conditions: list[ConditionLike] = dataclass_field(default_factory=list)
+    __slots__ = ("operator", "conditions")
+
+    def __init__(
+        self,
+        operator: str,
+        conditions: list[ConditionLike] | None = None,
+    ) -> None:
+        self.operator = operator  # "AND" or "OR"
+        self.conditions: list[ConditionLike] = (
+            conditions if conditions is not None else []
+        )
 
     def __and__(self, other: ConditionLike) -> ConditionGroup:
         if self.operator == "AND":
@@ -343,7 +370,9 @@ class ConditionGroup:
     def __invert__(self) -> ConditionGroup:
         """NOT 연산 - De Morgan's law 적용"""
         inverted_op = "OR" if self.operator == "AND" else "AND"
-        inverted_conditions = [~c for c in self.conditions]  # type: ignore
+        inverted_conditions: list[ConditionLike] = [
+            ~c for c in self.conditions  # type: ignore[operator]
+        ]
         return ConditionGroup(inverted_op, inverted_conditions)
 
     def to_sql(
@@ -371,7 +400,6 @@ class ConditionGroup:
         return joined, params
 
 
-@dataclass
 class OrderBy:
     """정렬 표현식
 
@@ -380,8 +408,11 @@ class OrderBy:
         User.age.desc()   →  OrderBy("age", "DESC")
     """
 
-    field: str
-    direction: str = "ASC"  # "ASC" or "DESC"
+    __slots__ = ("field", "direction")
+
+    def __init__(self, field: str, direction: str = "ASC") -> None:
+        self.field = field
+        self.direction = direction  # "ASC" or "DESC"
 
     def to_sql(self) -> str:
         return f"{self.field} {self.direction}"
@@ -698,7 +729,6 @@ class Subquery:
         return ScalarSubquery(self, column)
 
 
-@dataclass
 class SubqueryInCondition:
     """서브쿼리 IN 조건
 
@@ -707,20 +737,29 @@ class SubqueryInCondition:
         User.id.not_in(subquery)   →  "id" NOT IN (SELECT ...)
     """
 
-    field: str
-    subquery: Subquery
-    negate: bool = False
-    table_name: str | None = None  # JOIN 시 테이블 접두사
+    __slots__ = ("field", "subquery", "negate", "table_name")
+
+    def __init__(
+        self,
+        field: str,
+        subquery: Subquery,
+        negate: bool = False,
+        table_name: str | None = None,
+    ) -> None:
+        self.field = field
+        self.subquery = subquery
+        self.negate = negate
+        self.table_name = table_name  # JOIN 시 테이블 접두사
 
     def __and__(
-        self, other: Condition | ConditionGroup | "SubqueryInCondition"
+        self, other: Condition | ConditionGroup | SubqueryInCondition
     ) -> ConditionGroup:
-        return ConditionGroup("AND", [self, other])  # type: ignore
+        return ConditionGroup("AND", [self, other])  # type: ignore[list-item]
 
     def __or__(
-        self, other: Condition | ConditionGroup | "SubqueryInCondition"
+        self, other: Condition | ConditionGroup | SubqueryInCondition
     ) -> ConditionGroup:
-        return ConditionGroup("OR", [self, other])  # type: ignore
+        return ConditionGroup("OR", [self, other])  # type: ignore[list-item]
 
     def _get_field_ref(self) -> str:
         """테이블 접두사가 있으면 포함한 필드 참조 반환"""
@@ -738,7 +777,6 @@ class SubqueryInCondition:
         return f"{field_ref} {op} {subquery_sql}", params
 
 
-@dataclass
 class SubqueryCondition:
     """서브쿼리 조건 (EXISTS, NOT EXISTS 등)
 
@@ -747,18 +785,21 @@ class SubqueryCondition:
         Subquery(query).not_exists()   →  NOT EXISTS (SELECT ...)
     """
 
-    subquery: Subquery
-    operator: str  # "EXISTS", "NOT EXISTS"
+    __slots__ = ("subquery", "operator")
+
+    def __init__(self, subquery: Subquery, operator: str) -> None:
+        self.subquery = subquery
+        self.operator = operator  # "EXISTS", "NOT EXISTS"
 
     def __and__(
-        self, other: Condition | ConditionGroup | "SubqueryCondition"
+        self, other: Condition | ConditionGroup | SubqueryCondition
     ) -> ConditionGroup:
-        return ConditionGroup("AND", [self, other])  # type: ignore
+        return ConditionGroup("AND", [self, other])  # type: ignore[list-item]
 
     def __or__(
-        self, other: Condition | ConditionGroup | "SubqueryCondition"
+        self, other: Condition | ConditionGroup | SubqueryCondition
     ) -> ConditionGroup:
-        return ConditionGroup("OR", [self, other])  # type: ignore
+        return ConditionGroup("OR", [self, other])  # type: ignore[list-item]
 
     def to_sql(
         self, param_prefix: str = "sq", depth: int = 0
@@ -768,7 +809,6 @@ class SubqueryCondition:
         return f"{self.operator} {subquery_sql}", params
 
 
-@dataclass(eq=False)
 class ScalarSubquery:
     """스칼라 서브쿼리 - 단일 값을 반환하는 서브쿼리
 
@@ -779,13 +819,16 @@ class ScalarSubquery:
         Order.amount > avg_amount  →  "amount" > (SELECT AVG(amount) FROM orders)
     """
 
-    subquery: Subquery
-    column: str | None = None
+    __slots__ = ("subquery", "column")
 
-    def __eq__(self, other: Any) -> Condition:
+    def __init__(self, subquery: Subquery, column: str | None = None) -> None:
+        self.subquery = subquery
+        self.column = column
+
+    def __eq__(self, other: Any) -> Condition:  # type: ignore[override]
         return Condition(f"({self._get_sql()})", "=", other)
 
-    def __ne__(self, other: Any) -> Condition:
+    def __ne__(self, other: Any) -> Condition:  # type: ignore[override]
         return Condition(f"({self._get_sql()})", "!=", other)
 
     def __gt__(self, other: Any) -> Condition:
@@ -800,10 +843,10 @@ class ScalarSubquery:
     def __le__(self, other: Any) -> Condition:
         return Condition(f"({self._get_sql()})", "<=", other)
 
-    def __radd__(self, other: Any) -> "ScalarSubqueryExpr":
+    def __radd__(self, other: Any) -> ScalarSubqueryExpr:
         return ScalarSubqueryExpr(self, other, "+", reverse=True)
 
-    def __rsub__(self, other: Any) -> "ScalarSubqueryExpr":
+    def __rsub__(self, other: Any) -> ScalarSubqueryExpr:
         return ScalarSubqueryExpr(self, other, "-", reverse=True)
 
     def _get_sql(self) -> str:
@@ -815,14 +858,22 @@ class ScalarSubquery:
         return self.subquery.to_sql(param_prefix)
 
 
-@dataclass
 class ScalarSubqueryExpr:
     """스칼라 서브쿼리 표현식 (산술 연산 지원)"""
 
-    scalar: ScalarSubquery
-    value: Any
-    operator: str
-    reverse: bool = False
+    __slots__ = ("scalar", "value", "operator", "reverse")
+
+    def __init__(
+        self,
+        scalar: ScalarSubquery,
+        value: Any,
+        operator: str,
+        reverse: bool = False,
+    ) -> None:
+        self.scalar = scalar
+        self.value = value
+        self.operator = operator
+        self.reverse = reverse
 
     def to_sql(self, param_prefix: str = "sq") -> tuple[str, dict[str, Any]]:
         sql, params = self.scalar.to_sql(param_prefix)
@@ -856,7 +907,6 @@ class FrameBound:
         return f"{n} FOLLOWING"
 
 
-@dataclass
 class WindowFrame:
     """Window Frame 정의 (ROWS/RANGE BETWEEN)
 
@@ -866,16 +916,23 @@ class WindowFrame:
         WindowFrame("ROWS", FrameBound.preceding(1), FrameBound.following(1))
     """
 
-    frame_type: str = "RANGE"  # "ROWS" or "RANGE"
-    start: str = FrameBound.UNBOUNDED_PRECEDING
-    end: str = FrameBound.CURRENT_ROW
+    __slots__ = ("frame_type", "start", "end")
+
+    def __init__(
+        self,
+        frame_type: str = "RANGE",
+        start: str = FrameBound.UNBOUNDED_PRECEDING,
+        end: str = FrameBound.CURRENT_ROW,
+    ) -> None:
+        self.frame_type = frame_type  # "ROWS" or "RANGE"
+        self.start = start
+        self.end = end
 
     def to_sql(self) -> str:
         """SQL Frame 절 생성"""
         return f"{self.frame_type} BETWEEN {self.start} AND {self.end}"
 
 
-@dataclass
 class WindowSpec:
     """Window 명세 (OVER 절)
 
@@ -884,12 +941,21 @@ class WindowSpec:
         → OVER (PARTITION BY "user_id" ORDER BY created_at DESC)
     """
 
-    partition_by: list[str | FieldExpression[Any]] = dataclass_field(
-        default_factory=list
-    )
-    order_by: list[OrderBy] = dataclass_field(default_factory=list)
-    frame: WindowFrame | None = None
-    alias: str | None = None  # 윈도우 별칭 (WINDOW 절에서 사용)
+    __slots__ = ("partition_by", "order_by", "frame", "alias")
+
+    def __init__(
+        self,
+        partition_by: list[str | FieldExpression[Any]] | None = None,
+        order_by: list[OrderBy] | None = None,
+        frame: WindowFrame | None = None,
+        alias: str | None = None,
+    ) -> None:
+        self.partition_by: list[str | FieldExpression[Any]] = (
+            partition_by if partition_by is not None else []
+        )
+        self.order_by: list[OrderBy] = order_by if order_by is not None else []
+        self.frame = frame
+        self.alias = alias  # 윈도우 별칭 (WINDOW 절에서 사용)
 
     def to_sql(self) -> str:
         """SQL OVER 절 생성"""
@@ -899,7 +965,7 @@ class WindowSpec:
             cols = []
             for col in self.partition_by:
                 if hasattr(col, "name"):
-                    cols.append(f'"{col.name}"')  # type: ignore
+                    cols.append(f'"{col.name}"')  # type: ignore[union-attr]
                 else:
                     cols.append(f'"{col}"')
             parts.append(f"PARTITION BY {', '.join(cols)}")
@@ -915,7 +981,6 @@ class WindowSpec:
         return f"OVER ({inner})" if inner else "OVER ()"
 
 
-@dataclass(eq=False)
 class WindowFunction:
     """윈도우 함수 기본 클래스
 
@@ -924,16 +989,20 @@ class WindowFunction:
         → ROW_NUMBER() OVER (PARTITION BY "user_id" ORDER BY created_at DESC)
     """
 
-    _func_name: str = dataclass_field(default="", init=False)
-    _window: WindowSpec | None = dataclass_field(default=None, init=False)
-    _alias: str | None = dataclass_field(default=None, init=False)
+    __slots__ = ("_window", "_alias")
+
+    _func_name: str = ""
+
+    def __init__(self) -> None:
+        self._window: WindowSpec | None = None
+        self._alias: str | None = None
 
     def over(
         self,
         partition_by: list[str | FieldExpression[Any]] | None = None,
         order_by: list[OrderBy | FieldExpression[Any]] | None = None,
         frame: WindowFrame | None = None,
-    ) -> "WindowFunction":
+    ) -> Self:
         """OVER 절 설정
 
         Examples:
@@ -949,7 +1018,7 @@ class WindowFunction:
                 if isinstance(o, OrderBy):
                     converted_order.append(o)
                 elif hasattr(o, "asc"):  # FieldExpression
-                    converted_order.append(o.asc())  # type: ignore
+                    converted_order.append(o.asc())  # type: ignore[union-attr]
 
         self._window = WindowSpec(
             partition_by=partition_by or [],
@@ -958,7 +1027,7 @@ class WindowFunction:
         )
         return self
 
-    def as_(self, alias: str) -> "WindowFunction":
+    def as_(self, alias: str) -> Self:
         """별칭 지정"""
         self._alias = alias
         return self
@@ -993,7 +1062,6 @@ class WindowFunction:
 # -----------------------------------------------------------------------------
 
 
-@dataclass(eq=False)
 class RowNumber(WindowFunction):
     """ROW_NUMBER() 윈도우 함수
 
@@ -1002,11 +1070,9 @@ class RowNumber(WindowFunction):
         → ROW_NUMBER() OVER (ORDER BY created_at DESC) AS rn
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "ROW_NUMBER"
+    _func_name = "ROW_NUMBER"
 
 
-@dataclass(eq=False)
 class Rank(WindowFunction):
     """RANK() 윈도우 함수 - 동순위 시 다음 순위 건너뜀
 
@@ -1015,11 +1081,9 @@ class Rank(WindowFunction):
         → RANK() OVER (PARTITION BY "user_id" ORDER BY amount DESC)
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "RANK"
+    _func_name = "RANK"
 
 
-@dataclass(eq=False)
 class DenseRank(WindowFunction):
     """DENSE_RANK() 윈도우 함수 - 동순위 시 다음 순위 건너뛰지 않음
 
@@ -1028,11 +1092,9 @@ class DenseRank(WindowFunction):
         → DENSE_RANK() OVER (ORDER BY points DESC) AS dense_rank
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "DENSE_RANK"
+    _func_name = "DENSE_RANK"
 
 
-@dataclass(eq=False)
 class NTile(WindowFunction):
     """NTILE(n) 윈도우 함수 - n개 그룹으로 분할
 
@@ -1041,16 +1103,18 @@ class NTile(WindowFunction):
         → NTILE(4) OVER (ORDER BY score DESC) AS quartile
     """
 
-    n: int = 1
+    __slots__ = ("_window", "_alias", "n")
 
-    def __post_init__(self) -> None:
-        self._func_name = "NTILE"
+    _func_name = "NTILE"
+
+    def __init__(self, n: int = 1) -> None:
+        super().__init__()
+        self.n = n
 
     def _get_args_sql(self) -> str:
         return str(self.n)
 
 
-@dataclass(eq=False)
 class PercentRank(WindowFunction):
     """PERCENT_RANK() 윈도우 함수 - 백분위 순위 (0~1)
 
@@ -1059,11 +1123,9 @@ class PercentRank(WindowFunction):
         → PERCENT_RANK() OVER (ORDER BY points DESC)
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "PERCENT_RANK"
+    _func_name = "PERCENT_RANK"
 
 
-@dataclass(eq=False)
 class CumeDist(WindowFunction):
     """CUME_DIST() 윈도우 함수 - 누적 분포
 
@@ -1072,8 +1134,7 @@ class CumeDist(WindowFunction):
         → CUME_DIST() OVER (ORDER BY points DESC)
     """
 
-    def __post_init__(self) -> None:
-        self._func_name = "CUME_DIST"
+    _func_name = "CUME_DIST"
 
 
 # -----------------------------------------------------------------------------
@@ -1081,7 +1142,6 @@ class CumeDist(WindowFunction):
 # -----------------------------------------------------------------------------
 
 
-@dataclass(eq=False)
 class Lag(WindowFunction):
     """LAG() 윈도우 함수 - 이전 행 값
 
@@ -1090,14 +1150,23 @@ class Lag(WindowFunction):
         → LAG(amount, 1, 0) OVER (PARTITION BY "user_id" ORDER BY created_at)
     """
 
-    field: str | FieldExpression[Any] = ""
-    offset: int = 1
-    default: Any = None
+    __slots__ = ("_window", "_alias", "field", "offset", "default")
 
-    def __post_init__(self) -> None:
-        self._func_name = "LAG"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "LAG"
+
+    def __init__(
+        self,
+        field: str | FieldExpression[Any] = "",
+        offset: int = 1,
+        default: Any = None,
+    ) -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
+        self.offset = offset
+        self.default = default
 
     def _get_args_sql(self) -> str:
         parts = [str(self.field)]
@@ -1111,7 +1180,6 @@ class Lag(WindowFunction):
         return ", ".join(parts)
 
 
-@dataclass(eq=False)
 class Lead(WindowFunction):
     """LEAD() 윈도우 함수 - 다음 행 값
 
@@ -1120,14 +1188,23 @@ class Lead(WindowFunction):
         → LEAD(amount, 1) OVER (ORDER BY created_at)
     """
 
-    field: str | FieldExpression[Any] = ""
-    offset: int = 1
-    default: Any = None
+    __slots__ = ("_window", "_alias", "field", "offset", "default")
 
-    def __post_init__(self) -> None:
-        self._func_name = "LEAD"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "LEAD"
+
+    def __init__(
+        self,
+        field: str | FieldExpression[Any] = "",
+        offset: int = 1,
+        default: Any = None,
+    ) -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
+        self.offset = offset
+        self.default = default
 
     def _get_args_sql(self) -> str:
         parts = [str(self.field)]
@@ -1141,7 +1218,6 @@ class Lead(WindowFunction):
         return ", ".join(parts)
 
 
-@dataclass(eq=False)
 class FirstValue(WindowFunction):
     """FIRST_VALUE() 윈도우 함수 - 윈도우 내 첫 번째 값
 
@@ -1153,18 +1229,21 @@ class FirstValue(WindowFunction):
         )
     """
 
-    field: str | FieldExpression[Any] = ""
+    __slots__ = ("_window", "_alias", "field")
 
-    def __post_init__(self) -> None:
-        self._func_name = "FIRST_VALUE"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "FIRST_VALUE"
+
+    def __init__(self, field: str | FieldExpression[Any] = "") -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
 
     def _get_args_sql(self) -> str:
         return str(self.field)
 
 
-@dataclass(eq=False)
 class LastValue(WindowFunction):
     """LAST_VALUE() 윈도우 함수 - 윈도우 내 마지막 값
 
@@ -1176,18 +1255,21 @@ class LastValue(WindowFunction):
         )
     """
 
-    field: str | FieldExpression[Any] = ""
+    __slots__ = ("_window", "_alias", "field")
 
-    def __post_init__(self) -> None:
-        self._func_name = "LAST_VALUE"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "LAST_VALUE"
+
+    def __init__(self, field: str | FieldExpression[Any] = "") -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
 
     def _get_args_sql(self) -> str:
         return str(self.field)
 
 
-@dataclass(eq=False)
 class NthValue(WindowFunction):
     """NTH_VALUE() 윈도우 함수 - 윈도우 내 N번째 값
 
@@ -1196,13 +1278,17 @@ class NthValue(WindowFunction):
         → NTH_VALUE(amount, 2) OVER (ORDER BY created_at)
     """
 
-    field: str | FieldExpression[Any] = ""
-    n: int = 1
+    __slots__ = ("_window", "_alias", "field", "n")
 
-    def __post_init__(self) -> None:
-        self._func_name = "NTH_VALUE"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "NTH_VALUE"
+
+    def __init__(self, field: str | FieldExpression[Any] = "", n: int = 1) -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
+        self.n = n
 
     def _get_args_sql(self) -> str:
         return f"{self.field}, {self.n}"
@@ -1213,7 +1299,6 @@ class NthValue(WindowFunction):
 # -----------------------------------------------------------------------------
 
 
-@dataclass(eq=False)
 class SumOver(WindowFunction):
     """SUM() OVER - 윈도우 합계
 
@@ -1222,18 +1307,21 @@ class SumOver(WindowFunction):
         → SUM(amount) OVER (PARTITION BY "user_id") AS running_total
     """
 
-    field: str | FieldExpression[Any] = ""
+    __slots__ = ("_window", "_alias", "field")
 
-    def __post_init__(self) -> None:
-        self._func_name = "SUM"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "SUM"
+
+    def __init__(self, field: str | FieldExpression[Any] = "") -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
 
     def _get_args_sql(self) -> str:
         return str(self.field)
 
 
-@dataclass(eq=False)
 class AvgOver(WindowFunction):
     """AVG() OVER - 윈도우 평균
 
@@ -1244,18 +1332,21 @@ class AvgOver(WindowFunction):
         ).as_("moving_avg")
     """
 
-    field: str | FieldExpression[Any] = ""
+    __slots__ = ("_window", "_alias", "field")
 
-    def __post_init__(self) -> None:
-        self._func_name = "AVG"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "AVG"
+
+    def __init__(self, field: str | FieldExpression[Any] = "") -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
 
     def _get_args_sql(self) -> str:
         return str(self.field)
 
 
-@dataclass(eq=False)
 class CountOver(WindowFunction):
     """COUNT() OVER - 윈도우 개수
 
@@ -1264,18 +1355,21 @@ class CountOver(WindowFunction):
         → COUNT(*) OVER (PARTITION BY "user_id") AS user_order_count
     """
 
-    field: str | FieldExpression[Any] = "*"
+    __slots__ = ("_window", "_alias", "field")
 
-    def __post_init__(self) -> None:
-        self._func_name = "COUNT"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "COUNT"
+
+    def __init__(self, field: str | FieldExpression[Any] = "*") -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
 
     def _get_args_sql(self) -> str:
         return str(self.field)
 
 
-@dataclass(eq=False)
 class MinOver(WindowFunction):
     """MIN() OVER - 윈도우 최소값
 
@@ -1284,18 +1378,21 @@ class MinOver(WindowFunction):
         → MIN(amount) OVER (PARTITION BY "user_id")
     """
 
-    field: str | FieldExpression[Any] = ""
+    __slots__ = ("_window", "_alias", "field")
 
-    def __post_init__(self) -> None:
-        self._func_name = "MIN"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "MIN"
+
+    def __init__(self, field: str | FieldExpression[Any] = "") -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
 
     def _get_args_sql(self) -> str:
         return str(self.field)
 
 
-@dataclass(eq=False)
 class MaxOver(WindowFunction):
     """MAX() OVER - 윈도우 최대값
 
@@ -1304,12 +1401,16 @@ class MaxOver(WindowFunction):
         → MAX(amount) OVER (PARTITION BY "user_id")
     """
 
-    field: str | FieldExpression[Any] = ""
+    __slots__ = ("_window", "_alias", "field")
 
-    def __post_init__(self) -> None:
-        self._func_name = "MAX"
-        if hasattr(self.field, "name"):
-            self.field = self.field.name  # type: ignore
+    _func_name = "MAX"
+
+    def __init__(self, field: str | FieldExpression[Any] = "") -> None:
+        super().__init__()
+        if hasattr(field, "name"):
+            self.field: str = field.name  # type: ignore[union-attr]
+        else:
+            self.field = field  # type: ignore[assignment]
 
     def _get_args_sql(self) -> str:
         return str(self.field)
@@ -1335,7 +1436,6 @@ class JoinType:
 JoinOnCondition = "Condition | ConditionGroup | JoinCondition"
 
 
-@dataclass
 class JoinClause:
     """JOIN 절 표현
 
@@ -1344,10 +1444,19 @@ class JoinClause:
         → INNER JOIN "users" ON "orders"."user_id" = "users"."id"
     """
 
-    target: type[Any]  # 조인할 엔티티 클래스
-    condition: Condition | ConditionGroup | JoinCondition | None = None  # ON 조건
-    join_type: str = JoinType.INNER  # JOIN 타입
-    alias: str | None = None  # 테이블 별칭
+    __slots__ = ("target", "condition", "join_type", "alias")
+
+    def __init__(
+        self,
+        target: type[Any],
+        condition: Condition | ConditionGroup | JoinCondition | None = None,
+        join_type: str = JoinType.INNER,
+        alias: str | None = None,
+    ) -> None:
+        self.target = target  # 조인할 엔티티 클래스
+        self.condition = condition  # ON 조건
+        self.join_type = join_type  # JOIN 타입
+        self.alias = alias  # 테이블 별칭
 
     def _replace_table_in_condition(
         self, cond: Any, original_table: str, new_table: str
@@ -1403,7 +1512,6 @@ class JoinClause:
         return f"{self.join_type} {table_ref} ON {cond_sql}", params
 
 
-@dataclass
 class JoinCondition:
     """JOIN ON 조건 - 두 테이블의 컬럼 비교
 
@@ -1411,22 +1519,36 @@ class JoinCondition:
         on(Order.user_id, User.id)  →  "orders"."user_id" = "users"."id"
     """
 
-    left_field: str | FieldExpression[Any]
-    right_field: str | FieldExpression[Any]
-    operator: str = "="
-    left_table: str | None = None
-    right_table: str | None = None
+    __slots__ = ("left_field", "right_field", "operator", "left_table", "right_table")
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        left_field: str | FieldExpression[Any],
+        right_field: str | FieldExpression[Any],
+        operator: str = "=",
+        left_table: str | None = None,
+        right_table: str | None = None,
+    ) -> None:
         # FieldExpression에서 테이블명과 필드명 추출
-        if isinstance(self.left_field, FieldExpression):
-            if self.left_table is None:
-                self.left_table = self.left_field.table_name
-            self.left_field = self.left_field.name
-        if isinstance(self.right_field, FieldExpression):
-            if self.right_table is None:
-                self.right_table = self.right_field.table_name
-            self.right_field = self.right_field.name
+        if isinstance(left_field, FieldExpression):
+            self.left_table: str | None = (
+                left_table if left_table is not None else left_field.table_name
+            )
+            self.left_field: str = left_field.name
+        else:
+            self.left_table = left_table
+            self.left_field = left_field
+
+        if isinstance(right_field, FieldExpression):
+            self.right_table: str | None = (
+                right_table if right_table is not None else right_field.table_name
+            )
+            self.right_field: str = right_field.name
+        else:
+            self.right_table = right_table
+            self.right_field = right_field
+
+        self.operator = operator
 
     def __and__(self, other: ConditionLike) -> ConditionGroup:
         """AND 연산으로 ConditionGroup 생성"""

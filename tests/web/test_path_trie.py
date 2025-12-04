@@ -44,6 +44,11 @@ class MockMessageMapping(PathIncluded):
 # =============================================================================
 # 1. 기본 삽입/조회 테스트
 # =============================================================================
+def need[T](item: T | None) -> T:
+    """None이 아닌 값을 반환하거나 예외 발생"""
+    if item is None:
+        raise ValueError("Expected non-None value")
+    return item
 
 
 class TestTrieBasicOperations:
@@ -73,9 +78,9 @@ class TestTrieBasicOperations:
         trie.insert(route3)
 
         assert trie.find("/users") is not None
-        assert trie.find("/users").item == route1
-        assert trie.find("/orders").item == route2
-        assert trie.find("/products").item == route3
+        assert need(trie.find("/users")).item == route1
+        assert need(trie.find("/orders")).item == route2
+        assert need(trie.find("/products")).item == route3
 
     def test_find_non_existent_path(self):
         """존재하지 않는 경로 조회"""
@@ -97,9 +102,9 @@ class TestTrieBasicOperations:
         trie.insert(route2)
         trie.insert(route3)
 
-        assert trie.find("/api/v1/users").item == route1
-        assert trie.find("/api/v1/orders").item == route2
-        assert trie.find("/api/v2/users").item == route3
+        assert need(trie.find("/api/v1/users")).item == route1
+        assert need(trie.find("/api/v1/orders")).item == route2
+        assert need(trie.find("/api/v2/users")).item == route3
         assert trie.find("/api/v1") is None  # 중간 경로는 매칭 안됨
 
     def test_root_path(self):
@@ -202,9 +207,9 @@ class TestTriePathParameters:
         result2 = trie.find("/users/999")
         result3 = trie.find("/users/john")
 
-        assert result1.path_params == {"id": "1"}
-        assert result2.path_params == {"id": "999"}
-        assert result3.path_params == {"id": "john"}
+        assert need(result1).path_params == {"id": "1"}
+        assert need(result2).path_params == {"id": "999"}
+        assert need(result3).path_params == {"id": "john"}
 
 
 # =============================================================================
@@ -246,7 +251,7 @@ class TestTriePriority:
         trie.insert(dynamic)
 
         result = trie.find("/users/me")
-        assert result.item == static
+        assert need(result).item == static
 
     def test_multiple_dynamic_segments(self):
         """여러 동적 세그먼트 우선순위"""
@@ -259,11 +264,11 @@ class TestTriePriority:
 
         # "latest"는 정적 매칭
         result = trie.find("/users/123/orders/latest")
-        assert result.item == route2
+        assert need(result).item == route2
 
         # 숫자는 동적 매칭
         result2 = trie.find("/users/123/orders/456")
-        assert result2.item == route1
+        assert need(result2).item == route1
 
 
 # =============================================================================
@@ -308,15 +313,14 @@ class TestTrieMessageMapping:
         trie.insert(mapping3)
 
         result1 = trie.find("/app/chat/room1/message")
-        assert result1.item == mapping1
-        assert result1.path_params == {"room": "room1"}
+        assert need(result1).item == mapping1
+        assert need(result1).path_params == {"room": "room1"}
 
         result2 = trie.find("/app/chat/room2/typing")
-        assert result2.item == mapping2
-
+        assert need(result2).item == mapping2
         result3 = trie.find("/app/user/42/status")
-        assert result3.item == mapping3
-        assert result3.path_params == {"user_id": "42"}
+        assert need(result3).item == mapping3
+        assert need(result3).path_params == {"user_id": "42"}
 
 
 # =============================================================================
@@ -341,8 +345,8 @@ class TestTrieGenericTypes:
         route_result = route_trie.find("/users/123")
         message_result = message_trie.find("/users/123")
 
-        assert isinstance(route_result.item, MockRoute)
-        assert isinstance(message_result.item, MockMessageMapping)
+        assert isinstance(need(route_result).item, MockRoute)
+        assert isinstance(need(message_result).item, MockMessageMapping)
 
 
 # =============================================================================
@@ -477,7 +481,7 @@ class TestTrieEdgeCases:
 
         # 마지막 삽입된 것이 유지
         result = trie.find("/users")
-        assert result.item == route2
+        assert need(result).item == route2
 
 
 # =============================================================================
@@ -685,13 +689,13 @@ class TestTrieRealClassIntegration:
             trie.insert(route)
 
         # 테스트
-        assert trie.find("/api/v1/users").item.path == "/api/v1/users"
+        assert need(trie.find("/api/v1/users")).item.path == "/api/v1/users"
         assert (
-            trie.find("/api/v1/users/me").item.path == "/api/v1/users/me"
+            need(trie.find("/api/v1/users/me")).item.path == "/api/v1/users/me"
         )  # 정적 우선
-        assert trie.find("/api/v1/users/123").item.path == "/api/v1/users/{id}"
+        assert need(trie.find("/api/v1/users/123")).item.path == "/api/v1/users/{id}"
         assert (
-            trie.find("/api/v1/users/456/profile").item.path
+            need(trie.find("/api/v1/users/456/profile")).item.path
             == "/api/v1/users/{id}/profile"
         )
 

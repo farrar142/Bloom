@@ -2,7 +2,7 @@
 
 import pytest
 import uuid
-from typing import Any
+from typing import Any, MutableMapping
 
 from bloom.core import (
     Component,
@@ -40,9 +40,9 @@ class MockSend:
     """테스트용 ASGI send"""
 
     def __init__(self):
-        self.messages: list[dict[str, Any]] = []
+        self.messages: list[MutableMapping[str, Any]] = []
 
-    async def __call__(self, message: dict[str, Any]) -> None:
+    async def __call__(self, message: MutableMapping[str, Any]) -> None:
         self.messages.append(message)
 
     @property

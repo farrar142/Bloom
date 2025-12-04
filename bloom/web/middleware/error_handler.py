@@ -73,6 +73,8 @@ class ErrorHandlerMiddleware(Middleware):
         send: "Send",
     ) -> None:
         if scope["type"] != "http":
+            if self.app is None:
+                raise NotImplementedError("App is None in ErrorHandlerMiddleware")
             await self.app(scope, receive, send)
             return
 
@@ -85,6 +87,8 @@ class ErrorHandlerMiddleware(Middleware):
             await send(message)
 
         try:
+            if self.app is None:
+                raise NotImplementedError("App is None in ErrorHandlerMiddleware")
             await self.app(scope, receive, send_wrapper)
         except Exception as exc:
             if response_started:
@@ -122,8 +126,8 @@ class ErrorHandlerMiddleware(Middleware):
                 response = handler(request, exc)
                 # async handler 지원
                 if hasattr(response, "__await__"):
-                    response = await response
-                return response
+                    response = await response  # type:ignore
+                return response  # type:ignore
             except Exception:
                 # 핸들러에서 에러 발생 시 기본 처리로 폴백
                 pass
@@ -193,6 +197,8 @@ class CORSMiddleware(Middleware):
         send: "Send",
     ) -> None:
         if scope["type"] != "http":
+            if self.app is None:
+                raise NotImplementedError("App is None in CORSMiddleware")
             await self.app(scope, receive, send)
             return
 
@@ -213,6 +219,9 @@ class CORSMiddleware(Middleware):
                 existing_headers.extend(cors_headers)
                 message["headers"] = existing_headers
             await send(message)
+
+        if self.app is None:
+            raise NotImplementedError("App is None in CORSMiddleware")
 
         await self.app(scope, receive, send_wrapper)
 

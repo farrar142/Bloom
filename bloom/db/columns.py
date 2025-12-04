@@ -21,7 +21,7 @@ from .expressions import FieldExpression
 
 
 if TYPE_CHECKING:
-    from .session import Session
+    from .session import Session, SessionMixin
 
 
 _T = TypeVar("_T")
@@ -111,7 +111,7 @@ class TrackedList(list[_T], Generic[_T]):
         owner: Any = None,
         owner_pk_field: str = "id",
         fk_field_name: str | None = None,
-        session: "Session | None" = None,
+        session: "SessionMixin | None" = None,
     ):
         super().__init__(items or [])
         self._owner = owner

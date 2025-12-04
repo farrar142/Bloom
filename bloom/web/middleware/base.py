@@ -34,7 +34,7 @@ class Middleware(ABC):
                 print("Response sent")
     """
 
-    def __init__(self, app: "ASGIApp") -> None:
+    def __init__(self, app: "ASGIApp | None") -> None:
         self.app = app
 
     @abstractmethod
@@ -292,6 +292,8 @@ class DIMiddlewareWrapper(Middleware):
         send: "Send",
     ) -> None:
         if scope["type"] != "http":
+            if self.app is None:
+                raise NotImplementedError("App is None in DIMiddlewareWrapper")
             await self.app(scope, receive, send)
             return
 
@@ -306,6 +308,8 @@ class DIMiddlewareWrapper(Middleware):
             await response(scope, receive, send)
         else:
             # 미들웨어가 직접 응답을 보내지 않은 경우
+            if self.app is None:
+                raise NotImplementedError("App is None in DIMiddlewareWrapper")
             await self.app(scope, receive, send)
 
     async def _execute_chain(
@@ -350,6 +354,10 @@ class DIMiddlewareWrapper(Middleware):
             instance = await self._container_manager.get_instance_async(
                 entry.di_middleware_cls
             )
+            if instance is None:
+                raise ValueError(
+                    f"Cannot create instance of middleware {entry.di_middleware_cls}"
+                )
             return await instance(request, call_next)
         elif entry.func_middleware:
             # 함수 미들웨어
