@@ -28,7 +28,15 @@ def __getattr__(name: str):
 
         return ConfigManager
 
-    if name in ("Env", "EnvStr", "EnvInt", "EnvFloat", "EnvBool", "EnvEnum", "EnvEnumMarker"):
+    if name in (
+        "Env",
+        "EnvStr",
+        "EnvInt",
+        "EnvFloat",
+        "EnvBool",
+        "EnvEnum",
+        "EnvEnumMarker",
+    ):
         from . import env
 
         return getattr(env, name)
