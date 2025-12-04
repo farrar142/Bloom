@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, get_origin, get_args, Annotated
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, TypeVar, get_origin, get_args, Annotated
 
 T = TypeVar("T")
 
 
 # =============================================================================
-# Parameter Markers
+# Parameter Markers (with Type Alias support)
 # =============================================================================
 
 
 @dataclass(frozen=True)
-class ParamMarker:
+class ParamMarker[T]:
     """파라미터 마커 베이스 클래스"""
 
     name: str | None = None
@@ -23,29 +23,50 @@ class ParamMarker:
     def has_default(self) -> bool:
         return self.default is not ...
 
+    def __class_getitem__(cls, item: type[T]):
+        """PathVariable[int] → Annotated[int, PathVariable()] 변환"""
+        return Annotated[cls, item]
+
 
 @dataclass(frozen=True)
-class PathVariableMarker(ParamMarker):
-    """Path Variable 마커
+class PathVariable[T](ParamMarker[T]):
+    """Path Variable 마커 + 타입 힌트
+
+    URL 경로의 변수를 추출합니다.
 
     사용 예:
         @GetMapping("/users/{user_id}")
         async def get_user(user_id: PathVariable[int]):
-            ...
+            return {"id": user_id}
+
+        # 커스텀 이름
+        @GetMapping("/posts/{id}")
+        async def get_post(post_id: Annotated[int, PathVariable(name="id")]):
+            return {"post_id": post_id}
     """
 
     pass
 
 
 @dataclass(frozen=True)
-class QueryMarker(ParamMarker):
-    """Query Parameter 마커
+class Query[T](ParamMarker[T]):
+    """Query Parameter 마커 + 타입 힌트
+
+    URL 쿼리 파라미터를 추출합니다.
 
     사용 예:
         @GetMapping("/users")
         async def list_users(
-            page: Query[int] = Query(default=1),
-            size: Query[int] = Query(default=10),
+            page: Query[int] = 1,
+            size: Query[int] = 10,
+        ):
+            return {"page": page, "size": size}
+
+        # default 지정
+        @GetMapping("/search")
+        async def search(
+            q: Query[str],
+            limit: Query[int] = Query(default=10),
         ):
             ...
     """
@@ -54,21 +75,30 @@ class QueryMarker(ParamMarker):
 
 
 @dataclass(frozen=True)
-class RequestBodyMarker(ParamMarker):
-    """Request Body 마커
+class RequestBody[T](ParamMarker[T]):
+    """Request Body 마커 + 타입 힌트
+
+    요청 본문 전체를 파싱합니다.
 
     사용 예:
         @PostMapping("/users")
         async def create_user(body: RequestBody[CreateUserSchema]):
-            ...
+            return {"name": body.name}
+
+        # dict로 받기
+        @PostMapping("/data")
+        async def receive_data(data: RequestBody[dict]):
+            return data
     """
 
     pass
 
 
 @dataclass(frozen=True)
-class RequestFieldMarker(ParamMarker):
-    """Request Body의 특정 필드 마커
+class RequestField[T](ParamMarker[T]):
+    """Request Body Field 마커 + 타입 힌트
+
+    요청 본문의 특정 필드만 추출합니다.
 
     사용 예:
         @PostMapping("/users")
@@ -76,263 +106,99 @@ class RequestFieldMarker(ParamMarker):
             username: RequestField[str],  # body["username"]
             email: RequestField[str],     # body["email"]
         ):
-            ...
-    """
-
-    pass
-
-
-@dataclass(frozen=True)
-class HeaderMarker(ParamMarker):
-    """HTTP Header 마커
-
-    사용 예:
-        @GetMapping("/profile")
-        async def get_profile(
-            authorization: Header[str],
-            x_request_id: Header[str | None] = Header(name="X-Request-ID", default=None),
-        ):
-            ...
-    """
-
-    pass
-
-
-@dataclass(frozen=True)
-class CookieMarker(ParamMarker):
-    """Cookie 마커
-
-    사용 예:
-        @GetMapping("/profile")
-        async def get_profile(session_id: Cookie[str]):
-            ...
-    """
-
-    pass
-
-
-@dataclass(frozen=True)
-class UploadedFileMarker(ParamMarker):
-    """Uploaded File 마커
-
-    사용 예:
-        @PostMapping("/upload")
-        async def upload_file(file: UploadedFile):
-            content = await file.read()
-            return {"filename": file.filename, "size": file.size}
-    """
-
-    required: bool = True
-
-
-@dataclass(frozen=True)
-class AuthenticationMarker(ParamMarker):
-    """Authentication 마커 (현재 인증된 사용자)
-
-    사용 예:
-        @GetMapping("/me")
-        async def get_current_user(auth: Authentication[int]):
-            return {"user_id": auth.id}
-    """
-
-    pass
-
-
-# =============================================================================
-# Type Aliases using Annotated
-# =============================================================================
-
-
-class _PathVariable(Generic[T]):
-    """Path Variable 타입 힌트
-
-    실제로는 Annotated[T, PathVariableMarker()]로 사용됩니다.
-
-    사용 예:
-        @GetMapping("/users/{id}")
-        async def get_user(id: PathVariable[int]):
-            return {"id": id}
-    """
-
-    def __class_getitem__(cls, item: type[T]) -> Any:
-        return Annotated[item, PathVariableMarker()]
-
-
-if TYPE_CHECKING:
-    type PathVariable[T] = Annotated[T, PathVariableMarker]
-else:
-    PathVariable = _PathVariable
-
-
-class _Query(Generic[T]):
-    """Query Parameter 타입 힌트
-
-    사용 예:
-        @GetMapping("/users")
-        async def list_users(
-            page: Query[int],
-            size: Query[int],
-        ):
-            return {"page": page, "size": size}
-    """
-
-    def __class_getitem__(cls, item: type[T]) -> Any:
-        return Annotated[item, QueryMarker()]
-
-
-if TYPE_CHECKING:
-    type Query[T] = Annotated[T, QueryMarker]
-else:
-    Query = _Query
-
-
-class _RequestBody(Generic[T]):
-    """Request Body 타입 힌트
-
-    사용 예:
-        @PostMapping("/users")
-        async def create_user(body: RequestBody[CreateUserSchema]):
-            return {"name": body.name}
-    """
-
-    def __class_getitem__(cls, item: type[T]) -> Any:
-        return Annotated[item, RequestBodyMarker()]
-
-
-if TYPE_CHECKING:
-    type RequestBody[T] = Annotated[T, RequestBodyMarker]
-else:
-    RequestBody = _RequestBody
-
-
-class _RequestField(Generic[T]):
-    """Request Body Field 타입 힌트
-
-    Body의 특정 필드만 추출합니다.
-
-    사용 예:
-        @PostMapping("/users")
-        async def create_user(
-            username: RequestField[str],
-            email: RequestField[str],
-        ):
             return {"username": username, "email": email}
-    """
 
-    def __class_getitem__(cls, item: type[T]) -> Any:
-        return Annotated[item, RequestFieldMarker()]
-
-
-if TYPE_CHECKING:
-    type RequestField[T] = Annotated[T, RequestFieldMarker]
-else:
-    RequestField = _RequestField
-
-
-class _Header(Generic[T]):
-    """HTTP Header 타입 힌트
-
-    사용 예:
-        @GetMapping("/profile")
-        async def get_profile(
-            authorization: Header[str],
-            x_request_id: Header[str | None],
+        # 커스텀 필드명
+        @PostMapping("/data")
+        async def receive(
+            user_name: Annotated[str, RequestField(name="userName")],
         ):
             ...
-    """
-
-    def __class_getitem__(cls, item: type[T]) -> Any:
-        return Annotated[item, HeaderMarker()]
-
-
-if TYPE_CHECKING:
-    type Header[T] = Annotated[T, HeaderMarker]
-else:
-    Header = _Header
-
-
-class _Cookie(Generic[T]):
-    """Cookie 타입 힌트
-
-    사용 예:
-        @GetMapping("/profile")
-        async def get_profile(session_id: Cookie[str]):
-            ...
-    """
-
-    def __class_getitem__(cls, item: type[T]) -> Any:
-        return Annotated[item, CookieMarker()]
-
-
-if TYPE_CHECKING:
-    type Cookie[T] = Annotated[T, CookieMarker]
-else:
-    Cookie = _Cookie
-
-
-class _UploadedFile:
-    """Uploaded File 타입 힌트
-
-    multipart/form-data 요청에서 업로드된 파일을 나타냅니다.
-
-    사용 예:
-        @PostMapping("/upload")
-        async def upload_file(file: UploadedFile):
-            content = await file.read()
-            await file.save("/uploads/" + file.filename)
-            return {"filename": file.filename, "size": file.size}
-
-        # 선택적 파일
-        @PostMapping("/profile")
-        async def update_profile(avatar: UploadedFile | None = None):
-            if avatar:
-                await avatar.save(f"/avatars/{avatar.filename}")
-
-    Note:
-        실제 타입은 bloom.web.upload.UploadedFile입니다.
-        이 클래스는 타입 힌트용으로만 사용됩니다.
     """
 
     pass
 
 
-if TYPE_CHECKING:
-    from ..upload import UploadedFile as _UploadedFileActual
+@dataclass(frozen=True)
+class Header(ParamMarker[str]):
+    """HTTP Header 마커 + 타입 힌트
 
-    type UploadedFile = _UploadedFileActual
-else:
-    UploadedFile = _UploadedFile
+    HTTP 헤더 값을 추출합니다.
+
+    사용 예:
+        @GetMapping("/profile")
+        async def get_profile(
+            authorization: Header[str],
+            x_request_id: Header[str | None] = None,
+        ):
+            ...
+
+        # 커스텀 헤더명
+        @GetMapping("/api")
+        async def api_call(
+            api_key: Annotated[str, Header(name="X-API-Key")],
+        ):
+            ...
+    """
+
+    pass
 
 
-class _Authentication(Generic[T]):
-    """Authentication 타입 힌트 (현재 인증된 사용자)
+@dataclass(frozen=True)
+class Cookie(ParamMarker[str]):
+    """Cookie 마커 + 타입 힌트
+
+    쿠키 값을 추출합니다.
+
+    사용 예:
+        @GetMapping("/profile")
+        async def get_profile(session_id: Cookie[str]):
+            ...
+
+        # 선택적 쿠키
+        @GetMapping("/preferences")
+        async def get_prefs(theme: Cookie[str | None] = None):
+            ...
+    """
+
+    pass
+
+
+@dataclass(frozen=True)
+class Authentication(ParamMarker):
+    """Authentication 마커 + 타입 힌트 (현재 인증된 사용자)
 
     Spring Security의 Principal과 유사합니다.
 
     사용 예:
         @GetMapping("/me")
         async def get_current_user(auth: Authentication[int]):
-            return {"user_id": auth.id}
+            return {"user_id": auth}
 
         @GetMapping("/profile")
-        async def get_profile(auth: Authentication[UserInfo]):
-            return {"user": auth.principal}
-
-    Authentication 객체 속성:
-        - id: T (사용자 ID)
-        - principal: Any (전체 사용자 정보)
-        - is_authenticated: bool
-        - roles: list[str]
+        async def get_profile(user: Authentication[UserInfo]):
+            return {"user": user}
     """
 
-    def __class_getitem__(cls, item: type[T]) -> Any:
-        return Annotated[item, AuthenticationMarker()]
+    pass
 
 
-if TYPE_CHECKING:
-    type Authentication[T] = Annotated[T, AuthenticationMarker]
-else:
-    Authentication = _Authentication
+# =============================================================================
+# Special Markers (without Generic type)
+# =============================================================================
+
+
+from ..upload import UploadedFile as UploadedFile
+
+
+@dataclass(frozen=True)
+class UploadedFileMarker(ParamMarker[UploadedFile]):
+    """Uploaded File 마커
+
+    multipart/form-data 요청에서 업로드된 파일을 나타냅니다.
+    """
+
+    required: bool = True
 
 
 # =============================================================================
@@ -349,10 +215,10 @@ def get_param_marker(annotation: Any) -> tuple[type, ParamMarker | None]:
 
     Examples:
         >>> get_param_marker(PathVariable[int])
-        (int, PathVariableMarker())
+        (int, PathVariable())
 
-        >>> get_param_marker(Annotated[str, QueryMarker(default="test")])
-        (str, QueryMarker(default="test"))
+        >>> get_param_marker(Annotated[str, Query(default="test")])
+        (str, Query(default="test"))
 
         >>> get_param_marker(str)
         (str, None)

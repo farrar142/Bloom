@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, TypeVar, overload
 
 from .container import Container
-from .scope import Scope
+from .scope import ScopeEnum
 from .scope_manager import ScopeManager
 from .exceptions import (
     ComponentNotFoundError,
@@ -157,26 +157,28 @@ class ContainerManager:
             return existing
 
         # 스코프별 컨텍스트 확인
-        if scope == Scope.REQUEST and not self._scope_manager.is_in_request_context():
+        if (
+            scope == ScopeEnum.REQUEST
+            and not self._scope_manager.is_in_request_context()
+        ):
             raise RequestScopeError(cls)
 
-        if scope == Scope.CALL and not self._scope_manager.is_in_call_context():
+        if scope == ScopeEnum.CALL and not self._scope_manager.is_in_call_context():
             raise CallScopeError(cls)
 
         # 새 인스턴스 생성 (동기 래퍼 - 실제론 async create_instance 호출 필요)
-        # 주의: 이 부분은 Application.ready()에서 async로 호출됨
         import asyncio
 
         try:
-            loop = asyncio.get_running_loop()
-            # 이미 이벤트 루프 내부면 create_task 사용 불가
-            # 이 경우 동기적으로 처리해야 함 (LazyProxy에서 호출되는 상황)
+            asyncio.get_running_loop()
+            # 이미 이벤트 루프가 실행 중이면 async 메서드 사용 필요
             raise RuntimeError("Use async get_instance_async in async context")
-        except RuntimeError:
-            # 이벤트 루프가 없으면 새로 실행
-            instance = asyncio.run(self._create_and_cache_instance(container))
-
-        return instance
+        except RuntimeError as e:
+            if "no running event loop" in str(e):
+                # 이벤트 루프가 없으면 새로 실행
+                instance = asyncio.run(self._create_and_cache_instance(container))
+                return instance
+            raise
 
     async def get_instance_async[T](
         self, cls: type[T], *, required: bool = True
@@ -204,10 +206,13 @@ class ContainerManager:
             return existing
 
         # 스코프별 컨텍스트 확인
-        if scope == Scope.REQUEST and not self._scope_manager.is_in_request_context():
+        if (
+            scope == ScopeEnum.REQUEST
+            and not self._scope_manager.is_in_request_context()
+        ):
             raise RequestScopeError(cls)
 
-        if scope == Scope.CALL and not self._scope_manager.is_in_call_context():
+        if scope == ScopeEnum.CALL and not self._scope_manager.is_in_call_context():
             raise CallScopeError(cls)
 
         return await self._create_and_cache_instance(container)
@@ -235,7 +240,7 @@ class ContainerManager:
         sorted_containers = resolver.topological_sort()
 
         for container in sorted_containers:
-            if container.scope == Scope.SINGLETON:
+            if container.scope == ScopeEnum.SINGLETON:
                 await self._create_and_cache_instance(container)
 
         self._initialized = True

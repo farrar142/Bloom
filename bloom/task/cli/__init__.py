@@ -31,8 +31,13 @@ if TYPE_CHECKING:
 def load_task_app(app_path: str) -> "TaskApp":
     """TaskApp 인스턴스 로드
 
+    Application.queue 형식도 지원합니다.
+    Application인 경우 ready()를 호출하여 @Task 메서드를 등록합니다.
+
     Args:
-        app_path: "module.path:variable" 형식 (예: "myapp.tasks:task_app")
+        app_path: "module.path:variable" 형식
+            - "myapp.tasks:task_app" (TaskApp 직접)
+            - "myapp:application.queue" (Application.queue)
 
     Returns:
         TaskApp 인스턴스
@@ -58,19 +63,47 @@ def load_task_app(app_path: str) -> "TaskApp":
             sys.path.insert(0, cwd)
 
         module = importlib.import_module(module_path)
-        app = getattr(module, var_name, None)
 
-        if app is None:
+        # 점(.) 표기법 지원 (예: application.queue)
+        obj = module
+        for attr_name in var_name.split("."):
+            obj = getattr(obj, attr_name, None)
+            if obj is None:
+                raise click.ClickException(
+                    f"Attribute '{attr_name}' not found in '{module_path}'"
+                )
+
+        # Application인 경우 ready() 호출 후 queue 반환
+        # (lazy import로 순환 참조 방지)
+        from ...application import Application
+
+        # .queue로 끝나는 경우 부모 Application 확인
+        if var_name.endswith(".queue"):
+            parent_attr = var_name.rsplit(".", 1)[0]
+            parent_obj = module
+            for attr_name in parent_attr.split("."):
+                parent_obj = getattr(parent_obj, attr_name, None)
+                if parent_obj is None:
+                    break
+
+            if isinstance(parent_obj, Application):
+                click.echo(f"Detected Application '{parent_attr}', initializing...")
+                # Application.ready()는 @Task 메서드를 TaskApp에 등록
+                asyncio.run(parent_obj.ready_async())
+                obj = parent_obj.queue
+
+        if isinstance(obj, Application):
+            click.echo(f"Detected Application, initializing...")
+            # Application.ready()는 @Task 메서드를 TaskApp에 등록
+            asyncio.run(obj.ready_async())
+            obj = obj.queue
+
+        if not isinstance(obj, TaskApp):
             raise click.ClickException(
-                f"Variable '{var_name}' not found in module '{module_path}'"
+                f"'{var_name}' is not a TaskApp instance, got {type(obj).__name__}"
             )
 
-        if not isinstance(app, TaskApp):
-            raise click.ClickException(
-                f"'{var_name}' is not a TaskApp instance, got {type(app).__name__}"
-            )
-
-        return app
+        return obj
 
     except ImportError as e:
         raise click.ClickException(f"Could not import module '{module_path}': {e}")

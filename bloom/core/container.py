@@ -6,7 +6,7 @@ import inspect
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, TypeVar, get_type_hints, TYPE_CHECKING
 
-from .scope import Scope
+from .scope import ScopeEnum
 from .lifecycle import LifecycleManager
 
 if TYPE_CHECKING:
@@ -46,7 +46,7 @@ class Container(Generic[T]):
     """
 
     target: type[T]  # 원본 클래스
-    scope: Scope = Scope.SINGLETON  # 인스턴스 스코프
+    scope: ScopeEnum = ScopeEnum.SINGLETON  # 인스턴스 스코프
     dependencies: list[DependencyInfo] = field(default_factory=list)  # 필드 의존성
     factory: FactoryInfo[T] | None = None  # @Factory 메서드 (있으면)
     name: str | None = None  # 빈 이름 (중복 타입 구분용)

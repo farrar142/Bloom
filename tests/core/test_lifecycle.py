@@ -7,11 +7,11 @@ from bloom.core import (
     PostConstruct,
     PreDestroy,
     AutoCloseable,
+    ScopeEnum,
     Scope,
     Handler,
     get_container_manager,
 )
-from bloom.core.decorators import scope_decorator
 
 
 class TestLifecycle:
@@ -77,7 +77,7 @@ class TestCallScopeLifecycle:
 
         # 순서 중요: @Component가 나중에 실행되어야 __bloom_scope__ 확인 가능
         @Component
-        @scope_decorator(Scope.CALL)
+        @Scope(ScopeEnum.CALL)
         class CallScopedService:
             @PostConstruct
             async def init(self):
@@ -121,7 +121,7 @@ class TestCallScopeLifecycle:
         instance_ids = []
 
         @Component
-        @scope_decorator(Scope.CALL)
+        @Scope(ScopeEnum.CALL)
         class NestedCallService:
             def __init__(self):
                 self.id = id(self)
@@ -182,7 +182,7 @@ class TestCallScopeLifecycle:
         instance_ids = []
 
         @Component
-        @scope_decorator(Scope.CALL)
+        @Scope(ScopeEnum.CALL)
         class SharedCallService:
             def __init__(self):
                 self.id = id(self)
@@ -267,14 +267,14 @@ class TestCallScopeLifecycle:
         destroy_order = []
 
         @Component
-        @scope_decorator(Scope.CALL)
+        @Scope(ScopeEnum.CALL)
         class FirstService:
             @PreDestroy
             async def cleanup(self):
                 destroy_order.append("first")
 
         @Component
-        @scope_decorator(Scope.CALL)
+        @Scope(ScopeEnum.CALL)
         class SecondService:
             first: FirstService  # FirstService에 의존
 
@@ -283,7 +283,7 @@ class TestCallScopeLifecycle:
                 destroy_order.append("second")
 
         @Component
-        @scope_decorator(Scope.CALL)
+        @Scope(ScopeEnum.CALL)
         class ThirdService:
             second: SecondService  # SecondService에 의존
 

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import functools
 from typing import Any, Callable, TYPE_CHECKING, overload
 
@@ -232,14 +233,25 @@ class Task:
                 rate_limit=self.rate_limit,
             )(func)
 
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return func(*args, **kwargs)
+        # async 함수인 경우 async wrapper 사용
+        if asyncio.iscoroutinefunction(func):
 
-        # 메타데이터 복사
-        _set_task_metadata(wrapper, task_model)
+            @functools.wraps(func)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                return await func(*args, **kwargs)
 
-        return wrapper
+            # 메타데이터 복사
+            _set_task_metadata(async_wrapper, task_model)
+            return async_wrapper
+        else:
+
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                return func(*args, **kwargs)
+
+            # 메타데이터 복사
+            _set_task_metadata(wrapper, task_model)
+            return wrapper
 
 
 # =============================================================================

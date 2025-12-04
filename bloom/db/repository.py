@@ -72,12 +72,12 @@ class Repository(ABC, Generic[T, ID]):
             session_factory: SessionFactory
 
             @Factory
-            @Scope(Scope.CALL, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             def session(self) -> Session:
                 return self.session_factory.create()
 
             @Factory
-            @Scope(Scope.CALL, PrototypeMode.CALL_SCOPED)
+            @Scope(ScopeEnum.CALL, PrototypeMode.CALL_SCOPED)
             async def async_session(self) -> AsyncSession:
                 return await self.session_factory.create_async()
 

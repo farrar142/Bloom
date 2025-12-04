@@ -69,6 +69,11 @@ def __getattr__(name: str):
 
         return Lazy
 
+    if name == "ScopeEnum":
+        from .core import ScopeEnum
+
+        return ScopeEnum
+
     if name == "Scope":
         from .core import Scope
 
@@ -88,5 +93,6 @@ if TYPE_CHECKING:
         PostConstruct,
         PreDestroy,
         Lazy,
+        ScopeEnum,
         Scope,
     )

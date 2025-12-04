@@ -5,18 +5,26 @@ from __future__ import annotations
 import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, TypeVar, Generic, get_origin, get_args, TYPE_CHECKING
+from typing import (
+    Any,
+    TypeVar,
+    Generic,
+    get_origin,
+    get_args,
+    get_type_hints,
+    TYPE_CHECKING,
+)
 
 from .params import (
     ParamMarker,
-    PathVariableMarker,
-    QueryMarker,
-    RequestBodyMarker,
-    RequestFieldMarker,
-    HeaderMarker,
-    CookieMarker,
+    PathVariable,
+    Query,
+    RequestBody,
+    RequestField,
+    Header,
+    Cookie,
     UploadedFileMarker,
-    AuthenticationMarker,
+    Authentication,
     get_param_marker,
     is_optional,
 )
@@ -49,7 +57,17 @@ class ParameterInfo:
     @classmethod
     def from_parameter(cls, param: inspect.Parameter) -> "ParameterInfo":
         """inspect.Parameter에서 ParameterInfo 생성"""
-        annotation = param.annotation
+        return cls.from_parameter_with_annotation(param, param.annotation)
+
+    @classmethod
+    def from_parameter_with_annotation(
+        cls, param: inspect.Parameter, annotation: Any
+    ) -> "ParameterInfo":
+        """inspect.Parameter와 실제 타입 어노테이션에서 ParameterInfo 생성
+
+        from __future__ import annotations 사용 시 get_type_hints()로 얻은
+        실제 타입을 전달해야 합니다.
+        """
         if annotation is inspect.Parameter.empty:
             annotation = Any
 
@@ -157,7 +175,7 @@ class PathVariableResolver(ParameterResolver[Any]):
     """
 
     def supports(self, param: ParameterInfo) -> bool:
-        return isinstance(param.marker, PathVariableMarker)
+        return isinstance(param.marker, PathVariable)
 
     async def resolve(
         self,
@@ -199,7 +217,7 @@ class QueryResolver(ParameterResolver[Any]):
     """
 
     def supports(self, param: ParameterInfo) -> bool:
-        return isinstance(param.marker, QueryMarker)
+        return isinstance(param.marker, Query)
 
     async def resolve(
         self,
@@ -239,7 +257,7 @@ class RequestBodyResolver(ParameterResolver[Any]):
     """
 
     def supports(self, param: ParameterInfo) -> bool:
-        return isinstance(param.marker, RequestBodyMarker)
+        return isinstance(param.marker, RequestBody)
 
     async def resolve(
         self,
@@ -278,7 +296,7 @@ class RequestFieldResolver(ParameterResolver[Any]):
     """
 
     def supports(self, param: ParameterInfo) -> bool:
-        return isinstance(param.marker, RequestFieldMarker)
+        return isinstance(param.marker, RequestField)
 
     async def resolve(
         self,
@@ -316,7 +334,7 @@ class HeaderResolver(ParameterResolver[Any]):
     """HTTP Header 리졸버"""
 
     def supports(self, param: ParameterInfo) -> bool:
-        return isinstance(param.marker, HeaderMarker)
+        return isinstance(param.marker, Header)
 
     async def resolve(
         self,
@@ -347,7 +365,7 @@ class CookieResolver(ParameterResolver[Any]):
     """Cookie 리졸버"""
 
     def supports(self, param: ParameterInfo) -> bool:
-        return isinstance(param.marker, CookieMarker)
+        return isinstance(param.marker, Cookie)
 
     async def resolve(
         self,
@@ -435,7 +453,7 @@ class AuthenticationResolver(ParameterResolver[Any]):
     """
 
     def supports(self, param: ParameterInfo) -> bool:
-        if isinstance(param.marker, AuthenticationMarker):
+        if isinstance(param.marker, Authentication):
             return True
         # 타입 이름으로 확인
         type_name = getattr(param.actual_type, "__name__", "")
@@ -635,6 +653,13 @@ class ResolverRegistry:
         sig = inspect.signature(handler)
         params = sig.parameters
 
+        # get_type_hints로 실제 타입 정보 가져오기 (include_extras=True로 Annotated 유지)
+        try:
+            type_hints = get_type_hints(handler, include_extras=True)
+        except Exception:
+            # get_type_hints 실패 시 빈 딕셔너리 사용
+            type_hints = {}
+
         resolved: dict[str, Any] = {}
 
         for name, param in params.items():
@@ -642,7 +667,9 @@ class ResolverRegistry:
             if name == "self":
                 continue
 
-            param_info = ParameterInfo.from_parameter(param)
+            # type_hints에서 실제 타입 가져오기
+            annotation = type_hints.get(name, param.annotation)
+            param_info = ParameterInfo.from_parameter_with_annotation(param, annotation)
             resolver = self.find_resolver(param_info)
 
             if resolver is None:
@@ -654,7 +681,7 @@ class ResolverRegistry:
                 else:
                     raise ValueError(
                         f"No resolver found for parameter '{name}' "
-                        f"of type {param_info.actual_type}"
+                        f"of type {param_info.annotation}"
                     )
             else:
                 try:

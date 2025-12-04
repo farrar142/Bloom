@@ -6,7 +6,7 @@ import asyncio
 from functools import wraps
 from typing import Any, Callable, TypeVar, overload, TYPE_CHECKING
 
-from .scope import Scope
+from .scope import ScopeEnum
 from .container import Container, analyze_factory_method
 from .manager import get_container_manager
 
@@ -30,7 +30,7 @@ def Component[T: type](cls: T) -> T:
 @overload
 def Component[T: type](
     *,
-    scope: Scope = Scope.SINGLETON,
+    scope: ScopeEnum = ScopeEnum.SINGLETON,
     name: str | None = None,
     primary: bool = False,
     lazy: bool = True,
@@ -42,7 +42,7 @@ def Component[T: type](
 def Component[T: type](
     cls: T | None = None,
     *,
-    scope: Scope = Scope.SINGLETON,
+    scope: ScopeEnum = ScopeEnum.SINGLETON,
     name: str | None = None,
     primary: bool = False,
     lazy: bool = True,
@@ -55,13 +55,13 @@ def Component[T: type](
         class UserService:
             pass
 
-        @Component(scope=Scope.REQUEST)
+        @Component(scope=ScopeEnum.REQUEST)
         class RequestContext:
             pass
 
         # @Scope 데코레이터와 함께 사용 (순서 무관)
         @Component
-        @Scope(Scope.CALL)
+        @Scope(ScopeEnum.CALL)
         class CallScopedService:
             pass
 
@@ -129,7 +129,26 @@ def Configuration[T: type](cls: T) -> T:
 # === @Factory ===
 
 
+@overload
 def Factory[F: Callable[..., Any]](method: F) -> F:
+    """@Factory - 기본 SINGLETON"""
+    ...
+
+
+@overload
+def Factory[F: Callable[..., Any]](
+    *,
+    scope: ScopeEnum = ScopeEnum.SINGLETON,
+) -> Callable[[F], F]:
+    """@Factory(scope=...) - 스코프 지정"""
+    ...
+
+
+def Factory[F: Callable[..., Any]](
+    method: F | None = None,
+    *,
+    scope: ScopeEnum = ScopeEnum.SINGLETON,
+) -> F | Callable[[F], F]:
     """
     팩토리 메서드 데코레이터.
     @Configuration 클래스 내부에서 사용.
@@ -140,9 +159,23 @@ def Factory[F: Callable[..., Any]](method: F) -> F:
             @Factory
             def database_client(self) -> DatabaseClient:
                 return DatabaseClient()
+
+            @Factory(scope=ScopeEnum.CALL)
+            def session(self) -> Session:
+                return Session()
     """
-    method.__bloom_factory__ = True  # type: ignore
-    return method
+
+    def decorator(m: F) -> F:
+        m.__bloom_factory__ = True  # type: ignore
+        m.__bloom_factory_scope__ = scope  # type: ignore
+        return m
+
+    if method is not None:
+        # @Factory 형태 (인자 없이)
+        return decorator(method)
+    else:
+        # @Factory(scope=...) 형태
+        return decorator
 
 
 def register_factories_from_configuration[T](
@@ -170,10 +203,13 @@ def register_factories_from_configuration[T](
         # Factory 메서드 분석
         factory_info = analyze_factory_method(method, config_cls)
 
+        # Factory에서 지정한 scope 또는 기본 SINGLETON
+        factory_scope = getattr(method, "__bloom_factory_scope__", ScopeEnum.SINGLETON)
+
         # Container 생성
         container: Container[Any] = Container(
             target=factory_info.return_type,
-            scope=Scope.SINGLETON,  # Factory는 기본 SINGLETON
+            scope=factory_scope,
             factory=factory_info,
         )
 
@@ -251,7 +287,7 @@ async def _prepare_call_scope_dependencies(
     for attr_name, attr_value in vars(instance).items():
         if isinstance(attr_value, LazyProxy):
             container = object.__getattribute__(attr_value, "_lp_container")
-            if container.scope == Scope.CALL:
+            if container.scope == ScopeEnum.CALL:
                 # Container의 의존성 정보를 이용해 먼저 중첩 의존성 처리 (깊이 우선)
                 await _prepare_dependencies_depth_first(
                     manager, container.target, visited.copy()
@@ -270,7 +306,7 @@ async def _prepare_dependencies_depth_first(
     visited.add(cls)
 
     container = manager.get_container(cls)
-    if container is None or container.scope != Scope.CALL:
+    if container is None or container.scope != ScopeEnum.CALL:
         return
 
     # 이미 현재 frame에 인스턴스가 있으면 스킵
@@ -294,7 +330,7 @@ async def _prepare_dependencies_depth_first(
                 continue
 
         dep_container = manager.get_container(dep_type)
-        if dep_container and dep_container.scope == Scope.CALL:
+        if dep_container and dep_container.scope == ScopeEnum.CALL:
             await _prepare_dependencies_depth_first(manager, dep_type, visited)
 
     # 의존성이 모두 생성된 후 현재 클래스 인스턴스 생성
@@ -330,19 +366,19 @@ class Value:
 
 
 @overload
-def scope_decorator(scope: Scope) -> Callable[[type[T]], type[T]]:
-    """@Scope(Scope.XXX) 형태"""
+def Scope(scope: ScopeEnum) -> Callable[[type[T]], type[T]]:
+    """@Scope(ScopeEnum.XXX) 형태"""
     ...
 
 
 @overload
-def scope_decorator[T: type](cls: T) -> T:
+def Scope[T: type](cls: T) -> T:
     """직접 적용 불가 - 항상 인자 필요"""
     ...
 
 
-def scope_decorator(
-    scope_or_cls: Scope | type | None = None,
+def Scope(
+    scope_or_cls: ScopeEnum | type | None = None,
 ) -> Callable[[type], type] | type:
     """
     스코프 지정 데코레이터.
@@ -350,11 +386,11 @@ def scope_decorator(
 
     사용 예:
         @Component
-        @Scope(Scope.REQUEST)
+        @Scope(ScopeEnum.REQUEST)
         class RequestContext:
             pass
     """
-    if isinstance(scope_or_cls, Scope):
+    if isinstance(scope_or_cls, ScopeEnum):
         scope = scope_or_cls
 
         def decorator[T: type](cls: T) -> T:
@@ -363,29 +399,32 @@ def scope_decorator(
 
         return decorator
     else:
-        raise TypeError("@Scope requires a Scope argument: @Scope(Scope.REQUEST)")
+        raise TypeError(
+            "@Scope requires a ScopeEnum argument: @Scope(ScopeEnum.REQUEST)"
+        )
 
 
-# Alias
-ScopeDecorator = scope_decorator
+# Alias (하위 호환)
+scope_decorator = Scope
+ScopeDecorator = Scope
 
 
 # === 편의 데코레이터 ===
 
 
 def RequestScope[T: type](cls: T) -> T:
-    """@RequestScope = @Component(scope=Scope.REQUEST)"""
-    return Component(cls, scope=Scope.REQUEST)
+    """@RequestScope = @Component(scope=ScopeEnum.REQUEST)"""
+    return Component(cls, scope=ScopeEnum.REQUEST)
 
 
 def CallScope[T: type](cls: T) -> T:
-    """@CallScope = @Component(scope=Scope.CALL)"""
-    return Component(cls, scope=Scope.CALL)
+    """@CallScope = @Component(scope=ScopeEnum.CALL)"""
+    return Component(cls, scope=ScopeEnum.CALL)
 
 
 def Singleton[T: type](cls: T) -> T:
-    """@Singleton = @Component(scope=Scope.SINGLETON)"""
-    return Component(cls, scope=Scope.SINGLETON)
+    """@Singleton = @Component(scope=ScopeEnum.SINGLETON)"""
+    return Component(cls, scope=ScopeEnum.SINGLETON)
 
 
 # === @Primary ===

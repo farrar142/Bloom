@@ -3,7 +3,7 @@
 from enum import Enum, auto
 
 
-class Scope(Enum):
+class ScopeEnum(Enum):
     """컴포넌트 인스턴스 스코프"""
 
     SINGLETON = auto()  # 앱 전체에서 단일 인스턴스

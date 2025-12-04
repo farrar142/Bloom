@@ -6,7 +6,7 @@ from typing import Any
 
 from bloom.core import (
     Component,
-    Scope,
+    ScopeEnum,
     PostConstruct,
     PreDestroy,
     get_container_manager,
@@ -263,7 +263,7 @@ class TestRequestScopeMiddleware:
         events = []
         instance_ids = []
 
-        @Component(scope=Scope.REQUEST)
+        @Component(scope=ScopeEnum.REQUEST)
         class RequestContext:
             def __init__(self):
                 self.id = str(uuid.uuid4())
@@ -312,7 +312,7 @@ class TestRequestScopeMiddleware:
     async def test_request_scope_same_instance_in_request(self):
         """같은 요청 내에서는 같은 인스턴스"""
 
-        @Component(scope=Scope.REQUEST)
+        @Component(scope=ScopeEnum.REQUEST)
         class RequestState:
             def __init__(self):
                 self.id = str(uuid.uuid4())
@@ -364,7 +364,7 @@ class TestRequestScopeMiddleware:
     async def test_request_scope_isolation(self):
         """요청 간 스코프 격리 테스트"""
 
-        @Component(scope=Scope.REQUEST)
+        @Component(scope=ScopeEnum.REQUEST)
         class IsolatedState:
             def __init__(self):
                 self.value = "initial"

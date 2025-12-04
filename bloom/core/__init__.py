@@ -101,9 +101,15 @@ __all__ = [
 def __getattr__(name: str):
     """Lazy import"""
 
-    # Scope
+    # ScopeEnum (enum)
+    if name == "ScopeEnum":
+        from .scope import ScopeEnum
+
+        return ScopeEnum
+
+    # Scope (decorator) - 하위 호환용 alias
     if name == "Scope":
-        from .scope import Scope
+        from .decorators import Scope
 
         return Scope
 
@@ -310,7 +316,8 @@ def __getattr__(name: str):
 
 # TYPE_CHECKING용 (IDE 지원)
 if TYPE_CHECKING:
-    from .scope import Scope
+    from .scope import ScopeEnum
+    from .decorators import Scope
     from .lifecycle import PostConstruct, PreDestroy, AutoCloseable, LifecycleManager
     from .container import Container, DependencyInfo, FactoryInfo
     from .manager import (

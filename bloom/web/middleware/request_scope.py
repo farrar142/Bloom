@@ -22,7 +22,7 @@ class RequestScopeMiddleware(Middleware):
         app = ASGIApplication()
         app.add_middleware(RequestScopeMiddleware)
 
-        @Component(scope=Scope.REQUEST)
+        @Component(scope=ScopeEnum.REQUEST)
         class RequestContext:
             def __init__(self):
                 self.request_id = uuid.uuid4()

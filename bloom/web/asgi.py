@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Callable, Any
 
 from .types import ASGIApp, Scope, Receive, Send
@@ -38,13 +39,37 @@ class ASGIApplication:
 
     def __init__(self, *, debug: bool = False) -> None:
         self.debug = debug
-        self._routes: dict[str, dict[str, Callable]] = {}  # path -> {method -> handler}
+        # path -> {method -> (handler, pattern, param_names)}
+        self._routes: dict[str, dict[str, tuple[Callable, re.Pattern, list[str]]]] = {}
+        # 패턴 매칭용 라우트 리스트: (pattern, route_path, {method -> handler})
+        self._route_patterns: list[tuple[re.Pattern, str, dict[str, Callable]]] = []
         self._middleware_stack = MiddlewareStack(self._handle_request)
 
         # REQUEST 스코프 미들웨어는 기본으로 추가
         self._middleware_stack.add(RequestScopeMiddleware)
 
         self._app: ASGIApp | None = None
+
+    def _compile_path_pattern(self, path: str) -> tuple[re.Pattern, list[str]]:
+        """경로 패턴을 정규식으로 컴파일
+
+        /users/{id} → /users/(?P<id>[^/]+)
+        """
+        param_names: list[str] = []
+        pattern_parts: list[str] = []
+
+        for part in path.split("/"):
+            if part.startswith("{") and part.endswith("}"):
+                param_name = part[1:-1]
+                param_names.append(param_name)
+                pattern_parts.append(f"(?P<{param_name}>[^/]+)")
+            else:
+                pattern_parts.append(re.escape(part))
+
+        pattern_str = "/".join(pattern_parts)
+        # 정확히 매칭되도록 ^ $ 추가
+        pattern = re.compile(f"^{pattern_str}$")
+        return pattern, param_names
 
     # === Middleware ===
 
@@ -69,11 +94,27 @@ class ASGIApplication:
         if methods is None:
             methods = ["GET"]
 
+        # 패턴 컴파일
+        pattern, param_names = self._compile_path_pattern(path)
+
         def decorator(handler: Callable) -> Callable:
             if path not in self._routes:
                 self._routes[path] = {}
             for method in methods:
-                self._routes[path][method.upper()] = handler
+                self._routes[path][method.upper()] = (handler, pattern, param_names)
+
+            # _route_patterns에 패턴 매칭용 데이터 추가
+            # 이미 등록된 path의 handlers 업데이트
+            for i, (p, rp, handlers) in enumerate(self._route_patterns):
+                if rp == path:
+                    for method in methods:
+                        handlers[method.upper()] = handler
+                    break
+            else:
+                # 새로운 패턴 등록
+                handlers = {method.upper(): handler for method in methods}
+                self._route_patterns.append((pattern, path, handlers))
+
             return handler
 
         return decorator
@@ -119,20 +160,26 @@ class ASGIApplication:
             await response(scope, receive, send)
             return
 
-        request = Request(scope, receive)
+        # 경로 추출
+        path = scope.get("path", "/")
+        method = scope.get("method", "GET")
 
-        # 라우트 매칭 (단순 exact match)
-        # TODO: 패턴 매칭, path params 추출
-        handler = self._routes.get(request.path, {}).get(request.method)
+        # 라우트 매칭 (패턴 매칭 + path params 추출)
+        handler, path_params = self._match_route(path, method)
 
         if handler is None:
             # 404 Not Found
             response = JSONResponse(
-                {"error": "Not Found", "path": request.path},
+                {"error": "Not Found", "path": path},
                 status_code=404,
             )
             await response(scope, receive, send)
             return
+
+        # path_params를 scope에 설정 (Request.path_params에서 읽음)
+        scope["path_params"] = path_params
+
+        request = Request(scope, receive)
 
         try:
             # 핸들러 실행
@@ -164,6 +211,27 @@ class ASGIApplication:
                 status_code=500,
             )
             await response(scope, receive, send)
+
+    def _match_route(
+        self, path: str, method: str
+    ) -> tuple[Callable | None, dict[str, str]]:
+        """
+        라우트 매칭 (패턴 매칭 지원).
+
+        Args:
+            path: 요청 경로
+            method: HTTP 메서드
+
+        Returns:
+            (handler, path_params) 튜플. 매칭 실패 시 (None, {})
+        """
+        for pattern, route_path, handlers in self._route_patterns:
+            match = pattern.match(path)
+            if match:
+                handler = handlers.get(method)
+                if handler:
+                    return handler, match.groupdict()
+        return None, {}
 
     async def _handle_lifespan(
         self, scope: Scope, receive: Receive, send: Send

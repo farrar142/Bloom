@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any, TypeVar, TYPE_CHECKING, AsyncIterator
 
-from .scope import Scope
+from .scope import ScopeEnum
 from .lifecycle import LifecycleManager
 from .exceptions import RequestScopeError, CallScopeError
 
@@ -344,43 +344,43 @@ class ScopeManager:
     def get_instance[T](
         self,
         cls: type[T],
-        scope: Scope,
+        scope: ScopeEnum,
         frame_id: str | None = None,
     ) -> T | None:
         """스코프에 따라 인스턴스 조회"""
         match scope:
-            case Scope.SINGLETON:
+            case ScopeEnum.SINGLETON:
                 return self.get_singleton(cls)
-            case Scope.REQUEST:
+            case ScopeEnum.REQUEST:
                 return self.get_request_scoped(cls)
-            case Scope.CALL:
+            case ScopeEnum.CALL:
                 return self.get_call_scoped(cls, frame_id)
 
     def set_instance[T](
         self,
         cls: type[T],
         instance: T,
-        scope: Scope,
+        scope: ScopeEnum,
         frame_id: str | None = None,
     ) -> None:
         """스코프에 따라 인스턴스 저장"""
         match scope:
-            case Scope.SINGLETON:
+            case ScopeEnum.SINGLETON:
                 self.set_singleton(cls, instance)
-            case Scope.REQUEST:
+            case ScopeEnum.REQUEST:
                 self.set_request_scoped(cls, instance)
-            case Scope.CALL:
+            case ScopeEnum.CALL:
                 self.set_call_scoped(cls, instance, frame_id)
 
     def has_instance(
-        self, cls: type, scope: Scope, frame_id: str | None = None
+        self, cls: type, scope: ScopeEnum, frame_id: str | None = None
     ) -> bool:
         """스코프에 따라 인스턴스 존재 여부 확인"""
         match scope:
-            case Scope.SINGLETON:
+            case ScopeEnum.SINGLETON:
                 return self.has_singleton(cls)
-            case Scope.REQUEST:
+            case ScopeEnum.REQUEST:
                 return self.has_request_scoped(cls)
-            case Scope.CALL:
+            case ScopeEnum.CALL:
                 return self.has_call_scoped(cls, frame_id)
         return False

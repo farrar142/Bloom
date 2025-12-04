@@ -5,7 +5,7 @@ import pytest
 from bloom.core import (
     Component,
     Handler,
-    Scope,
+    ScopeEnum,
     get_container_manager,
 )
 
@@ -18,7 +18,7 @@ class TestHandler:
         """@Handler가 CALL 스코프를 생성하는지"""
         call_count = {"count": 0}
 
-        @Component(scope=Scope.CALL)
+        @Component(scope=ScopeEnum.CALL)
         class CallScopedService:
             def __init__(self):
                 call_count["count"] += 1

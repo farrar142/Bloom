@@ -6,7 +6,7 @@ from bloom.core import (
     Component,
     Service,
     Repository,
-    Scope,
+    ScopeEnum,
     get_container_manager,
 )
 
@@ -26,12 +26,12 @@ class TestComponentDecorator:
 
         assert container is not None
         assert container.target is SimpleService
-        assert container.scope == Scope.SINGLETON
+        assert container.scope == ScopeEnum.SINGLETON
 
     def test_component_with_scope(self):
         """@Component(scope=...) 스코프 지정"""
 
-        @Component(scope=Scope.REQUEST)
+        @Component(scope=ScopeEnum.REQUEST)
         class RequestService:
             pass
 
@@ -39,7 +39,7 @@ class TestComponentDecorator:
         container = manager.get_container(RequestService)
 
         assert container is not None
-        assert container.scope == Scope.REQUEST
+        assert container.scope == ScopeEnum.REQUEST
 
     def test_component_analyzes_dependencies(self):
         """@Component가 필드 의존성을 분석하는지"""
@@ -75,7 +75,7 @@ class TestServiceRepositoryDecorators:
         container = manager.get_container(MyService)
 
         assert container is not None
-        assert container.scope == Scope.SINGLETON
+        assert container.scope == ScopeEnum.SINGLETON
 
     def test_repository_is_component_alias(self):
         """@Repository가 @Component와 동일하게 동작"""

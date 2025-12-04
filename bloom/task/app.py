@@ -629,6 +629,65 @@ class TaskApp:
             return BoundTask(task, self)
         return None
 
+    def register_task(
+        self,
+        name: str,
+        func: Callable[..., Any],
+        *,
+        queue: str = "default",
+        retry: int = 0,
+        retry_delay: float = 1.0,
+        retry_backoff: bool = True,
+        timeout: float | None = None,
+        priority: TaskPriority = TaskPriority.NORMAL,
+        bind: bool = False,
+        autoretry_for: tuple[type[Exception], ...] = (),
+        ignore_result: bool = False,
+        track_started: bool = True,
+        acks_late: bool = False,
+        rate_limit: str | None = None,
+    ) -> BoundTask[Any]:
+        """태스크 직접 등록
+
+        데코레이터 없이 함수를 태스크로 등록합니다.
+        @Service 클래스의 @Task 메서드를 동적으로 등록할 때 사용합니다.
+
+        Args:
+            name: 태스크 이름
+            func: 태스크 함수 (bound method 포함)
+            queue: 사용할 큐 이름
+            retry: 최대 재시도 횟수
+            retry_delay: 재시도 간격 (초)
+            timeout: 실행 제한 시간 (초)
+            priority: 우선순위
+            ...
+
+        Returns:
+            BoundTask 인스턴스
+        """
+        task = Task(
+            name=name,
+            func=func,
+            queue=queue,
+            retry=retry,
+            retry_delay=retry_delay,
+            retry_backoff=retry_backoff,
+            timeout=timeout,
+            priority=priority,
+            bind=bind,
+            autoretry_for=autoretry_for,
+            ignore_result=ignore_result,
+            track_started=track_started,
+            acks_late=acks_late,
+            rate_limit=rate_limit,
+        )
+
+        # 레지스트리에 등록
+        self.registry.register(task)
+
+        # BoundTask 반환
+        return BoundTask(task, self)
+
     async def send_task(
         self,
         name: str,

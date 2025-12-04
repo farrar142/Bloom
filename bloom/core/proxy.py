@@ -6,7 +6,7 @@ import asyncio
 from functools import wraps
 from typing import Any, Callable, Generic, TypeVar, TYPE_CHECKING, cast, overload
 
-from .scope import Scope
+from .scope import ScopeEnum
 
 if TYPE_CHECKING:
     from .container import Container
@@ -70,12 +70,14 @@ class LazyProxy(Generic[T]):
         - SINGLETON: 한 번만 resolve하고 프록시 내부에 캐싱
         - REQUEST/CALL: 매번 ScopeManager에서 현재 컨텍스트의 인스턴스 조회
         """
+        import asyncio
+
         container: Container[T] = object.__getattribute__(self, "_lp_container")
         manager: ContainerManager = object.__getattribute__(self, "_lp_manager")
 
         # SINGLETON이 아닌 스코프는 매번 ScopeManager에서 조회
         # (REQUEST나 CALL 스코프는 컨텍스트마다 다른 인스턴스가 필요)
-        if container.scope != Scope.SINGLETON:
+        if container.scope != ScopeEnum.SINGLETON:
             # 현재 컨텍스트에서 인스턴스 조회
             cached = manager.scope_manager.get_instance(
                 container.target, container.scope
@@ -98,10 +100,24 @@ class LazyProxy(Generic[T]):
                 return cached
 
             # 캐시에 없으면 get_instance 호출
-            # (initialize() 이후에는 SINGLETON이 모두 캐시되어 있음)
-            instance = manager.get_instance(container.target)
-            object.__setattr__(self, "_lp_instance", instance)
-            object.__setattr__(self, "_lp_resolved", True)
+            # async 컨텍스트에서는 동기 get_instance가 실패할 수 있음
+            try:
+                asyncio.get_running_loop()
+                # async 컨텍스트: 동기적으로 인스턴스 생성 시도
+                # Container에서 직접 동기 생성 (의존성 없는 경우만)
+                raise RuntimeError(
+                    f"LazyProxy for {container.target.__name__} accessed in async context "
+                    f"before initialization. Call ready_async() first."
+                )
+            except RuntimeError as e:
+                if "no running event loop" in str(e):
+                    # 이벤트 루프 없음: 동기적으로 처리
+                    instance = manager.get_instance(container.target)
+                    object.__setattr__(self, "_lp_instance", instance)
+                    object.__setattr__(self, "_lp_resolved", True)
+                else:
+                    raise
+
         return object.__getattribute__(self, "_lp_instance")
 
     def _lp_get_target_type(self) -> type[T]:
