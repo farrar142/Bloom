@@ -176,6 +176,7 @@ def get_message_param_marker(annotation: Any) -> Any | None:
         args = get_args(annotation)
         if len(args) >= 2:
             for arg in args[1:]:
+                # 마커 인스턴스 확인
                 if isinstance(
                     arg,
                     (
@@ -188,6 +189,32 @@ def get_message_param_marker(annotation: Any) -> Any | None:
                     ),
                 ):
                     return arg
+                # 런타임 클래스 자체 사용 지원 (예: Annotated[dict, MessagePayload])
+                # _MessagePayload 등의 클래스를 직접 사용한 경우
+                if arg is _MessagePayload or (
+                    isinstance(arg, type) and issubclass(arg, _MessagePayload)
+                ):
+                    return MessagePayloadMarker()
+                if arg is _DestinationVariable or (
+                    isinstance(arg, type) and issubclass(arg, _DestinationVariable)
+                ):
+                    return DestinationVariableMarker()
+                if arg is _MessageHeaders or (
+                    isinstance(arg, type) and issubclass(arg, _MessageHeaders)
+                ):
+                    return MessageHeadersMarker()
+                if arg is _Principal or (
+                    isinstance(arg, type) and issubclass(arg, _Principal)
+                ):
+                    return PrincipalMarker()
+                if arg is _SessionId or (
+                    isinstance(arg, type) and issubclass(arg, _SessionId)
+                ):
+                    return SessionIdMarker()
+                if arg is _WebSocketSession or (
+                    isinstance(arg, type) and issubclass(arg, _WebSocketSession)
+                ):
+                    return WebSocketSessionMarker()
     return None
 
 

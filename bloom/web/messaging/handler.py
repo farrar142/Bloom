@@ -270,16 +270,22 @@ class MessagePayloadResolver(MessageParameterResolver[Any]):
                 return None
             return None
 
-        # JSON 파싱
+        # 타입 확인
+        target_type = param.actual_type
+
+        # str 타입은 원본 반환
+        if target_type is str:
+            return body
+
+        # JSON 파싱 시도
         try:
             data = json.loads(body)
         except json.JSONDecodeError:
-            data = body
+            # str 타입이 아닌데 JSON 파싱 실패 시 예외 전파
+            # (dataclass, dict 등은 JSON이 필요함)
+            raise
 
         # 타입 변환
-        target_type = param.actual_type
-        if target_type is str:
-            return body
         if target_type is dict or target_type is Any:
             return data
         if isinstance(data, dict) and hasattr(target_type, "__dataclass_fields__"):
