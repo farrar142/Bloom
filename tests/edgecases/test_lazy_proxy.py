@@ -29,18 +29,21 @@ from bloom.core.decorators import register_factories_from_configuration
 @dataclass
 class TrackedSingleton:
     """추적되는 싱글톤"""
+
     id: int
 
 
 @dataclass
 class SharedSingleton:
     """공유되는 싱글톤"""
+
     id: int
 
 
 @dataclass
 class Calculator:
     """계산기"""
+
     def add(self, a: int, b: int) -> int:
         return a + b
 
@@ -51,6 +54,7 @@ class Calculator:
 @dataclass
 class DataHolder:
     """데이터 홀더"""
+
     _value: str
 
     @property

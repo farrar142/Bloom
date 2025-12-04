@@ -30,12 +30,14 @@ from bloom.core.decorators import register_factories_from_configuration, Handler
 @dataclass
 class CallScopedSession:
     """CALL 스코프 세션"""
+
     id: int
 
 
 @dataclass
 class SharedResource:
     """공유 리소스"""
+
     id: int
 
 
@@ -257,6 +259,7 @@ class TestScopeTransitionIntegration:
         @Component
         class SingletonService:
             """싱글톤 서비스가 CALL 스코프 세션 사용"""
+
             session: AsyncProxy[CallScopedSession]
 
             async def get_session_id(self) -> int:

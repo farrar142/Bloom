@@ -233,10 +233,26 @@ def register_factories_from_configuration[T](
 # === @Handler ===
 
 
-def Handler[F: Callable[..., Any]](func: F) -> F:
+@overload
+def Handler[F: Callable[..., Any]](func: F) -> F: ...
+
+
+@overload
+def Handler[F: Callable[..., Any]](*, propagate: bool = False) -> Callable[[F], F]: ...
+
+
+def Handler[F: Callable[..., Any]](
+    func: F | None = None, *, propagate: bool = False
+) -> F | Callable[[F], F]:
     """
     핸들러 메서드 데코레이터.
     CALL 스코프 라이프사이클 관리.
+
+    Args:
+        propagate: True면 기존 CALL 스코프가 있을 경우 그대로 재사용.
+                  트랜잭션 전파처럼 중첩 Handler에서 같은 세션/트랜잭션을
+                  공유하고 싶을 때 사용.
+                  False(기본값)면 항상 새 CALL 스코프 생성.
 
     사용 예:
         @Component
@@ -246,34 +262,47 @@ def Handler[F: Callable[..., Any]](func: F) -> F:
             @Handler
             async def create_user(self, name: str):
                 session = await self.tx.resolve()  # 여기서 생성됨
+                await self.internal_logic()  # 새 스코프에서 다른 세션
+
+            @Handler(propagate=True)
+            async def internal_logic(self):
+                session = await self.tx.resolve()  # 부모 Handler와 같은 세션
                 pass
     """
 
-    @wraps(func)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        manager = get_container_manager()
-        scope_manager = manager.scope_manager
+    def decorator(fn: F) -> F:
+        @wraps(fn)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            manager = get_container_manager()
+            scope_manager = manager.scope_manager
 
-        # Call 스코프 시작
-        frame_id = scope_manager.start_call()
+            # Call 스코프 시작 (propagate 옵션 적용)
+            frame_id, is_owner = scope_manager.start_call(propagate=propagate)
 
-        try:
-            # 원본 함수 호출
-            # CALL 스코프 의존성은 접근 시점에 생성됨:
-            # - AsyncProxy: await resolve() 시점
-            # - LazyProxy: 필드 접근 시점 (동기 factory만)
-            result = func(*args, **kwargs)
-            if asyncio.iscoroutine(result):
-                result = await result
-            return result
-        finally:
-            # Call 스코프 종료 (정리)
-            await scope_manager.end_call(frame_id)
+            try:
+                # 원본 함수 호출
+                # CALL 스코프 의존성은 접근 시점에 생성됨:
+                # - AsyncProxy: await resolve() 시점
+                # - LazyProxy: 필드 접근 시점 (동기 factory만)
+                result = fn(*args, **kwargs)
+                if asyncio.iscoroutine(result):
+                    result = await result
+                return result
+            finally:
+                # Call 스코프 종료 (정리)
+                # is_owner=False면 정리하지 않음 (부모에서 정리)
+                await scope_manager.end_call(frame_id, is_owner=is_owner)
 
-    # 메타데이터 보존
-    wrapper.__bloom_handler__ = True  # type: ignore
+        # 메타데이터 보존
+        wrapper.__bloom_handler__ = True  # type: ignore
+        wrapper.__bloom_handler_propagate__ = propagate  # type: ignore
 
-    return wrapper  # type: ignore
+        return wrapper  # type: ignore
+
+    # @Handler 또는 @Handler()
+    if func is not None:
+        return decorator(func)
+    return decorator
 
 
 # === @Value ===

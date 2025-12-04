@@ -28,6 +28,7 @@ from bloom.core.decorators import register_factories_from_configuration, Handler
 @dataclass
 class MockSession:
     """Mock 데이터베이스 세션"""
+
     id: int
     data: dict = field(default_factory=dict)
     committed: bool = False

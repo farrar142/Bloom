@@ -109,6 +109,13 @@ __all__ = [
     "AlterColumn",
     "CreateIndex",
     "DropIndex",
+    # Decorators
+    "Transactional",
+    "Propagation",
+    "TransactionError",
+    "NoActiveTransactionError",
+    "RequiresNew",
+    "Mandatory",
 ]
 
 
@@ -236,6 +243,19 @@ def __getattr__(name: str):
 
         return getattr(migrations, name)
 
+    # Decorators
+    if name in (
+        "Transactional",
+        "Propagation",
+        "TransactionError",
+        "NoActiveTransactionError",
+        "RequiresNew",
+        "Mandatory",
+    ):
+        from . import decorators
+
+        return getattr(decorators, name)
+
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -316,4 +336,12 @@ if TYPE_CHECKING:
         AlterColumn,
         CreateIndex,
         DropIndex,
+    )
+    from .decorators import (
+        Transactional,
+        Propagation,
+        TransactionError,
+        NoActiveTransactionError,
+        RequiresNew,
+        Mandatory,
     )

@@ -176,17 +176,29 @@ class ScopeManager:
             return stack.pop()
         return None
 
-    def start_call(self, *, inherit_parent: bool = False) -> str:
+    def start_call(
+        self, *, inherit_parent: bool = False, propagate: bool = False
+    ) -> tuple[str, bool]:
         """
         메서드 호출 시작 - @Handler 진입 시.
 
         Args:
-            inherit_parent: True면 부모 컨텍스트의 CALL 스코프 인스턴스를 상속
-                           (중첩 Handler에서 같은 인스턴스를 공유하고 싶을 때)
+            inherit_parent: True면 부모 컨텍스트의 CALL 스코프 인스턴스를 상속 (복사)
+                           (중첩 Handler에서 부모 인스턴스를 스냅샷으로 가져올 때)
+            propagate: True면 기존 CALL 스코프가 있을 경우 그대로 재사용
+                      (트랜잭션 전파처럼 같은 스코프를 공유하고 싶을 때)
 
         Returns:
-            생성된 frame_id
+            tuple[frame_id, is_owner]: frame_id와 이 호출이 스코프 소유자인지 여부
+                                       propagate로 기존 스코프를 재사용하면 is_owner=False
         """
+        # propagate 옵션: 기존 스코프가 있으면 재사용
+        if propagate:
+            existing_frame_id = self._get_current_frame_id()
+            if existing_frame_id is not None:
+                # 기존 스코프 재사용 - 새 frame_id 생성하지 않음
+                return existing_frame_id, False
+
         frame_id = str(uuid.uuid4())
 
         instances = _call_instances.get()
@@ -199,7 +211,7 @@ class ScopeManager:
             order = {}
             _call_creation_order.set(order)
 
-        # 부모 컨텍스트 상속 옵션
+        # 부모 컨텍스트 상속 옵션 (복사)
         if inherit_parent:
             parent_frame_id = self._get_current_frame_id()
             if parent_frame_id and parent_frame_id in instances:
@@ -216,9 +228,11 @@ class ScopeManager:
         # frame_id를 스택에 푸시 (중첩 호출 지원)
         self._push_frame_id(frame_id)
 
-        return frame_id
+        return frame_id, True
 
-    async def end_call(self, frame_id: str, *, destroy_instances: bool = True) -> None:
+    async def end_call(
+        self, frame_id: str, *, destroy_instances: bool = True, is_owner: bool = True
+    ) -> None:
         """
         메서드 호출 종료 - @PreDestroy 호출 후 정리.
 
@@ -226,7 +240,13 @@ class ScopeManager:
             frame_id: 종료할 frame_id
             destroy_instances: False면 @PreDestroy를 호출하지 않음
                               (부모 컨텍스트에서 정리하게 위임할 때)
+            is_owner: False면 스코프 정리를 하지 않음
+                     (propagate로 기존 스코프를 재사용한 경우)
         """
+        # propagate로 기존 스코프를 재사용한 경우 정리하지 않음
+        if not is_owner:
+            return
+
         instances = _call_instances.get()
         order = _call_creation_order.get()
 
@@ -310,17 +330,23 @@ class ScopeManager:
 
     @asynccontextmanager
     async def call_scope(
-        self, *, inherit_parent: bool = False, destroy_instances: bool = True
+        self,
+        *,
+        inherit_parent: bool = False,
+        destroy_instances: bool = True,
+        propagate: bool = False,
     ) -> AsyncIterator[str]:
         """
         CALL 스코프 컨텍스트 매니저.
 
         Args:
-            inherit_parent: True면 부모 컨텍스트의 인스턴스를 상속
+            inherit_parent: True면 부모 컨텍스트의 인스턴스를 상속 (복사)
             destroy_instances: False면 종료 시 @PreDestroy를 호출하지 않음
+            propagate: True면 기존 CALL 스코프가 있을 경우 그대로 재사용
+                      (트랜잭션 전파처럼 같은 스코프를 공유하고 싶을 때)
 
         Yields:
-            frame_id: 생성된 frame ID
+            frame_id: 생성된 또는 재사용된 frame ID
 
         사용 예:
             async with scope_manager.call_scope() as frame_id:
@@ -328,16 +354,26 @@ class ScopeManager:
                 instance = await manager.get_instance_async(CallScopedService)
             # 종료 시 자동으로 @PreDestroy 호출
 
-            # 부모 인스턴스 상속
+            # 부모 인스턴스 상속 (복사)
             async with scope_manager.call_scope(inherit_parent=True):
-                # 부모 컨텍스트의 인스턴스를 공유
+                # 부모 컨텍스트의 인스턴스를 복사해서 사용
+                pass
+
+            # 트랜잭션 전파 (기존 스코프 재사용)
+            async with scope_manager.call_scope(propagate=True) as frame_id:
+                # 기존 스코프가 있으면 같은 인스턴스 공유
+                # 없으면 새 스코프 생성
                 pass
         """
-        frame_id = self.start_call(inherit_parent=inherit_parent)
+        frame_id, is_owner = self.start_call(
+            inherit_parent=inherit_parent, propagate=propagate
+        )
         try:
             yield frame_id
         finally:
-            await self.end_call(frame_id, destroy_instances=destroy_instances)
+            await self.end_call(
+                frame_id, destroy_instances=destroy_instances, is_owner=is_owner
+            )
 
     # === 통합 조회 ===
 

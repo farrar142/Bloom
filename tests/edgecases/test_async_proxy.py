@@ -29,12 +29,14 @@ from bloom.core.decorators import register_factories_from_configuration, Handler
 @dataclass
 class CallScopedResource:
     """CALL 스코프 리소스"""
+
     id: int
 
 
 @dataclass
 class ChainedResource:
     """체인된 리소스"""
+
     name: str
 
 

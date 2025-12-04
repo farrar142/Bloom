@@ -28,6 +28,7 @@ from bloom.core.decorators import register_factories_from_configuration, Handler
 @dataclass
 class CallSession:
     """CALL 스코프 세션"""
+
     id: int
     data: dict[str, Any] = None
 
@@ -316,7 +317,9 @@ class TestConcurrentHandlers:
         class LeakConsumer:
             session: AsyncProxy[CallSession]
 
-            async def store_and_retrieve(self, key: str, value: str, delay: float) -> tuple:
+            async def store_and_retrieve(
+                self, key: str, value: str, delay: float
+            ) -> tuple:
                 s = await self.session.resolve()
                 s.data[key] = value
                 await asyncio.sleep(delay)

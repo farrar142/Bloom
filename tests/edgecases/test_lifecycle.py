@@ -28,24 +28,28 @@ from bloom.core.decorators import register_factories_from_configuration
 @dataclass
 class PersistentSingleton:
     """영구 싱글톤"""
+
     id: int
 
 
 @dataclass
 class AsyncCreated:
     """비동기로 생성된 객체"""
+
     mode: str
 
 
 @dataclass
 class MayFailSingleton:
     """실패할 수도 있는 싱글톤"""
+
     id: int
 
 
 @dataclass
 class CountingInstance:
     """카운팅 인스턴스"""
+
     count: int
 
 
