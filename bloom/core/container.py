@@ -249,7 +249,7 @@ class Container(Generic[T]):
         - AsyncProxy[T]로 선언된 필드: AsyncProxy로 주입 (await resolve() 필요)
         - CALL 스코프 + async factory: AsyncProxy 필수 (에러 발생)
         - SINGLETON/REQUEST/CALL: LazyProxy로 주입 (순환 의존성 지원)
-        
+
         CALL 스코프 async factory 컴포넌트는 반드시 AsyncProxy[T]로 선언해야 합니다.
         """
         from .proxy import AsyncProxy, LazyProxy

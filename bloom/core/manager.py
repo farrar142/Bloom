@@ -149,7 +149,7 @@ class ContainerManager:
 
     def _resolve_instance[T](self, container: Container[T]) -> T:
         """컨테이너에서 인스턴스 resolve (동기)
-        
+
         async factory의 경우 AsyncProxy를 사용해야 합니다.
         동기 factory는 async 컨텍스트에서도 생성 가능합니다.
         """
@@ -219,15 +219,15 @@ class ContainerManager:
                     raise RuntimeError(
                         f"Configuration class {container.factory.owner.__name__} not found"
                     )
-            
+
             method = getattr(config_instance, container.factory.method.__name__)
-            
+
             # Factory 파라미터 의존성 해결
             factory_args = {}
             for dep in container.factory.dependencies:
                 dep_instance = self.get_instance(dep.field_type)
                 factory_args[dep.field_name] = dep_instance
-            
+
             instance = method(**factory_args)
         else:
             # 일반 컴포넌트 생성
@@ -236,21 +236,22 @@ class ContainerManager:
             self._inject_fields_sync(container, instance)
             # PostConstruct는 동기 메서드만 호출 (async는 스킵)
             from .lifecycle import LifecycleManager
+
             for method in LifecycleManager.get_post_construct_methods(instance):
                 if not inspect.iscoroutinefunction(method):
                     method()
-        
+
         return instance
 
     def _inject_fields_sync[T](self, container: Container[T], instance: T) -> None:
         """동기적으로 필드에 LazyProxy 주입"""
         from .proxy import LazyProxy, AsyncProxy
-        
+
         for dep in container.dependencies:
             current_value = getattr(instance, dep.field_name, None)
             if current_value is not None:
                 continue
-            
+
             dep_container = self._containers.get(dep.field_type)
             if dep_container is None:
                 if dep.is_optional:
@@ -258,7 +259,7 @@ class ContainerManager:
                 raise RuntimeError(
                     f"Cannot resolve dependency '{dep.field_name}' for '{container.target.__name__}'"
                 )
-            
+
             if dep.is_async_proxy:
                 proxy: AsyncProxy[Any] = AsyncProxy(dep_container, self)
                 setattr(instance, dep.field_name, proxy)

@@ -87,9 +87,7 @@ class TestCallScopeRepositoryChain:
             async def find_by_email(self, email: str) -> dict | None:
                 # AsyncProxy는 await resolve()로 인스턴스 접근
                 session = await self.async_session.resolve()
-                sql = session.dialect.select_sql(
-                    None, where=f"email='{email}'"
-                )
+                sql = session.dialect.select_sql(None, where=f"email='{email}'")
                 return {"email": email, "sql": sql}
 
         manager = get_container_manager()
@@ -141,9 +139,7 @@ class TestCallScopeRepositoryChain:
 
             async def find_by_email(self, email: str) -> dict | None:
                 session = await self.async_session.resolve()
-                sql = session.dialect.select_sql(
-                    None, where=f"email='{email}'"
-                )
+                sql = session.dialect.select_sql(None, where=f"email='{email}'")
                 return {"email": email, "sql": sql}
 
         @Service
@@ -196,9 +192,7 @@ class TestCallScopeRepositoryChain:
 
             async def find_by_email(self, email: str) -> dict | None:
                 session = await self.async_session.resolve()
-                sql = session.dialect.select_sql(
-                    None, where=f"email='{email}'"
-                )
+                sql = session.dialect.select_sql(None, where=f"email='{email}'")
                 return {"email": email, "sql": sql}
 
         @Service
@@ -280,7 +274,7 @@ class TestCallScopeRepositoryChain:
     @pytest.mark.asyncio
     async def test_call_scope_async_proxy_chain(self):
         """AsyncProxy를 통한 CALL 스코프 의존성 체인 테스트
-        
+
         Controller → Service → Repository → AsyncSession 체인에서
         AsyncProxy로 선언된 CALL 스코프 의존성이 제대로 동작하는지 확인합니다.
         """
@@ -300,9 +294,7 @@ class TestCallScopeRepositoryChain:
 
             async def find_by_email(self, email: str) -> dict | None:
                 session = await self.async_session.resolve()
-                sql = session.dialect.select_sql(
-                    None, where=f"email='{email}'"
-                )
+                sql = session.dialect.select_sql(None, where=f"email='{email}'")
                 return {"email": email, "sql": sql}
 
         @Service
@@ -393,9 +385,7 @@ class TestCallScopeWithASGI:
             async def find_by_email(self, email: str) -> dict | None:
                 # AsyncProxy는 await resolve()로 인스턴스 접근
                 session = await self.async_session.resolve()
-                sql = session.dialect.select_sql(
-                    None, where=f"email='{email}'"
-                )
+                sql = session.dialect.select_sql(None, where=f"email='{email}'")
                 return {"email": email, "sql": sql, "session_id": session.id}
 
         @Service

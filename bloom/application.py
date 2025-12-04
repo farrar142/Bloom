@@ -405,7 +405,7 @@ class Application:
                                 ctrl_cls
                             )
 
-                            # CALL 스코프 의존성은 AsyncProxy.resolve() 또는 
+                            # CALL 스코프 의존성은 AsyncProxy.resolve() 또는
                             # LazyProxy 접근 시점에 자동 생성됨
 
                             method = getattr(controller, mname)
