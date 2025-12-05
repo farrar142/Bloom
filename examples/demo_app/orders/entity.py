@@ -35,6 +35,8 @@ class OrderStatus(str, Enum):
 class Order:
     """주문 엔티티"""
 
+    __app__ = "orders"
+
     id = PrimaryKey[int](auto_increment=True)
     status = StringColumn(
         nullable=False, default=OrderStatus.PENDING.value, max_length=20
@@ -62,6 +64,8 @@ class Order:
 @Entity
 class OrderItem:
     """주문 항목 엔티티"""
+
+    __app__ = "orders"
 
     id = PrimaryKey[int](auto_increment=True)
     quantity = IntegerColumn(nullable=False, default=1)

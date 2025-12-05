@@ -1,0 +1,25 @@
+"""{app_name_title} Entity"""
+
+from __future__ import annotations
+
+from bloom.db import (
+    Entity,
+    PrimaryKey,
+    StringColumn,
+    IntegerColumn,
+    BooleanColumn,
+    DateTimeColumn,
+)
+
+
+@Entity
+class {entity_name}:
+    """{entity_name} 엔티티"""
+
+    __app__ = "{app_name}"
+
+    id = PrimaryKey[int](auto_increment=True)
+    name = StringColumn(nullable=False, max_length=100)
+    is_active = BooleanColumn(default=True)
+    created_at = DateTimeColumn(auto_now_add=True)
+    updated_at = DateTimeColumn(auto_now=True)

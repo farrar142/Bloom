@@ -17,6 +17,8 @@ from bloom.db import (
 class User:
     """사용자 엔티티"""
 
+    __app__ = "users"
+
     id = PrimaryKey[int](auto_increment=True)
     name = StringColumn(nullable=False, max_length=100)
     email = StringColumn(nullable=False, unique=True, max_length=255)

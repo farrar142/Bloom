@@ -1,0 +1,15 @@
+"""{app_name_title} Repository"""
+
+from __future__ import annotations
+
+from bloom.core import Repository
+from bloom.db import CrudRepository
+
+from .entity import {entity_name}
+
+
+@Repository
+class {entity_name}Repository(CrudRepository[{entity_name}, int]):
+    """{entity_name} 레포지토리"""
+
+    entity = {entity_name}

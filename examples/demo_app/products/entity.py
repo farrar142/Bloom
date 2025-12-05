@@ -17,6 +17,8 @@ from bloom.db import (
 class Product:
     """상품 엔티티"""
 
+    __app__ = "products"
+
     id = PrimaryKey[int](auto_increment=True)
     name = StringColumn(nullable=False, max_length=200)
     description = TextColumn(nullable=True)

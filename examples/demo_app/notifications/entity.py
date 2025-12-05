@@ -33,6 +33,8 @@ class NotificationType(str, Enum):
 class Notification:
     """알림 엔티티"""
 
+    __app__ = "notifications"
+
     id = PrimaryKey[int](auto_increment=True)
     type = StringColumn(
         nullable=False, max_length=20, default=NotificationType.EMAIL.value
