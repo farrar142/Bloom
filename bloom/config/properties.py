@@ -2,26 +2,7 @@
 
 from typing import Any, Callable, TypeVar, overload
 
-from bloom.core.container import ComponentContainer
-from bloom.core.container.element import Element
-
 T = TypeVar("T", bound=type)
-
-
-class ConfigurationPropertiesElement(Element):
-    """ConfigurationProperties 메타데이터 Element"""
-
-    key = "configuration_properties"
-
-    def __init__(self, prefix: str = ""):
-        super().__init__()
-        self.metadata["configuration_properties"] = prefix
-        self.metadata["prefix"] = prefix
-
-    @property
-    def value(self) -> str:
-        """설정 prefix 반환"""
-        return self.metadata.get("prefix", "")
 
 
 @overload
@@ -95,25 +76,20 @@ def ConfigurationProperties(cls_or_prefix: T | str = "") -> T | Callable[[T], T]
 
 
 def _apply_configuration_properties(cls: T, prefix: str) -> T:
-    """ConfigurationProperties 데코레이터 적용"""
-    # @Component로 등록하고 Element에 메타데이터 저장
-    container = ComponentContainer.get_or_create(cls)
-    container.add_elements(ConfigurationPropertiesElement(prefix))
+    """ConfigurationProperties 데코레이터 적용
+
+    클래스에 __bloom_configuration_properties__ 메타데이터를 추가합니다.
+    """
+    cls.__bloom_configuration_properties__ = True  # type: ignore
+    cls.__bloom_configuration_properties_prefix__ = prefix  # type: ignore
     return cls
 
 
 def is_configuration_properties(cls: type) -> bool:
     """주어진 클래스가 ConfigurationProperties인지 확인"""
-    container = ComponentContainer.get_container(cls)
-    if container is None:
-        return False
-    return container.has_element(ConfigurationPropertiesElement)
+    return getattr(cls, "__bloom_configuration_properties__", False)
 
 
 def get_prefix(cls: type) -> str:
     """ConfigurationProperties의 prefix 반환"""
-    container = ComponentContainer.get_container(cls)
-    if container is None:
-        return ""
-    prefixes = container.get_metadatas("prefix", default="")
-    return prefixes[0] if prefixes else ""
+    return getattr(cls, "__bloom_configuration_properties_prefix__", "")

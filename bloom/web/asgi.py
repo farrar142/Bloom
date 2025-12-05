@@ -11,6 +11,7 @@ from .response import Response, JSONResponse
 from .middleware.base import Middleware, MiddlewareStack
 from .middleware.request_scope import RequestScopeMiddleware
 from .routing.response_converter import get_response_converter_registry
+from .error import HTTPException
 
 if TYPE_CHECKING:
     pass
@@ -192,20 +193,13 @@ class ASGIApplication:
 
             await response(scope, receive, send)
 
+        except HTTPException:
+            # HTTPException은 미들웨어가 처리하도록 다시 raise
+            raise
         except Exception as e:
-            # 500 Internal Server Error
-            if self.debug:
-                import traceback
-
-                error_detail = traceback.format_exc()
-            else:
-                error_detail = str(e)
-
-            response = JSONResponse(
-                {"error": "Internal Server Error", "detail": error_detail},
-                status_code=500,
-            )
-            await response(scope, receive, send)
+            # 일반 예외도 미들웨어가 처리하도록 raise
+            # 단, ErrorHandlerMiddleware가 없을 경우를 위한 폴백
+            raise
 
     def _match_route(
         self, path: str, method: str

@@ -210,16 +210,28 @@ def _resolve_env_enum(env_marker: Any, default: Any) -> Any:
 
 
 def _extract_env_key(env_marker: Any) -> str | None:
-    """Env[Literal["KEY"]]에서 "KEY" 문자열 추출"""
+    """Env[Literal["KEY"]]에서 "KEY" 문자열 추출
+
+    다음 형식 모두 지원:
+    - Env[Literal["KEY"]] -> "KEY"
+    - Env[ForwardRef("KEY")] -> "KEY" (문자열 키 직접 사용 시)
+    """
+    from typing import ForwardRef
+
     marker_origin = get_origin(env_marker)
 
     if marker_origin is Env:
-        # Env[Literal["KEY"]] 형태
+        # Env[Literal["KEY"]] 또는 Env[ForwardRef("KEY")] 형태
         marker_args = get_args(env_marker)
         if marker_args:
-            literal_type = marker_args[0]
+            key_type = marker_args[0]
+
+            # ForwardRef("KEY") -> "KEY"
+            if isinstance(key_type, ForwardRef):
+                return key_type.__forward_arg__
+
             # Literal["KEY"]에서 "KEY" 추출
-            literal_args = get_args(literal_type)
+            literal_args = get_args(key_type)
             if literal_args:
                 return literal_args[0]
 

@@ -73,6 +73,9 @@ class Container(Generic[T]):
         except Exception:
             hints = {}
 
+        # 환경변수 타입 체크 함수
+        from bloom.config.env import is_env_type
+
         # 클래스 변수 중 타입힌트가 있는 것들
         for name, hint in hints.items():
             if name.startswith("_"):
@@ -81,6 +84,10 @@ class Container(Generic[T]):
             # 기본값 확인
             default = getattr(self.target, name, _MISSING)
             is_optional = default is not _MISSING
+
+            # 환경변수 타입은 별도 처리 (의존성으로 추가하지 않음)
+            if is_env_type(hint):
+                continue
 
             # AsyncProxy[T] 타입 확인
             is_async_proxy = False
@@ -249,11 +256,15 @@ class Container(Generic[T]):
         - AsyncProxy[T]로 선언된 필드: AsyncProxy로 주입 (await resolve() 필요)
         - CALL 스코프 + async factory: AsyncProxy 필수 (에러 발생)
         - SINGLETON/REQUEST/CALL: LazyProxy로 주입 (순환 의존성 지원)
+        - EnvStr/EnvInt 등 환경변수 타입: 환경변수 값 주입
 
         CALL 스코프 async factory 컴포넌트는 반드시 AsyncProxy[T]로 선언해야 합니다.
         """
         from .proxy import AsyncProxy, LazyProxy
         from .scope import ScopeEnum
+
+        # 환경변수 주입 먼저 처리
+        await self._inject_env_fields(instance)
 
         for dep in self.dependencies:
             # 이미 값이 있으면 스킵
@@ -311,6 +322,34 @@ class Container(Generic[T]):
                 # CALL 스코프는 접근 시점에 컨텍스트 체크 후 resolve
                 proxy: LazyProxy[Any] = LazyProxy(dep_container, manager)
                 setattr(instance, dep.field_name, proxy)
+
+    async def _inject_env_fields(self, instance: T) -> None:
+        """환경변수 필드 주입
+
+        EnvStr["KEY"], EnvInt["KEY"] 등의 환경변수 타입 필드에 값을 주입합니다.
+        """
+        from bloom.config.env import is_env_type, resolve_env_value
+
+        # 타입 힌트 가져오기
+        try:
+            hints = self._resolve_type_hints()
+        except Exception:
+            return
+
+        for name, hint in hints.items():
+            if name.startswith("_"):
+                continue
+
+            # 환경변수 타입인지 확인
+            if not is_env_type(hint):
+                continue
+
+            # 환경변수 값 해석
+            default = getattr(self.target, name, None)
+            value = resolve_env_value(hint, default)
+
+            # 값 주입
+            setattr(instance, name, value)
 
     def _resolve_forward_ref(
         self,
