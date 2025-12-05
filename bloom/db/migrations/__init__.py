@@ -19,6 +19,13 @@ from .operations import (
 )
 from .schema import SchemaEditor, SchemaDiff, SchemaIntrospector
 from .generator import MigrationGenerator
+from .app import (
+    AppMigration,
+    AppDependencyGraph,
+    AppDependencyAnalyzer,
+    AppMigrationGenerator,
+    AppMigrationManager,
+)
 
 __all__ = [
     # Base
@@ -46,4 +53,10 @@ __all__ = [
     "SchemaIntrospector",
     # Generator
     "MigrationGenerator",
+    # App-based migrations
+    "AppMigration",
+    "AppDependencyGraph",
+    "AppDependencyAnalyzer",
+    "AppMigrationGenerator",
+    "AppMigrationManager",
 ]
