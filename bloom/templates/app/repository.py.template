@@ -12,4 +12,4 @@ from .entity import {entity_name}
 class {entity_name}Repository(CrudRepository[{entity_name}, int]):
     """{entity_name} 레포지토리"""
 
-    entity = {entity_name}
+    pass

@@ -50,7 +50,7 @@ def startapp(app_name: str, directory: str) -> None:
     """Create a new app with boilerplate code.
 
     Creates a new app directory with the following structure (Django-style):
-    
+
     \b
     {app_name}/
     ├── __init__.py
@@ -60,63 +60,68 @@ def startapp(app_name: str, directory: str) -> None:
     ├── controller.py  # REST API endpoints
     └── migrations/    # App-specific migrations (Django-style)
         └── __init__.py
-    
+
     Example:
         bloom startapp users
         bloom startapp products --directory=myproject/apps
     """
     template_dir = get_template_dir() / "app"
-    
+
     if not template_dir.exists():
         click.echo(f"Error: Template directory not found: {template_dir}", err=True)
         raise SystemExit(1)
-    
+
     # 앱 디렉토리 생성
     app_dir = Path(directory) / app_name
     if app_dir.exists():
         click.echo(f"Error: Directory already exists: {app_dir}", err=True)
         raise SystemExit(1)
-    
+
     app_dir.mkdir(parents=True)
-    
+
     # migrations 디렉토리 생성 (Django-style: {app}/migrations/)
     migrations_dir = app_dir / "migrations"
     migrations_dir.mkdir(parents=True)
-    
+
     # migrations/__init__.py 생성
     migrations_init = migrations_dir / "__init__.py"
-    migrations_init.write_text(f'"""Migrations for {app_name} app"""\n', encoding="utf-8")
+    migrations_init.write_text(
+        f'"""Migrations for {app_name} app"""\n', encoding="utf-8"
+    )
     click.echo(f"  Created: {migrations_init}")
-    
+
     # 템플릿 변수
     # 앱 이름에서 엔티티 이름 추론: users -> User, order_items -> OrderItem
     parts = app_name.split("_")
     entity_name = "".join(p.title() for p in parts)
     if entity_name.endswith("s") and len(entity_name) > 1:
         entity_name = entity_name[:-1]  # Users -> User
-    
+
     template_vars = {
         "app_name": app_name,
         "app_name_title": app_name.replace("_", " ").title(),
         "entity_name": entity_name,
     }
-    
+
     # 템플릿 파일 복사
     for template_file in template_dir.glob("*.template"):
         output_name = template_file.stem  # .template 제거
         output_path = app_dir / output_name
-        
+
         # 템플릿 내용 읽기
         content = template_file.read_text(encoding="utf-8")
-        
+
         # 변수 치환
         for key, value in template_vars.items():
             content = content.replace(f"{{{key}}}", value)
-        
+
+        # 이스케이프된 중괄호 처리: {{ -> {, }} -> }
+        content = content.replace("{{", "{").replace("}}", "}")
+
         # 파일 저장
         output_path.write_text(content, encoding="utf-8")
         click.echo(f"  Created: {output_path}")
-    
+
     click.echo(f"\nApp '{app_name}' created successfully!")
     click.echo(f"\nNext steps:")
     click.echo(f"  1. Edit {app_name}/entity.py to define your models")

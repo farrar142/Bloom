@@ -197,9 +197,7 @@ class AppDependencyAnalyzer:
                     return getattr(module, ref, None)
         return None
 
-    def build_dependency_graph(
-        self, entity_classes: list[type]
-    ) -> AppDependencyGraph:
+    def build_dependency_graph(self, entity_classes: list[type]) -> AppDependencyGraph:
         """엔티티들로부터 앱 의존성 그래프 생성"""
         graph = AppDependencyGraph()
 
@@ -247,7 +245,7 @@ class AppMigrationGenerator:
 
     def __init__(
         self,
-        session_factory: "SessionFactory" = None,
+        session_factory: "SessionFactory|None" = None,
         project_root: str | Path = ".",
     ):
         self._session_factory = session_factory
@@ -256,7 +254,7 @@ class AppMigrationGenerator:
 
     def get_app_migrations_dir(self, app_name: str) -> Path:
         """앱의 마이그레이션 디렉토리 가져오기 (없으면 생성)
-        
+
         Django 스타일: {project_root}/{app}/migrations/
         """
         app_dir = self._project_root / app_name / "migrations"
@@ -568,7 +566,7 @@ class AppMigrationManager:
 
     def _load_app_migrations(self, app_name: str) -> MigrationRegistry:
         """앱의 마이그레이션 로드
-        
+
         Django 스타일: {project_root}/{app}/migrations/
         """
         if app_name in self._registries:
@@ -585,7 +583,7 @@ class AppMigrationManager:
 
     def _get_all_apps(self) -> list[str]:
         """모든 앱 목록
-        
+
         명시적으로 지정되었거나, {app}/migrations/ 디렉토리가 있는 앱들 검색
         """
         if self._app_names:
@@ -797,7 +795,9 @@ class AppMigrationManager:
             all_migrations = registry.get_all()
 
             result[app] = {
-                "applied": sorted([m.name for m in all_migrations if m.name in applied]),
+                "applied": sorted(
+                    [m.name for m in all_migrations if m.name in applied]
+                ),
                 "pending": [m.name for m in all_migrations if m.name not in applied],
                 "total": len(all_migrations),
             }

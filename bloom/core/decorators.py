@@ -30,6 +30,19 @@ def Component[T: type](cls: T) -> T:
 
 @overload
 def Component[T: type](
+    cls: T,
+    *,
+    scope: ScopeEnum = ScopeEnum.SINGLETON,
+    name: str | None = None,
+    primary: bool = False,
+    lazy: bool = True,
+) -> T:
+    """@Component(cls, ...) - 모든 옵션 지정"""
+    ...
+
+
+@overload
+def Component[T: type](
     *,
     scope: ScopeEnum = ScopeEnum.SINGLETON,
     name: str | None = None,
@@ -334,13 +347,13 @@ class Value:
 
 
 @overload
-def Scope(scope: ScopeEnum) -> Callable[[type[T]], type[T]]:
+def Scope(scope_or_cls: ScopeEnum) -> Callable[[type[T]], type[T]]:
     """@Scope(ScopeEnum.XXX) 형태"""
     ...
 
 
 @overload
-def Scope[T: type](cls: T) -> T:
+def Scope[T: type](scope_or_cls: T) -> T:
     """직접 적용 불가 - 항상 인자 필요"""
     ...
 
@@ -433,7 +446,7 @@ def Lazy[T: type](cls: T) -> T:
 # === @Order ===
 
 
-def Order(value: int) -> Callable[[type[T]], type[T]]:
+def Order[T](value: int) -> Callable[[type[T]], type[T]]:
     """
     초기화 순서 지정 (낮을수록 먼저).
 
@@ -449,7 +462,7 @@ def Order(value: int) -> Callable[[type[T]], type[T]]:
             first: FirstService
     """
 
-    def decorator[T: type](cls: T) -> T:
+    def decorator(cls: type[T]) -> type[T]:
         cls.__bloom_order__ = value  # type: ignore
         return cls
 

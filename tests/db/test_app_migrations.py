@@ -660,7 +660,7 @@ class TestIntegrationScenario:
         # Profile 테이블이 새로 추가되어야 하므로 m2가 생성되어야 함
         if m2:
             generator.write_migration(m2)
-            
+
             # 새 매니저 인스턴스 생성하여 새 마이그레이션 파일 로드
             manager2 = AppMigrationManager(
                 session_factory=session_factory,
@@ -669,7 +669,7 @@ class TestIntegrationScenario:
             applied2 = manager2.migrate_all()
             # 새 마이그레이션이 적용되어야 함
             assert len(applied2) >= 1
-            
+
             # Profile 테이블이 생성되었는지 확인
             with session_factory.session() as session:
                 tables = session._connection.execute(

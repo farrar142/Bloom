@@ -39,6 +39,7 @@ class TestExceptionHandler:
 
         assert response.status_code == 404
         import json
+
         body = json.loads(response.body)
         assert body["error"]["code"] == "NOT_FOUND"
 
@@ -60,6 +61,7 @@ class TestExceptionHandler:
 
         assert response.status_code == 422
         import json
+
         body = json.loads(response.body)
         assert body["error"]["code"] == "CANCEL_NOT_ALLOWED"
 
@@ -81,6 +83,7 @@ class TestExceptionHandler:
 
         assert response.status_code == 422
         import json
+
         body = json.loads(response.body)
         assert body["error"]["code"] == "INSUFFICIENT_STOCK"
         assert body["error"]["details"]["product_id"] == 1
@@ -103,6 +106,7 @@ class TestExceptionHandler:
 
         assert response.status_code == 400
         import json
+
         body = json.loads(response.body)
         assert body["error"]["code"] == "VALIDATION_ERROR"
 
@@ -127,14 +131,25 @@ class TestAppMigrations:
 
         # 마이그레이션 파일 존재 확인
         assert (demo_app_dir / "users" / "migrations" / "0001_create_user.py").exists()
-        assert (demo_app_dir / "products" / "migrations" / "0001_create_product.py").exists()
-        assert (demo_app_dir / "orders" / "migrations" / "0001_create_order.py").exists()
-        assert (demo_app_dir / "notifications" / "migrations" / "0001_create_notification.py").exists()
+        assert (
+            demo_app_dir / "products" / "migrations" / "0001_create_product.py"
+        ).exists()
+        assert (
+            demo_app_dir / "orders" / "migrations" / "0001_create_order.py"
+        ).exists()
+        assert (
+            demo_app_dir
+            / "notifications"
+            / "migrations"
+            / "0001_create_notification.py"
+        ).exists()
 
     def test_migration_dependencies(self):
         """마이그레이션 의존성 확인"""
         from examples.demo_app.orders.migrations import migration as orders_migration
-        from examples.demo_app.notifications.migrations import migration as notifications_migration
+        from examples.demo_app.notifications.migrations import (
+            migration as notifications_migration,
+        )
 
         # orders 마이그레이션은 users, products에 의존
         assert "users:0001_create_user" in orders_migration.dependencies
@@ -169,7 +184,9 @@ class TestAppMigrations:
         users_idx = next((i for i, m in enumerate(applied) if "users" in m), -1)
         products_idx = next((i for i, m in enumerate(applied) if "products" in m), -1)
         orders_idx = next((i for i, m in enumerate(applied) if "orders" in m), -1)
-        notifications_idx = next((i for i, m in enumerate(applied) if "notifications" in m), -1)
+        notifications_idx = next(
+            (i for i, m in enumerate(applied) if "notifications" in m), -1
+        )
 
         # users, products가 먼저 적용되어야 함
         if orders_idx >= 0:
@@ -230,7 +247,7 @@ class TestHTTPEndpoints:
 
         client = TestClient(application.asgi)
         response = await client.get("/health")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"

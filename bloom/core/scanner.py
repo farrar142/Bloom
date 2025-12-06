@@ -27,7 +27,9 @@ class Scanner:
         self._manager = manager
         self._scanned_modules: set[str] = set()
 
-    def scan(self, *modules: ModuleType | str | type) -> list["Container[Any]"]:
+    def scan(
+        self, *modules: ModuleType | str | type | object
+    ) -> list["Container[Any]"]:
         """
         모듈들을 스캔하여 컴포넌트 수집.
 
@@ -112,7 +114,7 @@ class Scanner:
 
 
 def scan_modules(
-    *modules: ModuleType | str | type,
+    *modules: ModuleType | str | type | object,
     manager: "ContainerManager | None" = None,
 ) -> list["Container[Any]"]:
     """
