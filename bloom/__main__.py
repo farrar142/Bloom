@@ -49,7 +49,7 @@ def main() -> None:
 def startapp(app_name: str, directory: str) -> None:
     """Create a new app with boilerplate code.
 
-    Creates a new app directory with the following structure:
+    Creates a new app directory with the following structure (Django-style):
     
     \b
     {app_name}/
@@ -57,7 +57,9 @@ def startapp(app_name: str, directory: str) -> None:
     ├── entity.py      # Entity definitions with __app__ attribute
     ├── repository.py  # CrudRepository implementation
     ├── service.py     # Service layer with business logic
-    └── controller.py  # REST API endpoints
+    ├── controller.py  # REST API endpoints
+    └── migrations/    # App-specific migrations (Django-style)
+        └── __init__.py
     
     Example:
         bloom startapp users
@@ -76,6 +78,15 @@ def startapp(app_name: str, directory: str) -> None:
         raise SystemExit(1)
     
     app_dir.mkdir(parents=True)
+    
+    # migrations 디렉토리 생성 (Django-style: {app}/migrations/)
+    migrations_dir = app_dir / "migrations"
+    migrations_dir.mkdir(parents=True)
+    
+    # migrations/__init__.py 생성
+    migrations_init = migrations_dir / "__init__.py"
+    migrations_init.write_text(f'"""Migrations for {app_name} app"""\n', encoding="utf-8")
+    click.echo(f"  Created: {migrations_init}")
     
     # 템플릿 변수
     # 앱 이름에서 엔티티 이름 추론: users -> User, order_items -> OrderItem

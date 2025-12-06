@@ -440,13 +440,12 @@ bloom:
     port: 6381
 """
         # 임시 YAML 파일 생성
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             yaml_path = f.name
 
         try:
+
             @ConfigurationProperties("bloom.redis")
             @dataclass
             class RedisConfig:

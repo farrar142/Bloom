@@ -227,11 +227,12 @@ class AppMigrationGenerator:
     """앱별 마이그레이션 생성기
 
     각 앱의 마이그레이션을 별도 디렉토리에 관리합니다.
+    Django 스타일로 {app}/migrations/ 구조를 사용합니다.
 
     Examples:
         generator = AppMigrationGenerator(
             session_factory=sf,
-            base_dir="migrations/"
+            project_root="."  # 프로젝트 루트 디렉토리
         )
 
         # accounts 앱 마이그레이션 생성
@@ -240,23 +241,25 @@ class AppMigrationGenerator:
             entity_classes=[User, Profile]
         )
 
-        # 파일로 저장
+        # 파일로 저장 -> accounts/migrations/0001_xxx.py
         generator.write_migration(migration)
     """
 
     def __init__(
         self,
         session_factory: "SessionFactory" = None,
-        base_dir: str | Path = "migrations",
+        project_root: str | Path = ".",
     ):
         self._session_factory = session_factory
-        self._base_dir = Path(base_dir)
-        self._base_dir.mkdir(parents=True, exist_ok=True)
+        self._project_root = Path(project_root)
         self._analyzer = AppDependencyAnalyzer()
 
     def get_app_migrations_dir(self, app_name: str) -> Path:
-        """앱의 마이그레이션 디렉토리 가져오기 (없으면 생성)"""
-        app_dir = self._base_dir / app_name
+        """앱의 마이그레이션 디렉토리 가져오기 (없으면 생성)
+        
+        Django 스타일: {project_root}/{app}/migrations/
+        """
+        app_dir = self._project_root / app_name / "migrations"
         app_dir.mkdir(parents=True, exist_ok=True)
 
         # __init__.py 생성
@@ -532,6 +535,7 @@ class AppMigrationManager:
     """앱별 마이그레이션 매니저
 
     앱별 마이그레이션을 로드하고 의존성 순서대로 적용합니다.
+    Django 스타일로 {app}/migrations/ 구조를 사용합니다.
     """
 
     MIGRATION_TABLE = "_bloom_migrations"
@@ -539,10 +543,12 @@ class AppMigrationManager:
     def __init__(
         self,
         session_factory: "SessionFactory",
-        base_dir: str | Path = "migrations",
+        project_root: str | Path = ".",
+        app_names: list[str] | None = None,
     ):
         self._session_factory = session_factory
-        self._base_dir = Path(base_dir)
+        self._project_root = Path(project_root)
+        self._app_names = app_names  # 명시적 앱 목록 (None이면 자동 검색)
         self._analyzer = AppDependencyAnalyzer()
         self._registries: dict[str, MigrationRegistry] = {}
 
@@ -561,28 +567,39 @@ class AppMigrationManager:
         connection.commit()
 
     def _load_app_migrations(self, app_name: str) -> MigrationRegistry:
-        """앱의 마이그레이션 로드"""
+        """앱의 마이그레이션 로드
+        
+        Django 스타일: {project_root}/{app}/migrations/
+        """
         if app_name in self._registries:
             return self._registries[app_name]
 
         registry = MigrationRegistry()
-        app_dir = self._base_dir / app_name
+        app_migrations_dir = self._project_root / app_name / "migrations"
 
-        if app_dir.exists():
-            registry.load_from_directory(app_dir)
+        if app_migrations_dir.exists():
+            registry.load_from_directory(app_migrations_dir)
 
         self._registries[app_name] = registry
         return registry
 
     def _get_all_apps(self) -> list[str]:
-        """모든 앱 목록"""
-        if not self._base_dir.exists():
+        """모든 앱 목록
+        
+        명시적으로 지정되었거나, {app}/migrations/ 디렉토리가 있는 앱들 검색
+        """
+        if self._app_names:
+            return self._app_names
+
+        if not self._project_root.exists():
             return []
 
         apps = []
-        for item in self._base_dir.iterdir():
+        for item in self._project_root.iterdir():
             if item.is_dir() and not item.name.startswith("_"):
-                apps.append(item.name)
+                migrations_dir = item / "migrations"
+                if migrations_dir.exists() and migrations_dir.is_dir():
+                    apps.append(item.name)
         return apps
 
     def get_applied_migrations(self, app_name: str | None = None) -> set[str]:

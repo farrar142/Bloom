@@ -18,8 +18,8 @@ migration = AppMigration(
     name="0001_create_order",
     app_name="orders",
     dependencies=[
-        "users:0001_create_user",      # user_id FK
-        "products:0001_create_product", # product_id FK
+        "users:0001_create_user",  # user_id FK
+        "products:0001_create_product",  # product_id FK
     ],
     operations=[
         CreateTable(

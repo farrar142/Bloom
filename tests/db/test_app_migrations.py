@@ -108,31 +108,33 @@ def session_factory():
 
 
 class TestAppMigrationDirectory:
-    """앱별 마이그레이션 디렉토리 테스트"""
+    """앱별 마이그레이션 디렉토리 테스트 (Django 스타일: {app}/migrations/)"""
 
     def test_create_app_migration_directory(self, temp_migrations_dir):
-        """앱별 마이그레이션 디렉토리 생성"""
+        """앱별 마이그레이션 디렉토리 생성 (Django 스타일)"""
         from bloom.db.migrations import AppMigrationGenerator
 
-        generator = AppMigrationGenerator(base_dir=temp_migrations_dir)
+        generator = AppMigrationGenerator(project_root=temp_migrations_dir)
 
-        # accounts 앱 디렉토리 생성
+        # accounts 앱 디렉토리 생성 -> accounts/migrations/
         accounts_dir = generator.get_app_migrations_dir("accounts")
         assert accounts_dir.exists()
-        assert accounts_dir.name == "accounts"
+        assert accounts_dir.name == "migrations"
+        assert accounts_dir.parent.name == "accounts"
         assert (accounts_dir / "__init__.py").exists()
 
     def test_multiple_app_directories(self, temp_migrations_dir):
-        """여러 앱 디렉토리 생성"""
+        """여러 앱 디렉토리 생성 (Django 스타일)"""
         from bloom.db.migrations import AppMigrationGenerator
 
-        generator = AppMigrationGenerator(base_dir=temp_migrations_dir)
+        generator = AppMigrationGenerator(project_root=temp_migrations_dir)
 
         apps = ["accounts", "blog", "orders"]
         for app in apps:
             app_dir = generator.get_app_migrations_dir(app)
             assert app_dir.exists()
-            assert (temp_migrations_dir / app).is_dir()
+            # Django 스타일: {project_root}/{app}/migrations/
+            assert (temp_migrations_dir / app / "migrations").is_dir()
 
 
 # =============================================================================
@@ -152,7 +154,7 @@ class TestAppMigrationGeneration:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # accounts 앱 엔티티만으로 마이그레이션 생성
@@ -176,12 +178,12 @@ class TestAppMigrationGeneration:
     async def test_migration_file_saved_in_app_directory(
         self, session_factory, temp_migrations_dir
     ):
-        """마이그레이션 파일이 앱 디렉토리에 저장됨"""
+        """마이그레이션 파일이 앱/migrations 디렉토리에 저장됨 (Django 스타일)"""
         from bloom.db.migrations import AppMigrationGenerator
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         migration = generator.make_app_migrations(
@@ -193,7 +195,9 @@ class TestAppMigrationGeneration:
         file_path = generator.write_migration(migration)
 
         assert file_path.exists()
-        assert file_path.parent.name == "accounts"
+        # Django 스타일: {project_root}/accounts/migrations/xxx.py
+        assert file_path.parent.name == "migrations"
+        assert file_path.parent.parent.name == "accounts"
         assert file_path.suffix == ".py"
 
     @pytest.mark.asyncio
@@ -205,7 +209,7 @@ class TestAppMigrationGeneration:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # accounts 앱 첫 번째 마이그레이션
@@ -328,7 +332,7 @@ class TestMigrationDependencies:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # 먼저 accounts 마이그레이션 생성
@@ -356,7 +360,7 @@ class TestMigrationDependencies:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # accounts 첫 번째 마이그레이션
@@ -395,7 +399,7 @@ class TestMigrationApplyOrder:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # accounts 먼저 생성 (다른 앱이 의존함)
@@ -415,7 +419,7 @@ class TestMigrationApplyOrder:
         # 매니저로 적용
         manager = AppMigrationManager(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # 의존성 순서대로 적용됨 (accounts → blog)
@@ -435,7 +439,7 @@ class TestMigrationApplyOrder:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         migration = generator.make_app_migrations(
@@ -446,7 +450,7 @@ class TestMigrationApplyOrder:
 
         manager = AppMigrationManager(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # 첫 번째 적용
@@ -473,7 +477,7 @@ class TestAppMigrationStatus:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # accounts, blog 마이그레이션 생성
@@ -485,7 +489,7 @@ class TestAppMigrationStatus:
 
         manager = AppMigrationManager(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # accounts만 적용
@@ -515,7 +519,7 @@ class TestAppMigrationRollback:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         migration = generator.make_app_migrations("accounts", [User])
@@ -523,7 +527,7 @@ class TestAppMigrationRollback:
 
         manager = AppMigrationManager(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # 적용
@@ -546,7 +550,7 @@ class TestAppMigrationRollback:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # accounts → blog 의존성
@@ -558,7 +562,7 @@ class TestAppMigrationRollback:
 
         manager = AppMigrationManager(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         manager.migrate_all()
@@ -586,7 +590,7 @@ class TestIntegrationScenario:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # 1. 각 앱별 마이그레이션 생성
@@ -602,7 +606,7 @@ class TestIntegrationScenario:
         # 2. 모든 마이그레이션 적용 (의존성 순서)
         manager = AppMigrationManager(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         applied = manager.migrate_all()
@@ -635,7 +639,7 @@ class TestIntegrationScenario:
 
         generator = AppMigrationGenerator(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
 
         # 1. 초기 마이그레이션 (User만)
@@ -645,7 +649,7 @@ class TestIntegrationScenario:
 
         manager = AppMigrationManager(
             session_factory=session_factory,
-            base_dir=temp_migrations_dir,
+            project_root=temp_migrations_dir,
         )
         applied1 = manager.migrate_all()
         assert len(applied1) == 1
@@ -660,7 +664,7 @@ class TestIntegrationScenario:
             # 새 매니저 인스턴스 생성하여 새 마이그레이션 파일 로드
             manager2 = AppMigrationManager(
                 session_factory=session_factory,
-                base_dir=temp_migrations_dir,
+                project_root=temp_migrations_dir,
             )
             applied2 = manager2.migrate_all()
             # 새 마이그레이션이 적용되어야 함

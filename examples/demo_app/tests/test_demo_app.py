@@ -116,25 +116,25 @@ class TestAppMigrations:
     """앱별 마이그레이션 테스트"""
 
     def test_migration_files_exist(self):
-        """마이그레이션 파일 존재 확인"""
-        migrations_dir = Path(__file__).parent.parent / "migrations"
+        """마이그레이션 파일 존재 확인 (Django 스타일: {app}/migrations/)"""
+        demo_app_dir = Path(__file__).parent.parent
 
-        # 앱별 디렉토리 존재 확인
-        assert (migrations_dir / "users").exists()
-        assert (migrations_dir / "products").exists()
-        assert (migrations_dir / "orders").exists()
-        assert (migrations_dir / "notifications").exists()
+        # 앱별 migrations 디렉토리 존재 확인
+        assert (demo_app_dir / "users" / "migrations").exists()
+        assert (demo_app_dir / "products" / "migrations").exists()
+        assert (demo_app_dir / "orders" / "migrations").exists()
+        assert (demo_app_dir / "notifications" / "migrations").exists()
 
         # 마이그레이션 파일 존재 확인
-        assert (migrations_dir / "users" / "0001_create_user.py").exists()
-        assert (migrations_dir / "products" / "0001_create_product.py").exists()
-        assert (migrations_dir / "orders" / "0001_create_order.py").exists()
-        assert (migrations_dir / "notifications" / "0001_create_notification.py").exists()
+        assert (demo_app_dir / "users" / "migrations" / "0001_create_user.py").exists()
+        assert (demo_app_dir / "products" / "migrations" / "0001_create_product.py").exists()
+        assert (demo_app_dir / "orders" / "migrations" / "0001_create_order.py").exists()
+        assert (demo_app_dir / "notifications" / "migrations" / "0001_create_notification.py").exists()
 
     def test_migration_dependencies(self):
         """마이그레이션 의존성 확인"""
-        from examples.demo_app.migrations.orders import migration as orders_migration
-        from examples.demo_app.migrations.notifications import migration as notifications_migration
+        from examples.demo_app.orders.migrations import migration as orders_migration
+        from examples.demo_app.notifications.migrations import migration as notifications_migration
 
         # orders 마이그레이션은 users, products에 의존
         assert "users:0001_create_user" in orders_migration.dependencies
@@ -154,12 +154,12 @@ class TestAppMigrations:
         backend = SQLiteBackend(":memory:")
         session_factory = SessionFactory(backend)
 
-        # demo_app 마이그레이션 디렉토리
-        migrations_dir = Path(__file__).parent.parent / "migrations"
+        # demo_app 디렉토리 (Django 스타일: {app}/migrations/ 검색)
+        demo_app_dir = Path(__file__).parent.parent
 
         manager = AppMigrationManager(
             session_factory=session_factory,
-            base_dir=migrations_dir,
+            project_root=demo_app_dir,
         )
 
         # 마이그레이션 적용

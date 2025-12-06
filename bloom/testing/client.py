@@ -333,10 +333,12 @@ class WebSocketTestClient:
 
     async def send_text(self, data: str) -> None:
         """텍스트 메시지 전송"""
-        await self._client_to_server.put({
-            "type": "websocket.receive",
-            "text": data,
-        })
+        await self._client_to_server.put(
+            {
+                "type": "websocket.receive",
+                "text": data,
+            }
+        )
 
     async def send_json(self, data: Any) -> None:
         """JSON 메시지 전송"""
@@ -344,10 +346,12 @@ class WebSocketTestClient:
 
     async def send_bytes(self, data: bytes) -> None:
         """바이너리 메시지 전송"""
-        await self._client_to_server.put({
-            "type": "websocket.receive",
-            "bytes": data,
-        })
+        await self._client_to_server.put(
+            {
+                "type": "websocket.receive",
+                "bytes": data,
+            }
+        )
 
     async def receive_text(self, timeout: float = 1.0) -> str:
         """텍스트 메시지 수신"""
@@ -382,8 +386,10 @@ class WebSocketTestClient:
 
     async def close(self, code: int = 1000) -> None:
         """WebSocket 연결 종료"""
-        await self._client_to_server.put({
-            "type": "websocket.disconnect",
-            "code": code,
-        })
+        await self._client_to_server.put(
+            {
+                "type": "websocket.disconnect",
+                "code": code,
+            }
+        )
         self._closed = True

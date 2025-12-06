@@ -388,10 +388,16 @@ class TestHTTPClient:
             async def test_methods(self):
                 async with self.test_client(app) as client:
                     assert (await client.get("/api/resource")).json()["method"] == "GET"
-                    assert (await client.post("/api/resource")).json()["method"] == "POST"
+                    assert (await client.post("/api/resource")).json()[
+                        "method"
+                    ] == "POST"
                     assert (await client.put("/api/resource")).json()["method"] == "PUT"
-                    assert (await client.patch("/api/resource")).json()["method"] == "PATCH"
-                    assert (await client.delete("/api/resource")).json()["method"] == "DELETE"
+                    assert (await client.patch("/api/resource")).json()[
+                        "method"
+                    ] == "PATCH"
+                    assert (await client.delete("/api/resource")).json()[
+                        "method"
+                    ] == "DELETE"
 
         test = MyTest()
         await test._run_test("test_methods")
