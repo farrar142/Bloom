@@ -8,13 +8,12 @@ from typing import Any, Callable, Awaitable, TYPE_CHECKING
 
 from .trie import PathTrie, TrieMatch
 
-if TYPE_CHECKING:
-    from ..request import HttpRequest
-    from ..response import HttpResponse
+from ..request import HttpRequest
+from ..response import HttpResponse
 
 
 # Type alias for route handlers
-RouteHandler = Callable[..., Awaitable[Any] | Any]
+RouteHandler = Callable[[HttpRequest], Awaitable[Any] | Any]
 
 
 @dataclass

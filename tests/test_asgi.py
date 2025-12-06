@@ -29,3 +29,11 @@ class TestASGIApplication:
 
         assert response.status_code == 200
         assert response.json() == {"message": "Hello, POST!"}
+
+    @pytest.mark.asyncio
+    async def test_get_matched_pattern_request(self, asgi_client: AsyncClient):
+        """GET 요청 테스트"""
+        response = await asgi_client.post("/users/123")
+
+        assert response.status_code == 200
+        assert response.json() == {"message": "Hello, 123!"}

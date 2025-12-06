@@ -20,30 +20,16 @@ class ASGIApplication:
         self.debug = debug
         self.response_converter_registry = ResponseConverterRegistry()
         self.router = Router()
-        self.router.add_route("/response", "GET", lambda: {"message": "Hello, ASGI!"})
-        self.router.add_route("/response", "POST", lambda: {"message": "Hello, POST!"})
+        self.router.add_route("/response", "GET", lambda x: {"message": "Hello, ASGI!"})
+        self.router.add_route(
+            "/response", "POST", lambda x: {"message": "Hello, POST!"}
+        )
+        self.router.add_route(
+            "/users/{user_id}",
+            "POST",
+            lambda x: {"message": f"Hello, {x.path_params.get('user_id')}!"},
+        )
         # path -> {method -> (handler, pattern, param_names)}
-
-    def _compile_path_pattern(self, path: str) -> tuple[re.Pattern, list[str]]:
-        """경로 패턴을 정규식으로 컴파일
-
-        /users/{id} → /users/(?P<id>[^/]+)
-        """
-        param_names: list[str] = []
-        pattern_parts: list[str] = []
-
-        for part in path.split("/"):
-            if part.startswith("{") and part.endswith("}"):
-                param_name = part[1:-1]
-                param_names.append(param_name)
-                pattern_parts.append(f"(?P<{param_name}>[^/]+)")
-            else:
-                pattern_parts.append(re.escape(part))
-
-        pattern_str = "/".join(pattern_parts)
-        # 정확히 매칭되도록 ^ $ 추가
-        pattern = re.compile(f"^{pattern_str}$")
-        return pattern, param_names
 
     # === Request Handler ===
 
@@ -54,10 +40,6 @@ class ASGIApplication:
         라우트 매칭 후 핸들러 실행.
         """
         self.logger.debug(f"Received request scope: {scope}")
-        if scope["type"] == "lifespan":
-            await self._handle_lifespan(scope, receive, send)
-            return
-
         if scope["type"] != "http":
             # WebSocket 등은 별도 처리 필요
             response = JSONResponse(
@@ -66,11 +48,15 @@ class ASGIApplication:
             )
             await response(scope, receive, send)
             return
-        request = HttpRequest
-        router = self.router.match(scope["path"], scope["method"])
-        if router is None:
+        request = HttpRequest(scope, receive)
+        route = self.router.match(scope["path"], scope["method"])
+        if route is None:
             return await JSONResponse({})(scope, receive, send)
-        result = router.handler()
+        self.logger.info(
+            f"Matched route: path={route.route}, params={route.path_params}"
+        )
+        request._scope["path_params"] = route.path_params
+        result = route.handler(request)
         if iscoroutine(result):
             result = await result
         response = self.response_converter_registry.convert(result)
@@ -112,5 +98,9 @@ class ASGIApplication:
 
     # === ASGI Interface ===
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "lifespan":
+            await self._handle_lifespan(scope, receive, send)
+            return
+
         """ASGI 진입점"""
         await self._handle_request(scope, receive, send)

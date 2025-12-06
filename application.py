@@ -1,3 +1,3 @@
-from bloom.web.asgi import ASGIApplication
+from bloom import Application
 
-app = ASGIApplication(debug=True)
+app = Application()
