@@ -5,12 +5,17 @@ from httpx import AsyncClient
 from httpx._transports.asgi import ASGITransport
 from bloom.web.asgi import ASGIApplication
 from bloom import Application
-from bloom.core import Component
+from bloom.core import Component, Service
+
+
+@Service
+class MyService:
+    pass
 
 
 @Component
 class MyComponent:
-    pass
+    service: MyService
 
 
 @pytest.fixture(scope="session", autouse=True)
