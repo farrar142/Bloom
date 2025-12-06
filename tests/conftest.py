@@ -10,7 +10,8 @@ from bloom.core import Component, Service
 
 @Service
 class MyService:
-    pass
+    def greet(self, name: str) -> str:
+        return f"Hello, {name}!"
 
 
 @Component

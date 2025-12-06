@@ -22,4 +22,4 @@ class TestASGIApplication:
         await application.ready()
         instance = application.container_manager.get_instance(MyComponent)
         assert instance.service is not None
-        pass
+        assert instance.service.greet("World") == "Hello, World!"

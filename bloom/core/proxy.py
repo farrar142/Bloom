@@ -28,6 +28,12 @@ class LazyProxy[T]:
         """
         실제 인스턴스 획득 (지연 로딩).
         """
+        if not object.__getattribute__(self, "_lp_resolved"):
+            container: "Container[T]" = object.__getattribute__(self, "_lp_container")
+            manager: "ContainerManager" = object.__getattribute__(self, "_lp_manager")
+            instance = manager.get_instance(container.kls)
+            object.__setattr__(self, "_lp_instance", instance)
+            object.__setattr__(self, "_lp_resolved", True)
         return object.__getattribute__(self, "_lp_instance")
 
     def _lp_get_target_type(self) -> type[T]:
