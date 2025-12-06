@@ -19,26 +19,29 @@ class LazyProxy[T]:
         container: "Container[T]",
         manager: "ContainerManager",
     ) -> None:
-        object.__setattr__(self, "_lp_container", container)
-        object.__setattr__(self, "_lp_manager", manager)
-        object.__setattr__(self, "_lp_instance", None)
-        object.__setattr__(self, "_lp_resolved", False)
+        self._lp_container = container
+        self._lp_manager = manager
+        self._lp_instance = None
+        self._lp_resolved = False
 
     def _lp_resolve(self) -> T:
         """
         실제 인스턴스 획득 (지연 로딩).
         """
-        if not object.__getattribute__(self, "_lp_resolved"):
-            container: "Container[T]" = object.__getattribute__(self, "_lp_container")
-            manager: "ContainerManager" = object.__getattribute__(self, "_lp_manager")
+        if not self._lp_resolved:
+
+            container: "Container[T]" = self._lp_container
+            manager: "ContainerManager" = self._lp_manager
             instance = manager.get_instance(container.kls)
-            object.__setattr__(self, "_lp_instance", instance)
-            object.__setattr__(self, "_lp_resolved", True)
-        return object.__getattribute__(self, "_lp_instance")
+            self._lp_instance = instance
+            self._lp_resolved = True
+        if self._lp_instance is None:
+            raise RuntimeError("LazyProxy failed to resolve the target instance.")
+        return self._lp_instance
 
     def _lp_get_target_type(self) -> type[T]:
         """프록시 대상 타입 반환"""
-        container: Container[T] = object.__getattribute__(self, "_lp_container")
+        container: "Container[T]" = self._lp_container
         return container.kls
 
     # === Transparent Proxy Methods ===
@@ -62,8 +65,8 @@ class LazyProxy[T]:
         delattr(instance, name)
 
     def __repr__(self) -> str:
-        container: Container[T] = object.__getattribute__(self, "_lp_container")
-        resolved = object.__getattribute__(self, "_lp_resolved")
+        container: "Container[T]" = self._lp_container
+        resolved = self._lp_resolved
         status = "resolved" if resolved else "pending"
         return f"<LazyProxy[{container.kls.__name__}] {status}>"
 

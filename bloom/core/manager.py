@@ -1,10 +1,11 @@
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, TypeGuard, overload
+import inspect
+from typing import TYPE_CHECKING, Callable, TypeGuard, overload
 
 if TYPE_CHECKING:
     from .container import Container
 
-containers = dict[type, dict[str, "Container"]]()
+containers = dict[type | Callable, dict[str, "Container"]]()
 
 
 def is_container_registered[T](container_type: type[T]) -> TypeGuard[type[T]]:
@@ -13,12 +14,13 @@ def is_container_registered[T](container_type: type[T]) -> TypeGuard[type[T]]:
 
 class ContainerManager:
     def __init__(self) -> None:
-        self.containers = dict[type, list[object]]()
+        self.containers = dict[type | Callable, list[object]]()
 
     async def initialize(self) -> None:
         """모든 컨테이너 초기화"""
         for container_type, container_list in containers.items():
             for container in container_list.values():
+                print("Initializing container:", container.kls)
                 instance = await container.initialize()
                 self.containers.setdefault(container_type, []).append(instance)
                 self._inject_fields_sync(container, instance)
@@ -81,6 +83,7 @@ class ContainerManager:
         from .proxy import LazyProxy
 
         for dep in container.dependencies:
+            print("Processing dependency:", dep.field_name)
             current_value = getattr(instance, dep.field_name, None)
             if current_value is not None:
                 continue
@@ -92,6 +95,7 @@ class ContainerManager:
                 raise RuntimeError(
                     f"Cannot resolve dependency '{dep.field_name}' for '{container.kls.__name__}'"
                 )
+            print("Injecting LazyProxy for", dep.field_name)
 
             proxy_lp: LazyProxy[T] = LazyProxy(dep_container, self)
             setattr(instance, dep.field_name, proxy_lp)
@@ -102,7 +106,7 @@ container_manager_contexts: ContextVar[ContainerManager | None] = ContextVar(
 )
 
 
-def get_container_registry() -> dict[type, dict[str, "Container"]]:
+def get_container_registry() -> dict[type | Callable, dict[str, "Container"]]:
     """현재 컨테이너 레지스트리 조회"""
     return containers
 

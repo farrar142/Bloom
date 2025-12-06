@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 import inspect
-from typing import Any, get_type_hints
+from typing import Any, Callable, Concatenate, get_type_hints
 from uuid import uuid4
+from functools import reduce
 from .manager import get_container_registry
 
 
@@ -20,6 +21,10 @@ class DependencyInfo:
     default_value: Any = None  # 기본값
     is_async_proxy: bool = False  # AsyncProxy[T]로 선언되었는지 여부
     raw_type_hint: Any = None  # 원본 타입 힌트 (AsyncProxy[T] 등)
+
+
+class HandlerWrapper[**P, T: type, R]:
+    pass
 
 
 class Container[T]:
@@ -140,6 +145,52 @@ class Container[T]:
             pass
 
         return hints
+
+
+type Method[**P, T, R] = Callable[Concatenate[T, P], R]
+
+
+class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
+    """핸들러 컨테이너 클래스"""
+
+    wrappers: list[Callable[[Method[P, T, R]], Method[P, T, R]]]
+
+    def __init__(self, kls: Method[P, T, R]):
+        super().__init__(kls)
+        self.func = kls
+        self.wrappers = []
+
+    async def initialize(self) -> Method[P, T, R]:
+        final_method = reduce(
+            lambda next_func, wrapper_factory: wrapper_factory(next_func),
+            reversed(self.wrappers),
+            self.func,
+        )
+        return final_method
+
+    @classmethod
+    def register(cls, func: Method[P, T, R]) -> "HandlerContainer[P, T, R]":
+        if not hasattr(func, "__component_id__"):
+            func.__component_id__ = str(uuid4())
+
+        registry = get_container_registry()
+
+        if func not in registry:
+            registry[func] = {}
+
+        if func.__component_id__ not in registry[func]:
+
+            registry[func][func.__component_id__] = HandlerContainer(func)
+        container: HandlerContainer[P, T, R] = registry[func][
+            func.__component_id__
+        ]  # type:ignore
+
+        def first_wrapper(wrapper_func: Method[P, T, R]) -> Method[P, T, R]:
+            print("Applying first wrapper")
+            return wrapper_func
+
+        container.wrappers.append(first_wrapper)
+        return container
 
 
 class _Missing:

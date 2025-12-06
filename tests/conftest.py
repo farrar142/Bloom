@@ -5,11 +5,12 @@ from httpx import AsyncClient
 from httpx._transports.asgi import ASGITransport
 from bloom.web.asgi import ASGIApplication
 from bloom import Application
-from bloom.core import Component, Service
+from bloom.core import Component, Service, Handler
 
 
 @Service
 class MyService:
+    @Handler
     def greet(self, name: str) -> str:
         return f"Hello, {name}!"
 

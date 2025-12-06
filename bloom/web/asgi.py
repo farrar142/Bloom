@@ -55,9 +55,6 @@ class ASGIApplication:
         route = self.router.match(scope["path"], scope["method"])
         if route is None:
             return await JSONResponse({})(scope, receive, send)
-        self.logger.info(
-            f"Matched route: path={route.route}, params={route.path_params}"
-        )
         request._scope["path_params"] = route.path_params
         result = route.handler(request)
         if iscoroutine(result):
