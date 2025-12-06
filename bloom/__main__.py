@@ -3,19 +3,22 @@
 bloom 명령줄 인터페이스를 제공합니다.
 
 Usage:
-    bloom db --application=myapp:app makemigrations
-    bloom queue --app=myapp.tasks:task_app worker
-    bloom startapp myapp
+    bloom startproject myproject
+    bloom startapp users
+    bloom server
+    bloom db makemigrations
+    bloom db migrate
+    bloom queue worker
 """
 
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import click
-
-from bloom.db.cli import db
 
 
 def get_template_dir() -> Path:
@@ -31,11 +34,103 @@ def main() -> None:
     Spring-inspired Python DI container framework with ASGI web layer.
 
     Commands:
-        db        Database management (migrations, etc.)
-        queue     Task queue management (workers, etc.)
-        startapp  Create a new app with boilerplate code
+        startproject  Create a new project with basic structure
+        startapp      Create a new app with boilerplate code
+        server        Run development server
+        db            Database management (migrations, etc.)
+        queue         Task queue management (workers, etc.)
     """
     pass
+
+
+@main.command()
+@click.argument("path", default=".")
+def startproject(path: str) -> None:
+    """Create a new project with basic structure.
+
+    Creates a new project directory with the following structure:
+
+    \b
+    {path}/
+    ├── app.py           # Application entry point
+    └── settings/        # Configuration module
+        ├── __init__.py
+        └── database.py  # Database configuration
+
+    Examples:
+        bloom startproject myproject     # Create 'myproject' directory
+        bloom startproject .             # Initialize in current directory
+    """
+    template_dir = get_template_dir() / "project"
+
+    if not template_dir.exists():
+        click.echo(f"Error: Template directory not found: {template_dir}", err=True)
+        raise SystemExit(1)
+
+    # 프로젝트 디렉토리 결정
+    if path == ".":
+        project_dir = Path.cwd()
+        project_name = project_dir.name
+    else:
+        project_dir = Path(path)
+        project_name = project_dir.name
+
+        if project_dir.exists():
+            # 디렉토리가 이미 존재하면 비어있는지 확인
+            if any(project_dir.iterdir()):
+                click.echo(f"Error: Directory '{path}' is not empty", err=True)
+                raise SystemExit(1)
+        else:
+            project_dir.mkdir(parents=True)
+
+    # 프로젝트 이름 정규화
+    project_name = project_name.replace("-", "_").replace(" ", "_")
+
+    # 템플릿 변수
+    template_vars = {
+        "project_name": project_name,
+    }
+
+    click.echo(f"Creating project '{project_name}' in {project_dir}")
+
+    # app.py 생성
+    app_template = template_dir / "app.py.template"
+    if app_template.exists():
+        content = app_template.read_text(encoding="utf-8")
+        for key, value in template_vars.items():
+            content = content.replace(f"{{{key}}}", value)
+        content = content.replace("{{", "{").replace("}}", "}")
+
+        app_path = project_dir / "app.py"
+        app_path.write_text(content, encoding="utf-8")
+        click.echo(f"  Created: {app_path}")
+
+    # settings 디렉토리 생성
+    settings_dir = project_dir / "settings"
+    settings_dir.mkdir(exist_ok=True)
+
+    # settings 템플릿 처리
+    settings_template_dir = template_dir / "settings"
+    if settings_template_dir.exists():
+        for template_file in settings_template_dir.glob("*.template"):
+            output_name = template_file.stem  # .template 제거
+            output_path = settings_dir / output_name
+
+            content = template_file.read_text(encoding="utf-8")
+            for key, value in template_vars.items():
+                content = content.replace(f"{{{key}}}", value)
+            content = content.replace("{{", "{").replace("}}", "}")
+
+            output_path.write_text(content, encoding="utf-8")
+            click.echo(f"  Created: {output_path}")
+
+    click.echo(f"\nProject '{project_name}' created successfully!")
+    click.echo(f"\nNext steps:")
+    click.echo(f"  cd {path}")
+    click.echo(f"  bloom startapp users          # Create your first app")
+    click.echo(f"  bloom db makemigrations       # Create migrations")
+    click.echo(f"  bloom db migrate              # Apply migrations")
+    click.echo(f"  bloom server                  # Run development server")
 
 
 @main.command()
@@ -129,7 +224,81 @@ def startapp(app_name: str, directory: str) -> None:
     click.echo(f"  3. Run 'bloom db migrate' to apply migrations")
 
 
+@main.command()
+@click.option(
+    "--host",
+    "-h",
+    default="127.0.0.1",
+    help="Host to bind (default: 127.0.0.1)",
+)
+@click.option(
+    "--port",
+    "-p",
+    default=8000,
+    type=int,
+    help="Port to bind (default: 8000)",
+)
+@click.option(
+    "--reload",
+    "-r",
+    is_flag=True,
+    default=True,
+    help="Enable auto-reload (default: True)",
+)
+@click.option(
+    "--application",
+    "-A",
+    default="app:application",
+    help="Application path (default: app:application)",
+)
+def server(host: str, port: int, reload: bool, application: str) -> None:
+    """Run development server.
+
+    Starts uvicorn with the specified application.
+
+    Examples:
+        bloom server                              # Run with defaults
+        bloom server --port 8080                  # Custom port
+        bloom server -A myapp:app                 # Custom application
+        bloom server --no-reload                  # Disable auto-reload
+    """
+    # application path에서 asgi 경로 추출
+    if ":" in application:
+        module_path, var_name = application.rsplit(":", 1)
+        asgi_path = f"{module_path}:{var_name}.asgi"
+    else:
+        asgi_path = f"{application}:application.asgi"
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        asgi_path,
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+
+    if reload:
+        cmd.append("--reload")
+
+    click.echo(f"Starting development server at http://{host}:{port}")
+    click.echo(f"Using application: {application}")
+    click.echo("Press Ctrl+C to stop.\n")
+
+    try:
+        subprocess.run(cmd)
+    except KeyboardInterrupt:
+        click.echo("\nServer stopped.")
+    except FileNotFoundError:
+        click.echo("Error: uvicorn not found. Install it with: pip install uvicorn", err=True)
+        raise SystemExit(1)
+
+
 # Database CLI
+from bloom.db.cli import db
+
 main.add_command(db, name="db")
 
 

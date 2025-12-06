@@ -120,8 +120,8 @@ def load_task_app(app_path: str) -> "TaskApp":
     "-A",
     "app_path",
     type=str,
-    required=True,
-    help="TaskApp path (e.g., 'myapp.tasks:task_app')",
+    default="app:application.queue",
+    help="TaskApp path (default: 'app:application.queue')",
 )
 @click.pass_context
 def queue_cli(ctx: click.Context, app_path: str) -> None:
@@ -130,20 +130,23 @@ def queue_cli(ctx: click.Context, app_path: str) -> None:
     분산 태스크 큐를 관리합니다.
 
     Examples:
-        # 워커 시작
-        bloom queue -A myapp.tasks:task_app worker
+        # 워커 시작 (기본 app:application.queue 사용)
+        bloom queue worker
 
         # 동시성 4로 워커 시작
-        bloom queue -A myapp.tasks:task_app worker -c 4
+        bloom queue worker -c 4
 
         # 특정 큐만 처리
-        bloom queue -A myapp.tasks:task_app worker -Q high,default
+        bloom queue worker -Q high,default
+
+        # 커스텀 앱 경로 지정
+        bloom queue -A myapp.tasks:task_app worker
 
         # 큐 상태 확인
-        bloom queue -A myapp.tasks:task_app inspect active
+        bloom queue inspect active
 
         # 큐 비우기
-        bloom queue -A myapp.tasks:task_app purge -Q default
+        bloom queue purge -Q default
     """
     ctx.ensure_object(dict)
     ctx.obj["app_path"] = app_path

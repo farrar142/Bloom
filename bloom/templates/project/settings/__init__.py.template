@@ -1,0 +1,8 @@
+"""{project_name} 설정 모듈
+
+애플리케이션 설정, 데이터베이스 연결, 외부 서비스 팩토리 등을 정의합니다.
+"""
+
+from .database import DatabaseConfig
+
+__all__ = ["DatabaseConfig"]

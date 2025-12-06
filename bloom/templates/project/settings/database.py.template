@@ -1,0 +1,36 @@
+"""데이터베이스 설정
+
+SQLite, PostgreSQL, MySQL 등 다양한 DB를 지원합니다.
+
+Examples:
+    # SQLite (개발용)
+    SessionFactory("db.sqlite3", SQLiteDialect())
+
+    # PostgreSQL
+    SessionFactory(
+        "postgresql://user:pass@localhost:5432/dbname",
+        PostgreSQLDialect()
+    )
+
+    # MySQL
+    SessionFactory(
+        "mysql://user:pass@localhost:3306/dbname",
+        MySQLDialect()
+    )
+"""
+
+from bloom.core import Configuration, Factory
+from bloom.db import SessionFactory, SQLiteDialect
+
+
+@Configuration
+class DatabaseConfig:
+    """데이터베이스 설정"""
+
+    @Factory
+    def session_factory(self) -> SessionFactory:
+        """SessionFactory 생성
+
+        환경변수나 설정 파일에서 DB URL을 가져오도록 수정하세요.
+        """
+        return SessionFactory("db.sqlite3", SQLiteDialect())

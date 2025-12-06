@@ -1,0 +1,27 @@
+"""Application entry point
+
+Bloom 애플리케이션의 메인 진입점입니다.
+
+Usage:
+    # 개발 서버 실행
+    bloom server
+
+    # 또는 uvicorn 직접 사용
+    uvicorn app:application.asgi --reload
+
+    # 마이그레이션 생성/적용
+    bloom db makemigrations
+    bloom db migrate
+
+    # 태스크 워커 실행 (Redis 필요)
+    bloom queue worker
+"""
+
+from bloom import Application
+
+# Application 인스턴스 생성
+# auto_scan()은 현재 디렉토리의 모든 하위 패키지를 자동 스캔합니다
+application = Application("{project_name}").auto_scan()
+
+# ASGI 앱 (uvicorn용)
+asgi_app = application.asgi

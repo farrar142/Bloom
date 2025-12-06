@@ -190,10 +190,10 @@ def db(
     # 설정 로드
     config = load_config()
 
-    # Application 로드 (기본값: application:application)
+    # Application 로드 (기본값: app:application)
     app: Application | None = None
     app_module: Any = None
-    app_path = application or config.get("application", "application:application")
+    app_path = application or config.get("application", "app:application")
 
     # Application 로드 및 초기화 중 import 경고 숨기기
     with warnings.catch_warnings():
@@ -221,16 +221,9 @@ def db(
                 # --entities도 없으면 친절한 에러 메시지
                 raise click.ClickException(
                     f"Could not import default application.\n\n"
-                    f"Make sure you have 'application.py' with:\n\n"
-                    f"  from bloom import Application\n"
-                    f"  from bloom.db import SessionFactory, SQLiteDialect\n"
-                    f"  from bloom.core import Component, Factory\n\n"
-                    f"  application = Application('myapp')\n\n"
-                    f"  @Component\n"
-                    f"  class DatabaseConfig:\n"
-                    f"      @Factory\n"
-                    f"      def session_factory(self) -> SessionFactory:\n"
-                    f"          return SessionFactory('db.sqlite3', SQLiteDialect())\n\n"
+                    f"Make sure you have 'app.py' with:\n\n"
+                    f"  from bloom import Application\n\n"
+                    f"  application = Application('myapp').auto_scan()\n\n"
                     f"Or specify explicitly:\n"
                     f"  bloom db --application=mymodule:app makemigrations\n\n"
                     f"Or use legacy mode:\n"
