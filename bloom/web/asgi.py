@@ -1,7 +1,9 @@
 """bloom.web.asgi - ASGI Application"""
 
+from inspect import iscoroutine
 import re
 
+from .route import Route, Router
 
 from .response import JSONResponse, ResponseConverterRegistry
 from .request import HttpRequest
@@ -17,6 +19,9 @@ class ASGIApplication:
     def __init__(self, *, debug: bool = False) -> None:
         self.debug = debug
         self.response_converter_registry = ResponseConverterRegistry()
+        self.router = Router()
+        self.router.add_route("/response", "GET", lambda: {"message": "Hello, ASGI!"})
+        self.router.add_route("/response", "POST", lambda: {"message": "Hello, POST!"})
         # path -> {method -> (handler, pattern, param_names)}
 
     def _compile_path_pattern(self, path: str) -> tuple[re.Pattern, list[str]]:
@@ -62,11 +67,12 @@ class ASGIApplication:
             await response(scope, receive, send)
             return
         request = HttpRequest
-        self.logger.info(f"Handling request: {request}")
-        # 경로 추출
-        path = scope.get("path", "/")
-        method = scope.get("method", "GET")
-        result = {}
+        router = self.router.match(scope["path"], scope["method"])
+        if router is None:
+            return await JSONResponse({})(scope, receive, send)
+        result = router.handler()
+        if iscoroutine(result):
+            result = await result
         response = self.response_converter_registry.convert(result)
 
         await response(scope, receive, send)
