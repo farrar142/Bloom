@@ -271,7 +271,7 @@ class ContainerManager:
     async def get_instance_async[T](self, cls: type[T]) -> T | None: ...
     @overload
     async def get_instance_async[T](
-        self, cls: type[T], *, required: Literal[True]
+        self, cls: type[T], *, required: Literal[False]
     ) -> T: ...
     async def get_instance_async[T](
         self, cls: type[T], *, required: bool = True
