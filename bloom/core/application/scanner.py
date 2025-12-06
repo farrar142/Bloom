@@ -69,6 +69,15 @@ class ScannerManager:
         """
         package_name, package_dir = self._resolve_package_info(caller_file)
 
+        # package_name이 None이면 디렉토리의 하위 패키지들만 직접 스캔
+        if package_name is None:
+            logger.info(f"Auto-scanning directory: {package_dir}")
+            scanned_modules = self._scan_subpackages_only(package_dir)
+            for module in scanned_modules:
+                self.scan(module, container_manager=container_manager)
+            logger.info(f"Auto-scanned {len(scanned_modules)} modules")
+            return
+
         # 재귀 스캔 방지
         if package_name in ScannerManager._scanning_packages:
             logger.debug(f"Already scanning {package_name}, skipping")
@@ -87,14 +96,15 @@ class ScannerManager:
         finally:
             ScannerManager._scanning_packages.discard(package_name)
 
-    def _resolve_package_info(self, caller_file: str | None) -> tuple[str, Path]:
+    def _resolve_package_info(self, caller_file: str | None) -> tuple[str | None, Path]:
         """패키지 정보 해석
 
         Args:
             caller_file: 호출 파일 경로 또는 패키지 이름
 
         Returns:
-            (패키지 이름, 패키지 디렉토리) 튜플
+            (패키지 이름 또는 None, 패키지 디렉토리) 튜플
+            패키지 이름이 None이면 디렉토리의 하위 패키지들만 스캔
         """
         import os
 
@@ -131,13 +141,12 @@ class ScannerManager:
                 return package_name, cwd
             else:
                 # __init__.py가 없으면 현재 디렉토리의 하위 패키지들만 스캔
-                package_name = cwd.name
                 # sys.path에 현재 디렉토리 추가
                 cwd_str = str(cwd)
                 if cwd_str not in sys.path:
                     sys.path.insert(0, cwd_str)
                     logger.debug(f"Added {cwd_str} to sys.path")
-                return package_name, cwd
+                return None, cwd  # package_name을 None으로 반환
 
         caller_path = Path(caller_file).resolve()
         package_dir = caller_path.parent
@@ -153,21 +162,31 @@ class ScannerManager:
                 except (OSError, ValueError):
                     continue
 
-        if caller_module_name:
-            package_name = (
-                caller_module_name.rsplit(".", 1)[0]
-                if "." in caller_module_name
-                else caller_module_name
-            )
-        else:
+        # 호출자가 패키지 내 모듈인지 확인
+        if caller_module_name and "." in caller_module_name:
+            # examples.demo_app.app -> examples.demo_app
+            package_name = caller_module_name.rsplit(".", 1)[0]
+            return package_name, package_dir
+
+        # 호출자가 단독 모듈 (예: app.py를 uvicorn app:asgi로 실행)
+        # 디렉토리에 __init__.py가 있으면 패키지로 취급
+        init_file = package_dir / "__init__.py"
+        if init_file.exists():
+            # 디렉토리를 패키지로 취급
             package_name = package_dir.name
-            # 현재 디렉토리가 sys.path에 없으면 추가
             parent_dir = str(package_dir.parent)
             if parent_dir not in sys.path:
                 sys.path.insert(0, parent_dir)
                 logger.debug(f"Added {parent_dir} to sys.path")
+            return package_name, package_dir
 
-        return package_name, package_dir
+        # __init__.py가 없으면 하위 패키지들만 스캔
+        package_dir_str = str(package_dir)
+        if package_dir_str not in sys.path:
+            sys.path.insert(0, package_dir_str)
+            logger.debug(f"Added {package_dir_str} to sys.path")
+
+        return None, package_dir  # package_name을 None으로 반환
 
     def _scan_directory_recursive(
         self,
@@ -208,6 +227,34 @@ class ScannerManager:
                     sub_package = f"{parent_package}.{item.name}"
                     scanned_modules.extend(
                         self._scan_directory_recursive(item, sub_package, is_root=False)
+                    )
+
+        return scanned_modules
+
+    def _scan_subpackages_only(self, dir_path: Path) -> list[Any]:
+        """디렉토리의 하위 패키지들만 스캔 (디렉토리 자체는 패키지가 아닌 경우)
+
+        uvicorn app:asgi 처럼 단일 파일로 실행할 때 사용.
+        디렉토리의 하위 폴더들을 최상위 패키지로 취급하여 스캔.
+
+        Args:
+            dir_path: 스캔할 디렉토리 경로
+
+        Returns:
+            스캔된 모듈 목록
+        """
+        scanned_modules = []
+
+        for item in dir_path.iterdir():
+            if item.is_dir() and not item.name.startswith(("_", ".")):
+                sub_init = item / "__init__.py"
+                if sub_init.exists():
+                    # 하위 폴더를 최상위 패키지로 취급
+                    package_name = item.name
+                    scanned_modules.extend(
+                        self._scan_directory_recursive(
+                            item, package_name, is_root=False
+                        )
                     )
 
         return scanned_modules
