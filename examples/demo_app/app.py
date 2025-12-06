@@ -73,8 +73,8 @@ if _existing_module and hasattr(_existing_module, "application"):
     # 이미 로드된 application 재사용
     application = _existing_module.application
 else:
-    # 새로 생성
-    application = Application("demo-app").auto_scan("examples.demo_app")
+    # 새로 생성 - auto_scan() 인자 없이 호출하면 현재 작업 디렉토리 기준 스캔
+    application = Application("demo-app").auto_scan()
 
 # ASGI 앱 (uvicorn용)
 asgi_app = application.asgi

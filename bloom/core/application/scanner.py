@@ -24,6 +24,9 @@ class ScannerManager:
     @Component, @Service, @Controller 등이 붙은 클래스를 스캔합니다.
     """
 
+    # 클래스 변수로 현재 스캔 중인 패키지 추적
+    _scanning_packages: set[str] = set()
+
     def __init__(self):
         self._scanned_modules: list[Any] = []
 
@@ -46,6 +49,10 @@ class ScannerManager:
         from bloom.core.scanner import scan_modules
 
         for module in modules:
+            # 이미 스캔된 모듈은 건너뛰기
+            if module in self._scanned_modules:
+                logger.debug(f"Module {module} already scanned, skipping")
+                continue
             self._scanned_modules.append(module)
             scan_modules(module, manager=container_manager)
 
@@ -62,14 +69,23 @@ class ScannerManager:
         """
         package_name, package_dir = self._resolve_package_info(caller_file)
 
-        logger.info(f"Auto-scanning package: {package_name} from {package_dir}")
+        # 재귀 스캔 방지
+        if package_name in ScannerManager._scanning_packages:
+            logger.debug(f"Already scanning {package_name}, skipping")
+            return
 
-        scanned_modules = self._scan_directory_recursive(package_dir, package_name)
+        ScannerManager._scanning_packages.add(package_name)
+        try:
+            logger.info(f"Auto-scanning package: {package_name} from {package_dir}")
 
-        for module in scanned_modules:
-            self.scan(module, container_manager=container_manager)
+            scanned_modules = self._scan_directory_recursive(package_dir, package_name)
 
-        logger.info(f"Auto-scanned {len(scanned_modules)} modules")
+            for module in scanned_modules:
+                self.scan(module, container_manager=container_manager)
+
+            logger.info(f"Auto-scanned {len(scanned_modules)} modules")
+        finally:
+            ScannerManager._scanning_packages.discard(package_name)
 
     def _resolve_package_info(self, caller_file: str | None) -> tuple[str, Path]:
         """패키지 정보 해석
@@ -80,7 +96,9 @@ class ScannerManager:
         Returns:
             (패키지 이름, 패키지 디렉토리) 튜플
         """
-        # 패키지 이름 문자열인 경우
+        import os
+
+        # 패키지 이름 문자열인 경우 (예: "examples.demo_app")
         if (
             caller_file
             and not caller_file.endswith((".py", ".pyc"))
@@ -97,18 +115,29 @@ class ScannerManager:
                 raise ValueError(f"Could not import package {package_name}: {e}")
             return package_name, package_dir
 
-        # 호출자의 __file__ 자동 감지
+        # 현재 작업 디렉토리 기반 스캔 (인자 없이 호출된 경우)
         if caller_file is None:
-            import inspect
+            cwd = Path(os.getcwd()).resolve()
+            init_file = cwd / "__init__.py"
 
-            frame = inspect.currentframe()
-            # 2단계 위로 (auto_scan -> Application.auto_scan -> 호출자)
-            if frame and frame.f_back and frame.f_back.f_back:
-                caller_file = frame.f_back.f_back.f_globals.get("__file__")
-            if not caller_file:
-                raise ValueError(
-                    "Could not detect caller file. " "Please pass __file__ explicitly."
-                )
+            if init_file.exists():
+                # 현재 디렉토리가 패키지인 경우
+                package_name = cwd.name
+                # sys.path에 부모 디렉토리 추가
+                parent_dir = str(cwd.parent)
+                if parent_dir not in sys.path:
+                    sys.path.insert(0, parent_dir)
+                    logger.debug(f"Added {parent_dir} to sys.path")
+                return package_name, cwd
+            else:
+                # __init__.py가 없으면 현재 디렉토리의 하위 패키지들만 스캔
+                package_name = cwd.name
+                # sys.path에 현재 디렉토리 추가
+                cwd_str = str(cwd)
+                if cwd_str not in sys.path:
+                    sys.path.insert(0, cwd_str)
+                    logger.debug(f"Added {cwd_str} to sys.path")
+                return package_name, cwd
 
         caller_path = Path(caller_file).resolve()
         package_dir = caller_path.parent
@@ -132,6 +161,11 @@ class ScannerManager:
             )
         else:
             package_name = package_dir.name
+            # 현재 디렉토리가 sys.path에 없으면 추가
+            parent_dir = str(package_dir.parent)
+            if parent_dir not in sys.path:
+                sys.path.insert(0, parent_dir)
+                logger.debug(f"Added {parent_dir} to sys.path")
 
         return package_name, package_dir
 

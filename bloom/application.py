@@ -285,6 +285,17 @@ class Application:
             # 또는 자동 감지
             application = Application("demo-app").auto_scan()
         """
+        # 호출자의 __file__을 자동으로 찾기
+        if caller_file is None:
+            import inspect
+
+            frame = inspect.currentframe()
+            try:
+                if frame and frame.f_back:
+                    caller_file = frame.f_back.f_globals.get("__file__")
+            finally:
+                del frame
+
         self._scanner_manager.auto_scan(
             caller_file, container_manager=self.container_manager
         )

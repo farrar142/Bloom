@@ -23,9 +23,11 @@ class Scanner:
     @Configuration 클래스의 @Factory 메서드도 등록.
     """
 
+    # 클래스 변수로 스캔된 모듈 추적 (모든 인스턴스에서 공유)
+    _scanned_modules: set[str] = set()
+
     def __init__(self, manager: "ContainerManager") -> None:
         self._manager = manager
-        self._scanned_modules: set[str] = set()
 
     def scan(
         self, *modules: ModuleType | str | type | object

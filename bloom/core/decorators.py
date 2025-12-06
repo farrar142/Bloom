@@ -230,6 +230,10 @@ def register_factories_from_configuration[T](
         # Factory 메서드 분석
         factory_info = analyze_factory_method(method, config_cls)
 
+        # 이미 등록된 타입이면 건너뛰기
+        if manager.has_container(factory_info.return_type):
+            continue
+
         # Factory에서 지정한 scope 또는 기본 SINGLETON
         factory_scope = getattr(method, "__bloom_factory_scope__", ScopeEnum.SINGLETON)
 
