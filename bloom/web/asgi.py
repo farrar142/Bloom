@@ -3,6 +3,8 @@
 from inspect import iscoroutine
 import re
 
+from bloom import Application
+
 from .route import Route, Router
 
 from .response import JSONResponse, ResponseConverterRegistry
@@ -16,7 +18,8 @@ from ..logger import get_logger
 class ASGIApplication:
     logger = get_logger()
 
-    def __init__(self, *, debug: bool = False) -> None:
+    def __init__(self, application: Application, debug: bool = False) -> None:
+        self.application = application
         self.debug = debug
         self.response_converter_registry = ResponseConverterRegistry()
         self.router = Router()
@@ -73,6 +76,8 @@ class ASGIApplication:
             if message["type"] == "lifespan.startup":
                 try:
                     # TODO: 앱 초기화 (ContainerManager.initialize())
+                    await self.application.ready()
+                    self.logger.info("Application startup")
                     await send({"type": "lifespan.startup.complete"})
                 except Exception as e:
                     await send(
