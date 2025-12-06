@@ -4,8 +4,7 @@ import json
 from typing import Any, TYPE_CHECKING
 from urllib.parse import parse_qs, unquote
 
-if TYPE_CHECKING:
-    from .types import Scope, Receive
+from .types import Scope, Receive
 
 
 class HttpRequest:

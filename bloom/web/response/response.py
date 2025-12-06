@@ -14,10 +14,7 @@ from typing import (
     TypeGuard,
 )
 
-from bloom.types import Receive, Scope
-
-if TYPE_CHECKING:
-    from .types import Send
+from ..types import Receive, Scope, Send
 
 
 def is_callable(obj: Any) -> TypeGuard[Callable]:

@@ -1,38 +1,18 @@
 """bloom.web.asgi - ASGI Application"""
 
 import re
-from typing import TYPE_CHECKING, Callable, Any
 
-from .types import ASGIApp, Scope, Receive, Send
-from .request import HttpRequest
+
 from .response import JSONResponse, ResponseConverterRegistry
-from .exceptions import HttpException
+from .request import HttpRequest
 
-if TYPE_CHECKING:
-    pass
+from .types import Receive, Scope, Send
+
+from ..logger import get_logger
 
 
 class ASGIApplication:
-    """
-    Bloom ASGI Application.
-
-    미들웨어 체인과 라우팅을 관리하는 ASGI 앱입니다.
-
-    사용 예:
-        app = ASGIApplication()
-
-        # 미들웨어 추가
-        app.add_middleware(RequestScopeMiddleware)
-        app.add_middleware(LoggingMiddleware)
-
-        # 라우트 추가
-        @app.get("/")
-        async def index(request: Request) -> Response:
-            return JSONResponse({"message": "Hello, World!"})
-
-        # uvicorn으로 실행
-        # uvicorn app:app
-    """
+    logger = get_logger()
 
     def __init__(self, *, debug: bool = False) -> None:
         self.debug = debug
@@ -68,6 +48,7 @@ class ASGIApplication:
 
         라우트 매칭 후 핸들러 실행.
         """
+        self.logger.debug(f"Received request scope: {scope}")
         if scope["type"] == "lifespan":
             await self._handle_lifespan(scope, receive, send)
             return
@@ -80,7 +61,8 @@ class ASGIApplication:
             )
             await response(scope, receive, send)
             return
-
+        request = HttpRequest
+        self.logger.info(f"Handling request: {request}")
         # 경로 추출
         path = scope.get("path", "/")
         method = scope.get("method", "GET")
