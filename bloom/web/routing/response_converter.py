@@ -72,7 +72,9 @@ class ResponseConverterRegistry:
         self.add_converter(ResponseTypeConverter(), priority=100)
         self.add_converter(DictResponseConverter(), priority=200)
         self.add_converter(StringResponseConverter(), priority=300)
-        self.add_converter(DefaultResponseConverter(), priority=1000)  # 가장 낮은 우선순위
+        self.add_converter(
+            DefaultResponseConverter(), priority=1000
+        )  # 가장 낮은 우선순위
 
     def add_converter(self, converter: ResponseConverter, priority: int = 500):
         """컨버터 추가 (낮은 priority가 우선)"""

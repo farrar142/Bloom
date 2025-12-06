@@ -95,6 +95,7 @@ class TestMessageParameterInfo:
 
     def test_from_parameter_with_type_annotation(self):
         """타입 어노테이션에서 ParameterInfo 생성"""
+
         def func(room: DestinationVariable[str]):
             pass
 
@@ -109,6 +110,7 @@ class TestMessageParameterInfo:
 
     def test_from_parameter_with_default_marker(self):
         """default 값으로 마커 사용"""
+
         def func(room: str = DestinationVariableMarker(name="room_id")):
             pass
 
@@ -123,6 +125,7 @@ class TestMessageParameterInfo:
 
     def test_from_parameter_with_default_value(self):
         """실제 default 값"""
+
         def func(count: int = 10):
             pass
 

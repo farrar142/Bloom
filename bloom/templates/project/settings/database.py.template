@@ -1,26 +1,28 @@
-"""데이터베이스 설정
+"""데이터베이스 및 백엔드 설정
 
 SQLite, PostgreSQL, MySQL 등 다양한 DB를 지원합니다.
+Task 및 Event 백엔드도 함께 설정합니다.
 
 Examples:
     # SQLite (개발용)
-    SessionFactory("db.sqlite3", SQLiteDialect())
+    backend = SQLiteBackend("db.sqlite3")
+    SessionFactory(backend)
 
     # PostgreSQL
-    SessionFactory(
-        "postgresql://user:pass@localhost:5432/dbname",
-        PostgreSQLDialect()
-    )
+    backend = PostgreSQLBackend("postgresql://user:pass@localhost:5432/dbname")
+    SessionFactory(backend)
 
     # MySQL
-    SessionFactory(
-        "mysql://user:pass@localhost:3306/dbname",
-        MySQLDialect()
-    )
+    backend = MySQLBackend("mysql://user:pass@localhost:3306/dbname")
+    SessionFactory(backend)
 """
 
 from bloom.core import Configuration, Factory
-from bloom.db import SessionFactory, SQLiteDialect
+from bloom.db import SessionFactory
+from bloom.db.backends import SQLiteBackend
+from bloom.event import LocalEventBus, EventBus
+from bloom.task import TaskApp
+from bloom.task.backends import LocalBroker, LocalBackend
 
 
 @Configuration
@@ -28,9 +30,60 @@ class DatabaseConfig:
     """데이터베이스 설정"""
 
     @Factory
-    def session_factory(self) -> SessionFactory:
-        """SessionFactory 생성
-
-        환경변수나 설정 파일에서 DB URL을 가져오도록 수정하세요.
+    def sqlite_backend(self) -> SQLiteBackend:
+        """SQLite 백엔드 생성
+        
+        환경변수나 설정 파일에서 DB 경로를 가져오도록 수정하세요.
         """
-        return SessionFactory("db.sqlite3", SQLiteDialect())
+        return SQLiteBackend("db.sqlite3")
+
+    @Factory
+    def session_factory(self, backend: SQLiteBackend) -> SessionFactory:
+        """SessionFactory 생성
+        
+        SQLiteBackend를 주입받아 SessionFactory를 생성합니다.
+        다른 DB를 사용하려면 해당 백엔드를 주입받도록 수정하세요.
+        """
+        return SessionFactory(backend)
+
+
+@Configuration
+class EventConfig:
+    """이벤트 버스 설정"""
+
+    @Factory
+    def event_bus(self) -> EventBus:
+        """EventBus 생성
+        
+        개발 환경에서는 LocalEventBus를 사용합니다.
+        프로덕션에서는 RedisEventBus 등으로 변경하세요.
+        """
+        return LocalEventBus()
+
+
+@Configuration
+class TaskConfig:
+    """태스크 큐 설정"""
+
+    @Factory
+    def task_broker(self) -> LocalBroker:
+        """TaskBroker 생성
+        
+        개발 환경에서는 LocalBroker를 사용합니다.
+        프로덕션에서는 RedisBroker 등으로 변경하세요.
+        """
+        return LocalBroker()
+
+    @Factory
+    def task_backend(self) -> LocalBackend:
+        """TaskBackend 생성
+        
+        개발 환경에서는 LocalBackend를 사용합니다.
+        프로덕션에서는 RedisBackend 등으로 변경하세요.
+        """
+        return LocalBackend()
+
+    @Factory
+    def task_app(self, broker: LocalBroker, backend: LocalBackend) -> TaskApp:
+        """TaskApp 생성"""
+        return TaskApp("{project_name}", broker=broker, backend=backend)

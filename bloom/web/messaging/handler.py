@@ -135,6 +135,7 @@ class MessageParameterInfo:
 
         # param.default가 MessageParamMarker인 경우
         from .params import MessageParamMarker
+
         if isinstance(default, MessageParamMarker):
             marker = default
             has_default = False

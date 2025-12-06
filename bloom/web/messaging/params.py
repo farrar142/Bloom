@@ -8,7 +8,16 @@ from __future__ import annotations
 import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, TypeVar, TYPE_CHECKING, Annotated, get_origin, get_args, List, Tuple
+from typing import (
+    Any,
+    TypeVar,
+    TYPE_CHECKING,
+    Annotated,
+    get_origin,
+    get_args,
+    List,
+    Tuple,
+)
 
 T = TypeVar("T")
 
@@ -21,7 +30,7 @@ T = TypeVar("T")
 @dataclass(frozen=True)
 class MessageParamMarker:
     """메시지 파라미터 마커 베이스 클래스
-    
+
     routing.params.ParamMarker와 동일한 패턴입니다.
     """
 
@@ -156,7 +165,7 @@ else:
 
 def get_message_param_marker(annotation: Any) -> tuple[type, MessageParamMarker | None]:
     """타입 어노테이션에서 메시징 마커 추출
-    
+
     routing.params.get_param_marker와 동일한 패턴입니다.
 
     Returns:
@@ -212,7 +221,7 @@ def get_message_param_type(annotation: Any) -> type | None:
 @dataclass
 class MessageParameterInfo:
     """메시징 핸들러 파라미터 정보
-    
+
     routing.resolver.ParameterInfo와 동일한 패턴입니다.
     """
 
@@ -258,7 +267,7 @@ class MessageParameterInfo:
 
 class MessageParameterResolver(ABC):
     """메시지 파라미터 리졸버 인터페이스
-    
+
     routing.resolver.ParameterResolver와 동일한 패턴입니다.
     """
 
@@ -354,7 +363,7 @@ class WebSocketSessionResolver(MessageParameterResolver):
 
 class MessageResolverRegistry:
     """메시지 파라미터 리졸버 레지스트리
-    
+
     routing.resolver.ResolverRegistry와 동일한 패턴입니다.
     """
 
@@ -376,7 +385,9 @@ class MessageResolverRegistry:
         self._resolvers.append((priority, resolver))
         self._resolvers.sort(key=lambda x: x[0])
 
-    def find_resolver(self, param: MessageParameterInfo) -> MessageParameterResolver | None:
+    def find_resolver(
+        self, param: MessageParameterInfo
+    ) -> MessageParameterResolver | None:
         """주어진 파라미터를 처리할 수 있는 리졸버 찾기"""
         for _, resolver in self._resolvers:
             if resolver.supports(param):
