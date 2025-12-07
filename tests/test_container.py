@@ -22,4 +22,6 @@ class TestASGIApplication:
         await application.ready()
         instance = application.container_manager.get_instance(MyComponent)
         assert instance.service is not None
+        print("before call handler method")
         assert instance.service.greet("World") == "Hello, World!"
+        assert instance.service.auto_converted_handler("World") == "Hi, World!"

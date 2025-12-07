@@ -32,16 +32,58 @@ class Container[T]:
     kls: type[T]
     elements: list[Element]
     dependencies: list[DependencyInfo]
+    _handler_methods: dict[str, "HandlerContainer"]  # 핸들러 메서드 캐시
 
-    def __init__(self, kls: type[T]):
+    def __init__(self, kls: type[T], component_id: str):
         self.kls = kls
+        self.component_id = component_id
         self.instance = None
         self.elements = []
         self.dependencies = self._analyze_dependencies()
+        self._handler_methods = {}
+
+    # def _find_handler_methods(self) -> dict[str, "HandlerContainer"]:
+    #     """클래스에서 @Handler가 달린 메서드들을 찾아서 반환"""
+    #     handlers: dict[str, HandlerContainer] = {}
+    #     registry = get_container_registry()
+
+    #     for name in dir(self.kls):
+    #         if name.startswith("_"):
+    #             continue
+    #         attr = getattr(self.kls, name, None)
+    #         if attr is None:
+    #             continue
+
+    #         # __is_handler__ 마커가 있는지 확인
+    #         if attr in registry:
+    #             component_id = getattr(attr, "__component_id__", None)
+    #             if component_id and component_id in registry[attr]:
+    #                 handlers[name] = registry[attr][component_id]
+
+    #     return handlers
 
     async def initialize(self) -> T:
         """컨테이너 초기화 메서드 (비동기)"""
-        return self.kls()
+        instance = self.kls()
+
+        # @Handler 메서드들을 초기화된 버전으로 교체
+        await self._bind_handlers(instance)
+
+        return instance
+
+    async def _bind_handlers(self, instance: T) -> None:
+        """인스턴스의 @Handler 메서드들을 초기화된 버전으로 바인딩"""
+        import types
+
+        for method_name, handler_container in self._handler_methods.items():
+            # HandlerContainer에서 초기화된 메서드(wrapper 적용된) 가져오기
+            initialized_func = await handler_container.initialize()
+
+            # 인스턴스에 바인딩된 메서드로 만들기
+            bound_method = types.MethodType(initialized_func, instance)
+
+            # 인스턴스의 메서드 교체
+            setattr(instance, method_name, bound_method)
 
     async def shutdown(self) -> None:
         """컨테이너 종료 메서드 (비동기)"""
@@ -57,7 +99,7 @@ class Container[T]:
             registry[kls] = {}
 
         if kls.__component_id__ not in registry[kls]:
-            registry[kls][kls.__component_id__] = Container(kls)
+            registry[kls][kls.__component_id__] = Container(kls, kls.__component_id__)
         container = registry[kls][kls.__component_id__]
         return container
 
@@ -155,8 +197,8 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
 
     wrappers: list[Callable[[Method[P, T, R]], Method[P, T, R]]]
 
-    def __init__(self, kls: Method[P, T, R]):
-        super().__init__(kls)
+    def __init__(self, kls: Method[P, T, R], component_id: str) -> None:
+        super().__init__(kls, component_id)
         self.func = kls
         self.wrappers = []
 
@@ -180,13 +222,14 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
 
         if func.__component_id__ not in registry[func]:
 
-            registry[func][func.__component_id__] = HandlerContainer(func)
+            registry[func][func.__component_id__] = HandlerContainer(
+                func, func.__component_id__
+            )
         container: HandlerContainer[P, T, R] = registry[func][
             func.__component_id__
         ]  # type:ignore
 
         def first_wrapper(wrapper_func: Method[P, T, R]) -> Method[P, T, R]:
-            print("Applying first wrapper")
             return wrapper_func
 
         container.wrappers.append(first_wrapper)

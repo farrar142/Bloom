@@ -14,6 +14,9 @@ class MyService:
     def greet(self, name: str) -> str:
         return f"Hello, {name}!"
 
+    def auto_converted_handler(self, name: str) -> str:
+        return f"Hi, {name}!"
+
 
 @Component
 class MyComponent:

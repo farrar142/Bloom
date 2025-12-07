@@ -1,5 +1,6 @@
 from contextvars import ContextVar
 import inspect
+import types
 from typing import TYPE_CHECKING, Callable, TypeGuard, overload
 
 if TYPE_CHECKING:
@@ -14,16 +15,51 @@ def is_container_registered[T](container_type: type[T]) -> TypeGuard[type[T]]:
 
 class ContainerManager:
     def __init__(self) -> None:
-        self.containers = dict[type | Callable, list[object]]()
+        self.instances = dict[str, object]()
 
     async def initialize(self) -> None:
         """모든 컨테이너 초기화"""
         for container_type, container_list in containers.items():
             for container in container_list.values():
-                print("Initializing container:", container.kls)
                 instance = await container.initialize()
-                self.containers.setdefault(container_type, []).append(instance)
+                self.add_instance(container_type, container.component_id, instance)
                 self._inject_fields_sync(container, instance)
+        target_containers = [
+            container
+            for container_type, container_list in containers.items()
+            if inspect.isclass(container_type)
+            for container in container_list.values()
+        ]
+        for container in target_containers:
+            await self.replace_handler_methods(container)
+
+    async def replace_handler_methods[T](self, container: "Container[T]"):
+        for name in dir(container.kls):
+            if name.startswith("_"):
+                continue
+            attr = getattr(container.kls, name, None)
+            if attr is None:
+                continue
+            if not inspect.isfunction(attr):
+                continue
+            if not (component_id := getattr(attr, "__component_id__", None)):
+                from .container import HandlerContainer
+
+                handler_container = HandlerContainer.register(attr)
+                self.add_instance(
+                    attr,
+                    handler_container.component_id,
+                    await handler_container.initialize(),
+                )
+                component_id = handler_container.component_id
+            if not (handler_instance := self.get_instance(component_id)):
+                continue
+            parent_instance = self.get_instance(container.component_id)
+            bound_handler = types.MethodType(
+                handler_instance,  # type:ignore
+                parent_instance,
+            )
+            setattr(parent_instance, name, bound_handler)
 
     async def shutdown(self) -> None:
         """모든 컨테이너 종료"""
@@ -31,6 +67,12 @@ class ContainerManager:
             for container in container_list.values():
 
                 await container.shutdown()
+
+    def add_instance[T](
+        self, container_type: type[T] | Callable, component_id: str, instance: T
+    ) -> None:
+        """컨테이너 인스턴스 수동 추가"""
+        self.instances[component_id] = instance
 
     def get_containers[T](self, container_type: type[T]) -> dict[str, "Container[T]"]:
         """특정 타입의 컨테이너 조회"""
@@ -58,9 +100,11 @@ class ContainerManager:
 
     def get_instances[T](self, container_type: type[T]) -> list[T]:
         """특정 타입의 컨테이너 인스턴스 조회"""
-        if container_type not in self.containers:
-            raise ValueError(f"No containers initialized for type: {container_type}")
-        return self.containers.get(container_type, {})  # type:ignore
+        result = list[T]()
+        for componen_id, instance in self.instances.items():
+            if isinstance(instance, container_type):
+                result.append(instance)  # type: ignore
+        return result
 
     @overload
     def get_instance[T](self, container_type: type[T]) -> T: ...
@@ -69,9 +113,25 @@ class ContainerManager:
     def get_instance[T](
         self, container_type: type[T], required: bool = False
     ) -> T | None: ...
+    @overload
+    def get_instance[T](self, container_type: str) -> T: ...
+    @overload
     def get_instance[T](
-        self, container_type: type[T], required: bool = True
+        self, container_type: str, required: bool = False
+    ) -> T | None: ...
+    def get_instance[T](
+        self, container_type: type[T] | str, required: bool = True
     ) -> T | None:
+        if isinstance(container_type, str):
+            for componen_id, instance in self.instances.items():
+                if componen_id == container_type:
+                    return instance  # type: ignore
+            else:
+                if required:
+                    raise ValueError(
+                        f"No container instance found for id: {container_type}"
+                    )
+                return None
         """특정 타입의 컨테이너 인스턴스 단일 조회"""
         instance = self.get_instances(container_type)
         if required and not instance:
