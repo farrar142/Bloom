@@ -1,5 +1,6 @@
 from contextvars import ContextVar
 from typing import overload, Literal, Awaitable, Callable, Any
+import asyncio
 
 
 class CallFrame:
@@ -24,13 +25,15 @@ class CallStackTracker:
 
     async def add_frame(self, frame: CallFrame) -> CallFrame:
         self.__stack.append(frame)
-        for listener in self.__add_event_listeners:
-            await listener(frame)
+        await asyncio.gather(
+            *[listener(frame) for listener in self.__add_event_listeners]
+        )
 
     async def remove_frame(self, frame: CallFrame) -> None:
         self.__stack.remove(frame)
-        for listener in self.__exit_event_listeners:
-            await listener(frame)
+        await asyncio.gather(
+            *[listener(frame) for listener in self.__exit_event_listeners]
+        )
 
     def add_event_listener(self, listener: Callable[[CallFrame], Awaitable]) -> None:
         self.__add_event_listeners.append(listener)
