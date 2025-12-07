@@ -21,14 +21,6 @@ def Handler[**P, T, R](
     """핸들러 데코레이터: 함수를 특정 핸들러 컨테이너에 등록합니다."""
 
     # 핸들러임을 표시하는 마커 추가
-    handler = HandlerContainer.register(func)
+    HandlerContainer.register(func)
 
-    def decorator(func: Method[P, T, R]) -> Method[P, T, R]:
-        def wrapper(instance: T, *args: P.args, **kwargs: P.kwargs) -> R:
-            result = func(instance, *args, **kwargs)
-            return result
-
-        return wrapper
-
-    handler.wrappers.append(decorator)
     return func

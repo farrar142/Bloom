@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import inspect
-from typing import Any, Callable, Concatenate, get_type_hints
+from typing import Any, Awaitable, Callable, Concatenate, TypeGuard, get_type_hints
 from uuid import uuid4
 from functools import reduce
 from .manager import get_container_registry
@@ -40,50 +40,11 @@ class Container[T]:
         self.instance = None
         self.elements = []
         self.dependencies = self._analyze_dependencies()
-        self._handler_methods = {}
-
-    # def _find_handler_methods(self) -> dict[str, "HandlerContainer"]:
-    #     """클래스에서 @Handler가 달린 메서드들을 찾아서 반환"""
-    #     handlers: dict[str, HandlerContainer] = {}
-    #     registry = get_container_registry()
-
-    #     for name in dir(self.kls):
-    #         if name.startswith("_"):
-    #             continue
-    #         attr = getattr(self.kls, name, None)
-    #         if attr is None:
-    #             continue
-
-    #         # __is_handler__ 마커가 있는지 확인
-    #         if attr in registry:
-    #             component_id = getattr(attr, "__component_id__", None)
-    #             if component_id and component_id in registry[attr]:
-    #                 handlers[name] = registry[attr][component_id]
-
-    #     return handlers
 
     async def initialize(self) -> T:
         """컨테이너 초기화 메서드 (비동기)"""
         instance = self.kls()
-
-        # @Handler 메서드들을 초기화된 버전으로 교체
-        await self._bind_handlers(instance)
-
         return instance
-
-    async def _bind_handlers(self, instance: T) -> None:
-        """인스턴스의 @Handler 메서드들을 초기화된 버전으로 바인딩"""
-        import types
-
-        for method_name, handler_container in self._handler_methods.items():
-            # HandlerContainer에서 초기화된 메서드(wrapper 적용된) 가져오기
-            initialized_func = await handler_container.initialize()
-
-            # 인스턴스에 바인딩된 메서드로 만들기
-            bound_method = types.MethodType(initialized_func, instance)
-
-            # 인스턴스의 메서드 교체
-            setattr(instance, method_name, bound_method)
 
     async def shutdown(self) -> None:
         """컨테이너 종료 메서드 (비동기)"""
@@ -189,7 +150,12 @@ class Container[T]:
         return hints
 
 
-type Method[**P, T, R] = Callable[Concatenate[T, P], R]
+type Method[**P, T, R] = Callable[Concatenate[T, P], R | Awaitable[R]]
+
+
+def is_awaitable[R](obj: R | Awaitable[R]) -> TypeGuard[Awaitable[R]]:
+    """객체가 Awaitable인지 확인"""
+    return inspect.isawaitable(obj)
 
 
 class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
@@ -201,6 +167,22 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
         super().__init__(kls, component_id)
         self.func = kls
         self.wrappers = []
+        from .call_scope import CallScope
+
+        def call_scope_wrapper(
+            next_func: Method[P, T, R],
+        ) -> Method[P, T, R]:
+            async def wrapped(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
+                async with CallScope():
+                    result = next_func(self, *args, **kwargs)
+                    if is_awaitable(result):
+                        return await result
+                    else:
+                        return result
+
+            return wrapped
+
+        self.wrappers.append(call_scope_wrapper)
 
     async def initialize(self) -> Method[P, T, R]:
         final_method = reduce(
