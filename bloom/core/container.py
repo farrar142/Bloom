@@ -1,9 +1,19 @@
 from dataclasses import dataclass
 import inspect
-from typing import Any, Awaitable, Callable, Concatenate, TypeGuard, get_type_hints
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Concatenate,
+    TypeGuard,
+    cast,
+    get_type_hints,
+)
 from uuid import uuid4
 from functools import reduce
 from .manager import get_container_registry
+from .call_scope import call_stack
+from .functions import auto_coroutine_decorator
 
 
 class Element[T]:
@@ -150,44 +160,45 @@ class Container[T]:
         return hints
 
 
-type Method[**P, T, R] = Callable[Concatenate[T, P], R | Awaitable[R]]
+type Method[**P, T, R] = Callable[Concatenate[T, P], Awaitable[R] | R]
 
 
-def is_awaitable[R](obj: R | Awaitable[R]) -> TypeGuard[Awaitable[R]]:
-    """객체가 Awaitable인지 확인"""
-    return inspect.isawaitable(obj)
+def is_coroutinefunction[**P, T, R](
+    func: Method[P, T, R],
+) -> TypeGuard[Callable[Concatenate[T, P], Awaitable[R]]]:
+    return inspect.iscoroutinefunction(func)
+
+
+def call_scope_wrapper[**P, R](
+    func: Callable[P, R],
+) -> Callable[P, Awaitable[R]]:
+    async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+        async with call_stack() as stack:
+            stack.add_data({"handler": func})
+            return await func(*args, **kwargs)
+
+    return wrapped
 
 
 class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
     """핸들러 컨테이너 클래스"""
 
-    wrappers: list[Callable[[Method[P, T, R]], Method[P, T, R]]]
+    _wrappers: list[Callable[[Method[P, T, R]], Method[P, T, R]]]
 
     def __init__(self, kls: Method[P, T, R], component_id: str) -> None:
         super().__init__(kls, component_id)
         self.func = kls
-        self.wrappers = []
-        from .call_scope import CallScope
+        self._wrappers = []
+        self._is_async = inspect.iscoroutinefunction(kls)
 
-        def call_scope_wrapper(
-            next_func: Method[P, T, R],
-        ) -> Method[P, T, R]:
-            async def wrapped(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
-                async with CallScope():
-                    result = next_func(self, *args, **kwargs)
-                    if is_awaitable(result):
-                        return await result
-                    else:
-                        return result
+        # 코루틴 안전한 CallScope wrapper 사용
 
-            return wrapped
-
-        self.wrappers.append(call_scope_wrapper)
+        self._wrappers.append(auto_coroutine_decorator(call_scope_wrapper))
 
     async def initialize(self) -> Method[P, T, R]:
         final_method = reduce(
             lambda next_func, wrapper_factory: wrapper_factory(next_func),
-            reversed(self.wrappers),
+            reversed(self._wrappers),
             self.func,
         )
         return final_method
@@ -211,10 +222,6 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
             func.__component_id__
         ]  # type:ignore
 
-        def first_wrapper(wrapper_func: Method[P, T, R]) -> Method[P, T, R]:
-            return wrapper_func
-
-        container.wrappers.append(first_wrapper)
         return container
 
 

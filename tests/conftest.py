@@ -11,10 +11,11 @@ from bloom.core import Component, Service, Handler
 @Service
 class MyService:
     @Handler
-    def greet(self, name: str) -> str:
+    async def greet(self, name: str) -> str:
         return f"Hello, {name}!"
 
-    def auto_converted_handler(self, name: str) -> str:
+    async def auto_converted_handler(self, name: str) -> str:
+        await self.greet(name)  # This will be auto-converted to async
         return f"Hi, {name}!"
 
 
