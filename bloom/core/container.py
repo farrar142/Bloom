@@ -13,7 +13,7 @@ from uuid import uuid4
 from functools import reduce
 from .manager import get_container_registry
 from .call_scope import call_stack
-from .functions import auto_coroutine_decorator
+from .functions import AsyncMethod, auto_coroutine_decorator, is_coroutine, Method
 
 
 class Element[T]:
@@ -160,22 +160,24 @@ class Container[T]:
         return hints
 
 
-type Method[**P, T, R] = Callable[Concatenate[T, P], Awaitable[R] | R]
-
-
 def is_coroutinefunction[**P, T, R](
     func: Method[P, T, R],
 ) -> TypeGuard[Callable[Concatenate[T, P], Awaitable[R]]]:
     return inspect.iscoroutinefunction(func)
 
 
-def call_scope_wrapper[**P, R](
-    func: Callable[P, R],
-) -> Callable[P, Awaitable[R]]:
-    async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+def call_scope_wrapper[**P, T, R](
+    func: Method[P, T, R],
+) -> AsyncMethod[P, T, R]:
+    """CallScope를 적용하는 wrapper - sync/async 모두 지원"""
+
+    async def wrapped(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
         async with call_stack() as stack:
             stack.add_data({"handler": func})
-            return await func(*args, **kwargs)
+            result = func(self, *args, **kwargs)
+            if is_coroutine(result):
+                return await result
+            return cast(R, result)
 
     return wrapped
 
@@ -183,7 +185,7 @@ def call_scope_wrapper[**P, R](
 class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
     """핸들러 컨테이너 클래스"""
 
-    _wrappers: list[Callable[[Method[P, T, R]], Method[P, T, R]]]
+    _wrappers: list[Callable[[Method[P, T, R]], AsyncMethod[P, T, R]]]
 
     def __init__(self, kls: Method[P, T, R], component_id: str) -> None:
         super().__init__(kls, component_id)
@@ -192,7 +194,6 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
         self._is_async = inspect.iscoroutinefunction(kls)
 
         # 코루틴 안전한 CallScope wrapper 사용
-
         self._wrappers.append(auto_coroutine_decorator(call_scope_wrapper))
 
     async def initialize(self) -> Method[P, T, R]:

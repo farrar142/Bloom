@@ -5,16 +5,27 @@
 import inspect
 from typing import (
     Any,
-    Awaitable,
     Callable,
     Concatenate,
+    Coroutine,
+    ParamSpec,
     TypeGuard,
+    TypeVar,
     cast,
 )
 
-type Method[**P, T, R] = Callable[Concatenate[T, P], R | Awaitable[R]]
+P = ParamSpec("P")
+T = TypeVar("T")
+R = TypeVar("R")
+
+# 메서드 타입 정의 (TypeAlias)
 type SyncMethod[**P, T, R] = Callable[Concatenate[T, P], R]
-type AsyncMethod[**P, T, R] = Callable[Concatenate[T, P], Awaitable[R]]
+type AsyncMethod[**P, T, R] = Callable[Concatenate[T, P], Coroutine[Any, Any, R]]
+type Method[**P, T, R] = SyncMethod[P, T, R] | AsyncMethod[P, T, R]
+
+# 데코레이터 타입 정의
+type MethodDecorator[**P, T, R] = Callable[[Method[P, T, R]], Method[P, T, R]]
+type SafeDecorator[**P, T, R] = Callable[[Method[P, T, R]], AsyncMethod[P, T, R]]
 
 
 def is_coroutinefunction[**P, T, R](
@@ -24,9 +35,23 @@ def is_coroutinefunction[**P, T, R](
     return inspect.iscoroutinefunction(func)
 
 
+def is_syncfunction[**P, T, R](
+    func: Method[P, T, R],
+) -> TypeGuard[SyncMethod[P, T, R]]:
+    """함수가 동기 함수인지 확인하는 TypeGuard"""
+    return not inspect.iscoroutinefunction(func)
+
+
+def is_coroutine[R](
+    result: R | Coroutine[Any, Any, R],
+) -> TypeGuard[Coroutine[Any, Any, R]]:
+    """결과가 코루틴 객체인지 확인하는 TypeGuard"""
+    return inspect.iscoroutine(result)
+
+
 def auto_coroutine_decorator[**P, T, R](
-    wrapper_factory: Callable[[Method[P, T, R]], Method[P, T, R]],
-) -> Callable[[Method[P, T, R]], Method[P, T, R]]:
+    wrapper_factory: MethodDecorator[P, T, R],
+) -> SafeDecorator[P, T, R]:
     """
     async wrapper 하나로 동기/비동기 모두 지원하는 데코레이터로 변환.
 
@@ -59,30 +84,15 @@ def auto_coroutine_decorator[**P, T, R](
         async def async_method(self, x: int) -> str: ...  # CallScope 적용 + 비동기 실행
     """
 
-    def decorator(func: Method[P, T, R]) -> Method[P, T, R]:
-        if is_coroutinefunction(func):
-            # 비동기 함수: async wrapper 그대로 적용
-            return wrapper_factory(func)
-        else:
-            # 동기 함수: wrapper를 적용하고 결과를 동기로 실행
-            async_wrapped = wrapper_factory(func)
+    def decorator(func: Method[P, T, R]) -> AsyncMethod[P, T, R]:
+        wrapped: Method[P, T, R] = wrapper_factory(func)
 
-            # async_wrapped를 호출하면 코루틴이 반환됨
-            # 이 코루틴은 내부에서 func()를 호출하고 await 없이 반환하므로
-            # send(None)으로 한 번 실행하면 결과를 얻을 수 있음
-            def sync_wrapped(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
-                coro = async_wrapped(self, *args, **kwargs)
-                try:
-                    # 코루틴을 실행하여 결과 얻기
-                    # 내부에서 await가 없으면 StopIteration으로 결과 반환
-                    coro.send(None)
-                except StopIteration as e:
-                    return e.value  # type: ignore
-                finally:
-                    coro.close()
-                # 여기에 도달하면 안 됨 (await가 있는 경우)
-                raise RuntimeError("Wrapper contains await for sync function")
+        async def async_wrapper(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
+            result: R | Coroutine[Any, Any, R] = wrapped(self, *args, **kwargs)
+            if is_coroutine(result):
+                return await result
+            return cast(R, result)
 
-            return sync_wrapped  # type: ignore
+        return async_wrapper
 
     return decorator
