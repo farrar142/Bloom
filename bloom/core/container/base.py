@@ -16,6 +16,10 @@ class Element[T]:
     key: str
     value: T
 
+    def __init__(self, key: str, value: T) -> None:
+        self.key = key
+        self.value = value
+
 
 @dataclass
 class DependencyInfo:
@@ -69,6 +73,23 @@ class Container[T]:
             registry[kls][kls.__component_id__] = Container(kls, kls.__component_id__)
         container = registry[kls][kls.__component_id__]
         return container
+
+    def add_element(self, key: str, value: object) -> None:
+        element = Element(key, value)
+        self.elements.append(element)
+
+    def get_elements(self, key: str) -> list:
+        """특정 키에 해당하는 요소들 반환"""
+        return [element.value for element in self.elements if element.key == key]
+
+    def get_element[U](self, key: str, default: U | None = None) -> U:
+        elements = self.get_elements(key)
+        if elements:
+            return elements[0]  # 첫 번째 요소 반환
+        else:
+            if default is not None:
+                return default
+            raise KeyError(f"Element with key '{key}' not found.")
 
     def _analyze_dependencies(self) -> list[DependencyInfo]:
         """클래스 필드에서 의존성 분석"""

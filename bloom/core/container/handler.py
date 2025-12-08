@@ -1,5 +1,5 @@
-from typing import Callable, cast
-from functools import reduce
+from typing import Callable, Self, cast
+from functools import reduce, wraps
 from uuid import uuid4
 
 from .manager import get_container_registry
@@ -49,6 +49,7 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
     def __init__(self, kls: Method[P, T, R], component_id: str) -> None:
         super().__init__(kls, component_id)
         self.func = kls
+        self.parent_instance: T | None = None
         self._wrappers = []
 
         self._wrappers.append(
@@ -61,10 +62,10 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
             reversed(self._wrappers),
             self.func,
         )
-        return final_method
+        return wraps(self.func)(final_method)  # type:ignore
 
     @classmethod
-    def register(cls, func: Method[P, T, R]) -> "HandlerContainer[P, T, R]":
+    def register(cls, func: Method[P, T, R]):
         if not hasattr(func, "__component_id__"):
             func.__component_id__ = str(uuid4())
 
@@ -75,11 +76,7 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
 
         if func.__component_id__ not in registry[func]:
 
-            registry[func][func.__component_id__] = HandlerContainer(
-                func, func.__component_id__
-            )
-        container: HandlerContainer[P, T, R] = registry[func][
-            func.__component_id__
-        ]  # type:ignore
+            registry[func][func.__component_id__] = cls(func, func.__component_id__)
+        container: Self = registry[func][func.__component_id__]  # type:ignore
 
         return container

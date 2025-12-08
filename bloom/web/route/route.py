@@ -1,7 +1,5 @@
 """bloom.web.routing.router - URL Router with path parameter support"""
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Awaitable, TYPE_CHECKING

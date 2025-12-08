@@ -2,6 +2,7 @@
 코루틴 안전한 데코레이터 유틸리티 모듈
 """
 
+from functools import wraps
 import inspect
 from typing import (
     Any,
@@ -73,8 +74,8 @@ def safe_decorator_factory[**P, T, R](
 
     def decorator(func: Method[P, T, R]) -> Method[P, T, R]:
         if is_syncfunction(func):
-            return sync_decorator(cast(SyncMethod[P, T, R], func))
+            return wraps(func)(sync_decorator)(cast(SyncMethod[P, T, R], func))
         else:
-            return async_decorator(cast(AsyncMethod[P, T, R], func))
+            return wraps(func)(async_decorator)(cast(AsyncMethod[P, T, R], func))
 
     return decorator

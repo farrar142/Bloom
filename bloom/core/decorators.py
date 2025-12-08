@@ -17,10 +17,10 @@ def Service[T: type](kls: T) -> T:
 
 def Handler[**P, T, R](
     func: Callable[Concatenate[T, P], R],
-) -> Callable[Concatenate[T, P], Awaitable[R]]:
+) -> Callable[Concatenate[T, P], R]:
     """핸들러 데코레이터: 함수를 특정 핸들러 컨테이너에 등록합니다."""
 
     # 핸들러임을 표시하는 마커 추가
     handler = HandlerContainer.register(func)
 
-    return cast(Callable[Concatenate[T, P], Awaitable[R]], func)
+    return func

@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING, Callable, TypeGuard, overload
 if TYPE_CHECKING:
     from . import Container
 
-containers = dict[type | Callable, dict[str, "Container"]]()
+type COMPONENT_ID = str
+
+containers = dict[type | Callable, dict[COMPONENT_ID, "Container"]]()
 
 
 def is_container_registered[T](container_type: type[T]) -> TypeGuard[type[T]]:
@@ -15,7 +17,8 @@ def is_container_registered[T](container_type: type[T]) -> TypeGuard[type[T]]:
 
 class ContainerManager:
     def __init__(self) -> None:
-        self.instances = dict[str, object]()
+        self.instances = dict[COMPONENT_ID, object]()
+        self.containers = containers
 
     async def initialize(self) -> None:
         """모든 컨테이너 초기화"""
@@ -24,14 +27,16 @@ class ContainerManager:
                 instance = await container.initialize()
                 self.add_instance(container_type, container.component_id, instance)
                 self._inject_fields_sync(container, instance)
+        # 현재, 컨테이너에서 클래스의 인스턴스 업데이트
         target_containers = [
             container
-            for container_type, container_list in containers.items()
+            for container_type, container_list in self.containers.items()
             if inspect.isclass(container_type)
             for container in container_list.values()
         ]
         for container in target_containers:
             await self.replace_handler_methods(container)
+        # TODO 인스턴스에서 핸들러들을 업데이트
 
     async def replace_handler_methods[T](self, container: "Container[T]"):
         for name in dir(container.kls):
@@ -59,6 +64,9 @@ class ContainerManager:
                 handler_instance,  # type:ignore
                 parent_instance,
             )
+            self.add_instance(
+                attr, component_id, bound_handler
+            )  # 바운드된 메서드로 교체
             setattr(parent_instance, name, bound_handler)
 
     async def shutdown(self) -> None:
@@ -69,10 +77,33 @@ class ContainerManager:
                 await container.shutdown()
 
     def add_instance[T](
-        self, container_type: type[T] | Callable, component_id: str, instance: T
+        self,
+        container_type: type[T] | Callable,
+        component_id: COMPONENT_ID,
+        instance: T,
     ) -> None:
         """컨테이너 인스턴스 수동 추가"""
         self.instances[component_id] = instance
+
+    def get_containers_by_container_type[T: Container](
+        self, container_type: "type[T]"
+    ) -> list[T]:
+        """특정 컨테이너 타입의 컨테이너 조회"""
+        return [
+            container
+            for _, container_dict in self.containers.items()
+            for container in container_dict.values()
+            if isinstance(container, container_type)
+        ]
+
+    def get_container_type_by_id[T](
+        self, component_id: COMPONENT_ID
+    ) -> type["Container[T]"]:
+        for _, container_dict in self.containers.items():
+            for container in container_dict.values():
+                if container.component_id == component_id:
+                    return container.__class__
+        raise ValueError(f"No container found for id: {component_id}")
 
     def get_containers[T](self, container_type: type[T]) -> dict[str, "Container[T]"]:
         """특정 타입의 컨테이너 조회"""
@@ -81,10 +112,10 @@ class ContainerManager:
         return containers.get(container_type, {})  # type:ignore
 
     def get_container[T](
-        self, container_type: type[T], component_id: str | None = None
+        self, container_type: type[T], component_id: COMPONENT_ID | None = None
     ) -> "Container[T]":
         """특정 타입과 컴포넌트 ID의 컨테이너 조회"""
-        if container_type not in containers:
+        if container_type not in self.containers:
             raise ValueError(f"No containers registered for type: {container_type}")
         container_dict = containers.get(container_type, {})  # type:ignore
         if component_id is None:
@@ -107,35 +138,35 @@ class ContainerManager:
         return result
 
     @overload
-    def get_instance[T](self, container_type: type[T]) -> T: ...
+    def get_instance[T](self, instance_type: type[T]) -> T: ...
 
     @overload
     def get_instance[T](
-        self, container_type: type[T], required: bool = False
+        self, instance_type: type[T], required: bool = False
     ) -> T | None: ...
     @overload
-    def get_instance[T](self, container_type: str) -> T: ...
+    def get_instance[T](self, instance_type: COMPONENT_ID) -> T: ...
     @overload
     def get_instance[T](
-        self, container_type: str, required: bool = False
+        self, instance_type: COMPONENT_ID, required: bool = False
     ) -> T | None: ...
     def get_instance[T](
-        self, container_type: type[T] | str, required: bool = True
+        self, instance_type: type[T] | str, required: bool = True
     ) -> T | None:
-        if isinstance(container_type, str):
+        if isinstance(instance_type, str):
             for componen_id, instance in self.instances.items():
-                if componen_id == container_type:
+                if componen_id == instance_type:
                     return instance  # type: ignore
             else:
                 if required:
                     raise ValueError(
-                        f"No container instance found for id: {container_type}"
+                        f"No container instance found for id: {instance_type}"
                     )
                 return None
         """특정 타입의 컨테이너 인스턴스 단일 조회"""
-        instance = self.get_instances(container_type)
+        instance = self.get_instances(instance_type)
         if required and not instance:
-            raise ValueError(f"No container instance found for type: {container_type}")
+            raise ValueError(f"No container instance found for type: {instance_type}")
         return instance[0] if instance else None
 
     def _inject_fields_sync[T](self, container: "Container[T]", instance: T) -> None:
@@ -143,7 +174,6 @@ class ContainerManager:
         from .proxy import LazyProxy
 
         for dep in container.dependencies:
-            print("Processing dependency:", dep.field_name)
             current_value = getattr(instance, dep.field_name, None)
             if current_value is not None:
                 continue
@@ -155,7 +185,6 @@ class ContainerManager:
                 raise RuntimeError(
                     f"Cannot resolve dependency '{dep.field_name}' for '{container.kls.__name__}'"
                 )
-            print("Injecting LazyProxy for", dep.field_name)
 
             proxy_lp: LazyProxy[T] = LazyProxy(dep_container, self)
             setattr(instance, dep.field_name, proxy_lp)
@@ -166,7 +195,7 @@ container_manager_contexts: ContextVar[ContainerManager | None] = ContextVar(
 )
 
 
-def get_container_registry() -> dict[type | Callable, dict[str, "Container"]]:
+def get_container_registry() -> dict[type | Callable, dict[COMPONENT_ID, "Container"]]:
     """현재 컨테이너 레지스트리 조회"""
     return containers
 

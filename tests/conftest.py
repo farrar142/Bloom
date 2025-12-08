@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 from httpx._transports.asgi import ASGITransport
 from bloom.web.asgi import ASGIApplication
+from bloom.web import GetMapping, Controller
 from bloom import Application
 from bloom.core import Component, Service, Handler
 
@@ -33,6 +34,15 @@ class SyncAsyncService:
 class MyComponent:
     service: MyService
     synca_async_service: SyncAsyncService
+
+
+@Controller
+class MyController:
+    component: MyComponent
+
+    @GetMapping(path="/greet/{name}")
+    async def greet_handler(self, name: str) -> str:
+        return await self.component.service.greet(name)
 
 
 @pytest.fixture(scope="session", autouse=True)
