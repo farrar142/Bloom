@@ -22,7 +22,7 @@ from .functions import is_coroutine
 # =============================================================================
 
 
-class FactoryContainer[T](Container[type[T]]):
+class FactoryContainer[T](Container[T]):
     """팩토리 컨테이너 클래스
 
     Factory는 Container에 등록된 다른 서비스들을 의존성으로 주입받아서

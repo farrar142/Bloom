@@ -100,6 +100,17 @@ class ContainerManager:
             if isinstance(container, container_type)
         ]
 
+    def get_container_by_container_type_and_id[T: Container](
+        self, container_type: "type[T]", component_id: COMPONENT_ID
+    ) -> T:
+        containers = self.get_containers_by_container_type(container_type)
+        for container in containers:
+            if container.component_id == component_id:
+                return container
+        raise ValueError(
+            f"No container found for type: {container_type} with id: {component_id}"
+        )
+
     def get_container_type_by_id[T](
         self, component_id: COMPONENT_ID
     ) -> type["Container[T]"]:
@@ -205,17 +216,23 @@ class ContainerManager:
 
         return self.get_containers_by_container_type(FactoryContainer)
 
-    def get_factories_for_type[T](self, target_type: type[T]) -> list["FactoryContainer"]:
+    def get_factories_for_type[T](
+        self, target_type: type[T]
+    ) -> list["FactoryContainer"]:
         """특정 타입에 대한 Modifier를 가진 Factory들 조회"""
         factories = self.get_factories()
         return [f for f in factories if target_type in f.get_all_modifier_types()]
 
-    def get_factories_creating[T](self, return_type: type[T]) -> list["FactoryContainer"]:
+    def get_factories_creating[T](
+        self, return_type: type[T]
+    ) -> list["FactoryContainer"]:
         """특정 타입을 생성할 수 있는 Factory들 조회"""
         factories = self.get_factories()
         return [f for f in factories if return_type in f.get_all_creator_types()]
 
-    async def apply_modifiers[T](self, instance: T, target_type: type[T] | None = None) -> T:
+    async def apply_modifiers[T](
+        self, instance: T, target_type: type[T] | None = None
+    ) -> T:
         """인스턴스에 등록된 모든 Factory의 Modifier 적용
 
         Args:
