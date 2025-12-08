@@ -50,6 +50,8 @@ class Container[T]:
         self.instance = None
         self.elements = []
         self.dependencies = self._analyze_dependencies()
+        self.parent_instance: object | None = None
+        self.parent_container: Container | None = None
 
     async def initialize(self) -> T:
         """컨테이너 초기화 메서드 (비동기)"""

@@ -41,8 +41,9 @@ class MyController:
     component: MyComponent
 
     @GetMapping(path="/greet/{name}")
-    async def greet_handler(self, name: str) -> str:
-        return await self.component.service.greet(name)
+    async def greet_handler(self, name: str) -> dict:
+        print(f"greet_handler called with name={name}")
+        return {"message": await self.component.service.greet(name)}
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -52,11 +53,19 @@ def application() -> Application:
     # 애플리케이션 종료 로직이 필요하면 여기에 추가
 
 
+@pytest.fixture(scope="session", autouse=True)
+def asgi(application) -> ASGIApplication:
+    """ASGI 애플리케이션 초기화 fixture"""
+    asgi_app = ASGIApplication(application, debug=True)
+
+    return asgi_app
+
+
 @pytest.fixture
-def asgi_client(application) -> AsyncClient:
+def asgi_client(asgi) -> AsyncClient:
     """ASGI 앱을 테스트하기 위한 httpx 클라이언트 fixture"""
     # httpx 클라이언트 생성 (ASGI transport 사용)
 
-    transport = ASGITransport(app=ASGIApplication(application, debug=True))
+    transport = ASGITransport(app=asgi)
     client = AsyncClient(transport=transport, base_url="http://testserver")
     return client

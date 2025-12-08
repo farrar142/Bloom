@@ -6,12 +6,13 @@ from typing import Any, Callable, Awaitable, TYPE_CHECKING
 
 from .trie import PathTrie, TrieMatch
 
+from ..resolver import ResolverRegistry
 from ..request import HttpRequest
 from ..response import HttpResponse
 
 
 # Type alias for route handlers
-RouteHandler = Callable[[HttpRequest], Awaitable[Any] | Any]
+type RouteHandler[**P, R] = Callable[P, Awaitable[R] | R]
 
 
 @dataclass
@@ -27,12 +28,12 @@ class RouteMatch:
 
 
 @dataclass
-class Route:
+class Route[**P, R]:
     """단일 라우트 정의"""
 
     path: str
     method: str
-    handler: RouteHandler
+    handler: RouteHandler[P, R]
     name: str | None = None
 
     # 컴파일된 패턴 (지연 초기화) - 하위 호환성을 위해 유지
@@ -105,6 +106,7 @@ class Router:
         self._sub_routers: list[tuple[str, Router]] = []
         # HTTP 메서드별 PathTrie
         self._tries: dict[str, PathTrie[Route]] = {}
+        self.resolver = ResolverRegistry()
 
     def _get_trie(self, method: str) -> PathTrie[Route]:
         """HTTP 메서드별 Trie 가져오기 (없으면 생성)"""

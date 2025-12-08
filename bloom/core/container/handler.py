@@ -49,7 +49,6 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
     def __init__(self, kls: Method[P, T, R], component_id: str) -> None:
         super().__init__(kls, component_id)
         self.func = kls
-        self.parent_instance: T | None = None
         self._wrappers = []
 
         self._wrappers.append(

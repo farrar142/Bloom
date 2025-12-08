@@ -54,17 +54,3 @@ class TestASGIApplication:
         # 동기 핸들러 테스트
         result_sync = instance.synca_async_service.sync_handler(5)
         assert result_sync == 7
-
-    @pytest.mark.asyncio
-    async def test_route_handler(self, application: Application):
-        await application.ready()
-        manager = get_container_manager()
-        all_instances = manager.instances
-        for key, value in all_instances.items():
-            print(f"Instance Key: {key}, Value: {value}")
-        for key, value in manager.containers.items():
-            print(f"Container Key: {key}, Value: {value}")
-        controller = manager.get_instance(MyController)
-        route_containers = manager.get_containers_by_container_type(RouteContainer)
-        routes = [manager.get_instance(r.component_id) for r in route_containers]
-        print([await route("hello") for route in routes if route is not None])

@@ -59,7 +59,10 @@ class ContainerManager:
                 component_id = handler_container.component_id
             if not (handler_instance := self.get_instance(component_id)):
                 continue
+            handler_container = self.get_container(attr, component_id)
             parent_instance = self.get_instance(container.component_id)
+            handler_container.parent_instance = parent_instance
+            handler_container.parent_container = container
             bound_handler = types.MethodType(
                 handler_instance,  # type:ignore
                 parent_instance,
@@ -112,7 +115,9 @@ class ContainerManager:
         return containers.get(container_type, {})  # type:ignore
 
     def get_container[T](
-        self, container_type: type[T], component_id: COMPONENT_ID | None = None
+        self,
+        container_type: type[T] | Callable,
+        component_id: COMPONENT_ID | None = None,
     ) -> "Container[T]":
         """특정 타입과 컴포넌트 ID의 컨테이너 조회"""
         if container_type not in self.containers:

@@ -1,3 +1,3 @@
-from .route import Route, Router
+from .route import Route, Router, RouteMatch
 
 __all__ = ["Route", "Router"]

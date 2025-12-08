@@ -2,8 +2,10 @@
 
 from inspect import iscoroutine
 import re
+from typing import Callable
 
 from bloom import Application
+from bloom.web.decorators import RouteContainer
 
 from .route import Route, Router
 
@@ -21,18 +23,41 @@ class ASGIApplication:
     def __init__(self, application: Application, debug: bool = False) -> None:
         self.application = application
         self.debug = debug
-        self.response_converter_registry = ResponseConverterRegistry()
+        self.response_converter = ResponseConverterRegistry()
         self.router = Router()
-        self.router.add_route("/response", "GET", lambda x: {"message": "Hello, ASGI!"})
-        self.router.add_route(
-            "/response", "POST", lambda x: {"message": "Hello, POST!"}
-        )
-        self.router.add_route(
-            "/users/{user_id}",
-            "POST",
-            lambda x: {"message": f"Hello, {x.path_params.get('user_id')}!"},
-        )
+        # self.router.add_route(
+        #     "/response", "GET", lambda request: {"message": "Hello, ASGI!"}
+        # )
+        # self.router.add_route("/response", "POST", lambda: {"message": "Hello, POST!"})
+        # self.router.add_route(
+        #     "/users/{user_id}",
+        #     "POST",
+        #     lambda request: {
+        #         "message": f"Hello, {request.path_params.get('user_id')}!"
+        #     },
+        # )
         # path -> {method -> (handler, pattern, param_names)}
+
+    async def ready(self):
+
+        await self.application.ready()
+        await self.collect_routes()
+
+    async def collect_routes(self) -> None:
+        """애플리케이션에서 모든 라우트 수집"""
+        routes = self.application.container_manager.get_containers_by_container_type(
+            RouteContainer
+        )
+        for route in routes:
+            handler = self.application.container_manager.get_instance(
+                route.component_id
+            )
+            prefix = ""
+            if parent := route.parent_container:
+                prefix = parent.get_element("path_prefix", "")
+            path = prefix + route.get_element("path", "")
+            method = route.get_element("method", "GET").upper()
+            self.router.add_route(path, method, handler)
 
     # === Request Handler ===
 
@@ -52,14 +77,20 @@ class ASGIApplication:
             await response(scope, receive, send)
             return
         request = HttpRequest(scope, receive)
-        route = self.router.match(scope["path"], scope["method"])
+        route = self.router.match(
+            str(scope.get("path", b"")), str(scope.get("method", b""))
+        )
         if route is None:
             return await JSONResponse({})(scope, receive, send)
         request._scope["path_params"] = route.path_params
-        result = route.handler(request)
+
+        params = await self.router.resolver.resolve_parameters(
+            route.handler, request, route
+        )
+        result = route.handler(**params)
         if iscoroutine(result):
             result = await result
-        response = self.response_converter_registry.convert(result)
+        response = self.response_converter.convert(result)
 
         await response(scope, receive, send)
 
@@ -73,8 +104,7 @@ class ASGIApplication:
             if message["type"] == "lifespan.startup":
                 try:
                     # TODO: 앱 초기화 (ContainerManager.initialize())
-                    await self.application.ready()
-                    self.logger.info("Application startup")
+                    await self.ready()
                     await send({"type": "lifespan.startup.complete"})
                 except Exception as e:
                     await send(
