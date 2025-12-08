@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, TypeGuard, overload
 
 if TYPE_CHECKING:
     from . import Container
-    from .factory import FactoryContainer
+    from .factory import ConfigurationContainer
 
 type COMPONENT_ID = str
 
@@ -207,51 +207,86 @@ class ContainerManager:
             setattr(instance, dep.field_name, proxy_lp)
 
     # =========================================================================
-    # Factory 관련 메서드
+    # Configuration/Factory 관련 메서드
     # =========================================================================
 
-    def get_factories(self) -> list["FactoryContainer"]:
-        """모든 Factory 컨테이너 조회"""
-        from .factory import FactoryContainer
+    def get_configurations(self) -> list["ConfigurationContainer"]:
+        """모든 Configuration 컨테이너 조회"""
+        from .factory import ConfigurationContainer
 
-        return self.get_containers_by_container_type(FactoryContainer)
+        return self.get_containers_by_container_type(ConfigurationContainer)
 
-    def get_factories_for_type[T](
-        self, target_type: type[T]
-    ) -> list["FactoryContainer"]:
-        """특정 타입에 대한 Modifier를 가진 Factory들 조회"""
-        factories = self.get_factories()
-        return [f for f in factories if target_type in f.get_all_modifier_types()]
+    def get_all_factory_types(self) -> list[type]:
+        """모든 Configuration에서 정의된 Factory 반환 타입들 조회"""
+        factory_types: list[type] = []
+        for config in self.get_configurations():
+            factory_types.extend(config.get_factory_types())
+        return factory_types
 
-    def get_factories_creating[T](
-        self, return_type: type[T]
-    ) -> list["FactoryContainer"]:
-        """특정 타입을 생성할 수 있는 Factory들 조회"""
-        factories = self.get_factories()
-        return [f for f in factories if return_type in f.get_all_creator_types()]
+    def find_configuration_for_factory[T](
+        self, factory_type: type[T]
+    ) -> "ConfigurationContainer | None":
+        """특정 반환 타입을 생성할 수 있는 Configuration 찾기"""
+        for config in self.get_configurations():
+            if config.has_factory(factory_type):
+                return config
+        return None
 
-    async def apply_modifiers[T](
-        self, instance: T, target_type: type[T] | None = None
-    ) -> T:
-        """인스턴스에 등록된 모든 Factory의 Modifier 적용
+    async def get_or_create_factory_instance[T](
+        self, factory_type: type[T]
+    ) -> T | None:
+        """Factory 인스턴스 조회 또는 생성
+
+        먼저 캐시된 인스턴스를 찾고, 없으면 생성합니다.
 
         Args:
-            instance: 수정할 인스턴스
-            target_type: Modifier 필터링을 위한 타입 (기본: instance의 타입)
+            factory_type: 반환 타입
 
         Returns:
-            모든 Modifier가 적용된 인스턴스
+            Factory 인스턴스 또는 None (해당 타입의 Factory가 없는 경우)
         """
-        effective_type = target_type or type(instance)
-        factories = self.get_factories_for_type(effective_type)
+        # 먼저 캐시된 인스턴스 찾기
+        for config in self.get_configurations():
+            cached = config.get_cached_factory(factory_type)
+            if cached is not None:
+                return cached
 
-        result = instance
-        for factory in factories:
-            # 해당 타입의 모든 Modifier 메서드 실행
-            for method_name in factory.get_modifier_methods(effective_type):
-                result = await factory.modify(result, method_name)
+        # Factory 정의가 있는 Configuration 찾기
+        config = self.find_configuration_for_factory(factory_type)
+        if config is None:
+            return None
 
-        return result
+        # Factory 인스턴스 생성
+        return await config.create_factory(factory_type)
+
+    async def get_factory[T](self, factory_type: type[T]) -> T:
+        """Factory 인스턴스 조회 (없으면 예외 발생)
+
+        Args:
+            factory_type: 반환 타입
+
+        Returns:
+            Factory 인스턴스
+
+        Raises:
+            ValueError: 해당 타입의 Factory가 없는 경우
+        """
+        instance = await self.get_or_create_factory_instance(factory_type)
+        if instance is None:
+            raise ValueError(f"No Factory found for type '{factory_type.__name__}'")
+        return instance
+
+    async def initialize_all_factories(self) -> None:
+        """모든 Configuration의 Factory들을 초기화
+
+        의존성 순서를 고려하여 모든 인스턴스를 생성합니다.
+        """
+        for factory_type in self.get_all_factory_types():
+            await self.get_or_create_factory_instance(factory_type)
+
+    # 하위 호환성을 위한 별칭
+    get_factories = get_configurations
+    get_or_create_factory = get_or_create_factory_instance
 
 
 container_manager_contexts: ContextVar[ContainerManager | None] = ContextVar(

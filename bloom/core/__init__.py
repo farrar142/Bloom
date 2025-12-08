@@ -2,17 +2,20 @@ from .container import (
     get_container_manager,
     Container,
     HandlerContainer,
+    ConfigurationContainer,
     FactoryContainer,
 )
-from .decorators import Component, Service, Handler, Factory
+from .decorators import Component, Service, Handler, Configuration, Factory
 
 __all__ = [
     "get_container_manager",
     "Component",
     "Service",
     "Handler",
-    "Factory",
+    "Configuration",
     "Container",
     "HandlerContainer",
+    "ConfigurationContainer",
     "FactoryContainer",
+    "Factory",
 ]
