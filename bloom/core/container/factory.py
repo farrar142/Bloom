@@ -197,10 +197,10 @@ class ConfigurationContainer[T](Container[T]):
             # FactoryContainer 찾기
             if attr in registry:
                 component_id = attr.__component_id__
-                if component_id in registry[attr]:
-                    container = registry[attr][component_id]
-                    if isinstance(container, FactoryContainer):
-                        self._factory_containers.append(container)
+                factory_container = self.manager.get_container_by_container_type_and_id(
+                    FactoryContainer, component_id
+                )
+                self._factory_containers.append(factory_container)
 
     @classmethod
     def register[U: type](cls, kls: U) -> "ConfigurationContainer[U]":

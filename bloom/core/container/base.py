@@ -6,7 +6,7 @@ from typing import (
     get_type_hints,
 )
 from uuid import uuid4
-from .manager import get_container_registry
+from .manager import get_container_manager, get_container_registry
 
 if TYPE_CHECKING:
     from .handler import HandlerContainer
@@ -52,6 +52,7 @@ class Container[T]:
         self.dependencies = self._analyze_dependencies()
         self.parent_instance: object | None = None
         self.parent_container: Container | None = None
+        self.manager = get_container_manager()
 
     async def initialize(self) -> T:
         """컨테이너 초기화 메서드 (비동기)"""

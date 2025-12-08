@@ -28,7 +28,6 @@ class ContainerManager:
                 instance = await container.initialize()
                 self.add_instance(container_type, container.component_id, instance)
                 self._inject_fields_sync(container, instance)
-        # 현재, 컨테이너에서 클래스의 인스턴스 업데이트
         target_containers = [
             container
             for container_type, container_list in self.containers.items()
@@ -37,7 +36,6 @@ class ContainerManager:
         ]
         for container in target_containers:
             await self.replace_handler_methods(container)
-        # TODO 인스턴스에서 핸들러들을 업데이트
 
     async def replace_handler_methods[T](self, container: "Container[T]"):
         for name in dir(container.kls):
