@@ -57,7 +57,7 @@ class MyController:
     async def static_post_handler(
         self,
         authorization: Cookie[Literal["X-AUTHORIZATION"]],
-        user_agent: Header[str],
+        user_agent: Header,
     ) -> dict:
         print(authorization.value)
         return {"authorization": authorization.value, "user_agent": user_agent.value}
