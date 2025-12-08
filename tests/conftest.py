@@ -19,9 +19,20 @@ class MyService:
         return f"Hi, {name}!"
 
 
+@Service
+class SyncAsyncService:
+    async def async_handler(self, value: int) -> int:
+        return value * 2
+
+    @Handler
+    def sync_handler(self, value: int) -> int:
+        return value + 2
+
+
 @Component
 class MyComponent:
     service: MyService
+    synca_async_service: SyncAsyncService
 
 
 @pytest.fixture(scope="session", autouse=True)

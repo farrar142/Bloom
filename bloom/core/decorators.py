@@ -1,6 +1,6 @@
-from typing import Callable, Concatenate
+from typing import Awaitable, Callable, Concatenate, cast
 from uuid import uuid4
-from .container import Container, HandlerContainer, Method
+from .container import Container, HandlerContainer
 
 
 def Component[T: type](kls: T) -> T:
@@ -17,10 +17,10 @@ def Service[T: type](kls: T) -> T:
 
 def Handler[**P, T, R](
     func: Callable[Concatenate[T, P], R],
-) -> Callable[Concatenate[T, P], R]:
+) -> Callable[Concatenate[T, P], Awaitable[R]]:
     """핸들러 데코레이터: 함수를 특정 핸들러 컨테이너에 등록합니다."""
 
     # 핸들러임을 표시하는 마커 추가
-    HandlerContainer.register(func)
+    handler = HandlerContainer.register(func)
 
-    return func
+    return cast(Callable[Concatenate[T, P], Awaitable[R]], func)

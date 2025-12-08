@@ -1,6 +1,6 @@
 from httpx import AsyncClient
 from bloom import Application
-from bloom.core.call_scope import call_stack
+from bloom.core.container.call_scope import call_stack
 import pytest
 
 from .conftest import MyComponent
@@ -31,9 +31,23 @@ class TestASGIApplication:
             return
 
         stack = call_stack()
-        stack.add_event_listener(call_handlers)
+        stack.aadd_event_listener(call_handlers)
         assert await instance.service.greet("World") == "Hello, World!"
         assert len(frames) == 1
         assert await instance.service.auto_converted_handler("World") == "Hi, World!"
         assert len(frames) == 3
         print(frames)
+
+    @pytest.mark.asyncio
+    async def test_sync_async_handlers(self, application: Application):
+        """동기 및 비동기 핸들러 테스트"""
+        await application.ready()
+        instance = application.container_manager.get_instance(MyComponent)
+        assert instance.synca_async_service is not None
+        # 비동기 핸들러 테스트
+        result_async = await instance.synca_async_service.async_handler(5)
+        assert result_async == 10
+
+        # 동기 핸들러 테스트
+        result_sync = instance.synca_async_service.sync_handler(5)
+        assert result_sync == 7
