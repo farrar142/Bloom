@@ -82,17 +82,17 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
     ) -> "FactoryContainer[P, T, R]":
         """Factory 메서드를 FactoryContainer로 등록"""
         if not hasattr(func, "__component_id__"):
-            func.__component_id__ = str(uuid4())  # type: ignore
+            func.__component_id__ = str(uuid4())
 
         registry = get_container_registry()
 
         if func not in registry:
             registry[func] = {}
 
-        if func.__component_id__ not in registry[func]:  # type: ignore
-            registry[func][func.__component_id__] = cls(  # type: ignore
+        if func.__component_id__ not in registry[func]:
+            registry[func][func.__component_id__] = cls(
                 func,
-                func.__component_id__,  # type: ignore
+                func.__component_id__,
                 return_type,
                 dependencies,
                 is_async,
