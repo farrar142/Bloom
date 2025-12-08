@@ -1,7 +1,7 @@
 from httpx import AsyncClient
 from bloom import Application
 from bloom.core import get_container_manager
-from bloom.core.container.call_scope import call_stack
+from bloom.core.container.scope import call_stack
 import pytest
 
 from bloom.web.decorators import RouteContainer

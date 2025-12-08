@@ -3,7 +3,7 @@ from functools import reduce, wraps
 from uuid import uuid4
 
 from .manager import get_container_registry
-from .call_scope import call_stack
+from .scope import call_scope_manager, ScopeContext
 from .base import Container
 from .functions import (
     Method,
@@ -16,11 +16,13 @@ from .functions import (
 def async_call_scope_wrapper[**P, T, R](
     func: AsyncMethod[P, T, R],
 ) -> AsyncMethod[P, T, R]:
-    """CallScope를 적용하는 wrapper - sync/async 모두 지원"""
+    """CallScope를 적용하는 wrapper - async 버전
+
+    call_scope_manager()를 사용하여 CallStackTracker와 ScopeContext를 모두 관리합니다.
+    """
 
     async def wrapped(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
-        async with call_stack() as stack:
-            stack.add_data({"handler": func})
+        async with call_scope_manager() as scope_context:
             result = func(self, *args, **kwargs)
             return await result
 
@@ -30,11 +32,13 @@ def async_call_scope_wrapper[**P, T, R](
 def sync_call_scope_wrapper[**P, T, R](
     func: SyncMethod[P, T, R],
 ) -> SyncMethod[P, T, R]:
-    """CallScope를 적용하는 wrapper - sync/async 모두 지원"""
+    """CallScope를 적용하는 wrapper - sync 버전
+
+    call_scope_manager()를 사용하여 CallStackTracker와 ScopeContext를 모두 관리합니다.
+    """
 
     def wrapped(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
-        with call_stack() as stack:
-            stack.add_data({"handler": func})
+        with call_scope_manager() as scope_context:
             result = func(self, *args, **kwargs)
             return cast(R, result)
 

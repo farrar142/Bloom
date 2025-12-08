@@ -1,7 +1,7 @@
 """Test utilities for ASGI applications"""
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 import pytest
 from httpx import AsyncClient
@@ -10,6 +10,9 @@ from bloom.web.asgi import ASGIApplication
 from bloom.web import GetMapping, Controller
 from bloom import Application
 from bloom.core import Component, Service, Handler, Configuration, Factory
+from bloom.core.decorators import Transactional
+from bloom.core.container.scope import Scope
+from bloom.core.abstract.autocloseable import AutoCloseable, AsyncAutoCloseable
 from bloom.web.decorators import PostMapping
 from bloom.web.params import Cookie, Header, KeyValue
 
@@ -43,6 +46,86 @@ class AppSettings:
     debug: bool = False
     timeout: int = 30
     max_connections: int = 100
+
+
+# =============================================================================
+# Scope 테스트용 AutoCloseable 클래스들
+# =============================================================================
+
+
+class DatabaseSession(AutoCloseable):
+    """데이터베이스 세션 - CALL 스코프에서 자동 close"""
+
+    _instance_count: int = 0
+    _close_count: int = 0
+
+    def __init__(self, connection: DatabaseConnection):
+        self.connection = connection
+        self.session_id = DatabaseSession._instance_count
+        DatabaseSession._instance_count += 1
+        self.is_active = False
+        self.queries: list[str] = []
+
+    def __enter__(self):
+        self.is_active = True
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.is_active = False
+        DatabaseSession._close_count += 1
+
+    def execute(self, query: str) -> str:
+        if not self.is_active:
+            raise RuntimeError("Session is not active")
+        self.queries.append(query)
+        return f"Executed: {query}"
+
+    @classmethod
+    def reset_counters(cls):
+        cls._instance_count = 0
+        cls._close_count = 0
+
+
+class AsyncDatabaseSession(AsyncAutoCloseable):
+    """비동기 데이터베이스 세션 - CALL 스코프에서 자동 close"""
+
+    _instance_count: int = 0
+    _close_count: int = 0
+
+    def __init__(self, connection: DatabaseConnection):
+        self.connection = connection
+        self.session_id = AsyncDatabaseSession._instance_count
+        AsyncDatabaseSession._instance_count += 1
+        self.is_active = False
+        self.queries: list[str] = []
+
+    async def __aenter__(self):
+        self.is_active = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        self.is_active = False
+        AsyncDatabaseSession._close_count += 1
+
+    async def execute(self, query: str) -> str:
+        if not self.is_active:
+            raise RuntimeError("Session is not active")
+        self.queries.append(query)
+        return f"Executed: {query}"
+
+    @classmethod
+    def reset_counters(cls):
+        cls._instance_count = 0
+        cls._close_count = 0
+
+
+@dataclass
+class RequestContext:
+    """요청 컨텍스트 - REQUEST 스코프에서 공유"""
+
+    request_id: str = ""
+    user_id: str | None = None
+    data: dict = field(default_factory=dict)
 
 
 # =============================================================================
@@ -165,6 +248,30 @@ class ServiceConfig:
         service = UserService(user_repo, cache)
         await service.initialize()
         return service
+
+
+@Configuration
+class ScopedFactoryConfig:
+    """Scope가 적용된 Factory들"""
+
+    @Factory(scope=Scope.CALL)
+    def database_session(self, db: DatabaseConnection) -> DatabaseSession:
+        """CALL 스코프 세션 - 핸들러 호출마다 새로 생성, 자동 close"""
+        return DatabaseSession(db)
+
+    @Factory(scope=Scope.CALL)
+    async def async_database_session(
+        self, db: DatabaseConnection
+    ) -> AsyncDatabaseSession:
+        """CALL 스코프 비동기 세션"""
+        return AsyncDatabaseSession(db)
+
+    @Factory(scope=Scope.REQUEST)
+    def request_context(self) -> RequestContext:
+        """REQUEST 스코프 컨텍스트 - HTTP 요청 내 공유"""
+        import uuid
+
+        return RequestContext(request_id=str(uuid.uuid4()))
 
 
 # =============================================================================

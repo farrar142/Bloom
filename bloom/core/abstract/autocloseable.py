@@ -9,7 +9,7 @@ class AutoCloseable(ABC):
     def __exit__(self, exc_type, exc_value, traceback) -> None: ...
 
 
-class AAutoCloseable(ABC):
+class AsyncAutoCloseable(ABC):
     @abstractmethod
     async def __aenter__(self) -> "Self": ...
     @abstractmethod

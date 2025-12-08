@@ -2,7 +2,7 @@
 Factory Container 모듈 - Spring @Factory 스타일 구현
 
 @Configuration 클래스 내의 @Factory 메서드들이 반환하는 인스턴스를
-컨테이너에 싱글톤으로 등록합니다.
+컨테이너에 등록합니다.
 
 사용 예:
     @Configuration
@@ -21,10 +21,10 @@ Factory Container 모듈 - Spring @Factory 스타일 구현
             await service.initialize()
             return service
 
-        @Factory
-        def config(self) -> AppSettings:
-            '''설정 객체 빈 생성'''
-            return AppSettings(debug=True, timeout=30)
+        @Factory(scope=Scope.CALL)
+        def session(self, db: Database) -> Session:
+            '''요청마다 새로운 세션 생성'''
+            return db.session()
 """
 
 from typing import Any, Callable, Self
@@ -33,6 +33,7 @@ from uuid import uuid4
 
 from .base import Container
 from .manager import get_container_registry
+from .scope import Scope
 
 
 # =============================================================================
@@ -51,6 +52,7 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
     return_type: type[R]
     param_dependencies: dict[str, type]  # Factory 메서드의 파라미터 의존성
     is_async: bool
+    scope: Scope
     _cached_instance: R | None
 
     def __init__(
@@ -60,12 +62,14 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         return_type: type[R],
         param_dependencies: dict[str, type],
         is_async: bool,
+        scope: Scope = Scope.SINGLETON,
     ) -> None:
         super().__init__(func, component_id)  # type: ignore
         self.func = func
         self.return_type = return_type
         self.param_dependencies = param_dependencies
         self.is_async = is_async
+        self.scope = scope
         self._cached_instance = None
 
     async def initialize(self) -> Callable[P, R]:
@@ -79,6 +83,7 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         return_type: type[R],
         dependencies: dict[str, type],
         is_async: bool,
+        scope: Scope = Scope.SINGLETON,
     ) -> "FactoryContainer[P, T, R]":
         """Factory 메서드를 FactoryContainer로 등록"""
         if not hasattr(func, "__component_id__"):
@@ -96,6 +101,7 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
                 return_type,
                 dependencies,
                 is_async,
+                scope,
             )
         container: Self = registry[func][func.__component_id__]  # type: ignore
         return container
@@ -103,9 +109,9 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
     async def create_instance(self, config_instance: Any) -> R:
         """Factory 인스턴스 생성
 
-        이미 생성된 인스턴스가 있으면 캐시된 인스턴스를 반환합니다.
+        SINGLETON 스코프일 경우 캐시된 인스턴스를 반환합니다.
         """
-        if self._cached_instance is not None:
+        if self.scope == Scope.SINGLETON and self._cached_instance is not None:
             return self._cached_instance
 
         from .manager import get_container_manager
@@ -134,8 +140,57 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         if self.is_async:
             result = await result
 
-        # 캐시에 저장
-        self._cached_instance = result
+        # SINGLETON만 캐시에 저장
+        if self.scope == Scope.SINGLETON:
+            self._cached_instance = result
+
+        return result
+
+    def create_instance_sync(self, config_instance: Any) -> R:
+        """Factory 인스턴스 생성 (sync)
+
+        async가 아닌 Factory만 지원합니다.
+        """
+        if self.is_async:
+            raise RuntimeError(
+                f"Cannot call sync create for async Factory '{self.func.__name__}'"
+            )
+
+        if self.scope == Scope.SINGLETON and self._cached_instance is not None:
+            return self._cached_instance
+
+        from .manager import get_container_manager
+
+        manager = get_container_manager()
+
+        # 의존성 해결 (sync)
+        kwargs: dict[str, Any] = {}
+        for param_name, param_type in self.param_dependencies.items():
+            # 캐시된 Factory에서 의존성 찾기
+            dep_instance = None
+            for config in manager._configurations():
+                dep_instance = config.get_cached_factory(param_type)
+                if dep_instance is not None:
+                    break
+
+            if dep_instance is None:
+                # 일반 컨테이너에서 찾기
+                dep_instance = manager.instance(type=param_type, required=False)
+
+            if dep_instance is None:
+                raise RuntimeError(
+                    f"Cannot resolve dependency '{param_name}: {param_type.__name__}' "
+                    f"for @Factory method '{self.func.__name__}' in sync context"
+                )
+            kwargs[param_name] = dep_instance
+
+        # Factory 메서드 호출
+        method = getattr(config_instance, self.func.__name__)
+        result = method(**kwargs)
+
+        # SINGLETON만 캐시에 저장
+        if self.scope == Scope.SINGLETON:
+            self._cached_instance = result
 
         return result
 
