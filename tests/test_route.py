@@ -17,3 +17,13 @@ class TestASGIApplication:
         response = await asgi_client.post("/post/42", json={"field": 7})
         assert response.status_code == 200
         assert response.json() == {"field": 7, "post": 42}
+        response = await asgi_client.post(
+            "/post/static",
+            cookies={"X-AUTHORIZATION": " Bearer token"},
+            headers={"User-Agent": "TestAgent"},
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "authorization": "Bearer token",
+            "user_agent": "TestAgent",
+        }

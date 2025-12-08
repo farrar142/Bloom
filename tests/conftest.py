@@ -1,5 +1,7 @@
 """Test utilities for ASGI applications"""
 
+from __future__ import annotations
+from typing import Literal
 import pytest
 from httpx import AsyncClient
 from httpx._transports.asgi import ASGITransport
@@ -8,6 +10,7 @@ from bloom.web import GetMapping, Controller
 from bloom import Application
 from bloom.core import Component, Service, Handler
 from bloom.web.decorators import PostMapping
+from bloom.web.params import Cookie, Header, KeyValue
 
 
 @Service
@@ -49,6 +52,15 @@ class MyController:
     @PostMapping(path="/post/{post}")
     async def post_handler(self, field: int, post: int) -> dict:
         return {"field": field, "post": post}
+
+    @PostMapping(path="/post/static")
+    async def static_post_handler(
+        self,
+        authorization: Cookie[Literal["X-AUTHORIZATION"]],
+        user_agent: Header[str],
+    ) -> dict:
+        print(authorization.value)
+        return {"authorization": authorization.value, "user_agent": user_agent.value}
 
 
 @pytest.fixture(scope="session", autouse=True)

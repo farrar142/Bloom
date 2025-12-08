@@ -31,6 +31,7 @@ from .params import (
     CookieMarker,
     UploadedFileMarker,
     Authentication,
+    KeyValue,
     get_param_marker,
     is_optional,
 )
@@ -364,7 +365,7 @@ class HeaderResolver(ParameterResolver[Any]):
                 return None
             raise ValueError(f"Header '{name}' not found")
 
-        return value
+        return KeyValue(key=name, value=value)
 
 
 class CookieResolver(ParameterResolver[Any]):
@@ -389,7 +390,7 @@ class CookieResolver(ParameterResolver[Any]):
                 return None
             raise ValueError(f"Cookie '{name}' not found")
 
-        return value
+        return KeyValue(key=name, value=value)
 
 
 class UploadedFileResolver(ParameterResolver[Any]):
