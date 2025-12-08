@@ -14,3 +14,6 @@ class TestASGIApplication:
         response = await asgi_client.get("/greet/Tester")
         assert response.status_code == 200
         assert response.json() == {"message": "Hello, Tester!"}
+        response = await asgi_client.post("/post/42", json={"field": 7})
+        assert response.status_code == 200
+        assert response.json() == {"field": 7, "post": 42}

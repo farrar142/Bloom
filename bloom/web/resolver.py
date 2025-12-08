@@ -494,10 +494,10 @@ class AuthenticationResolver(ParameterResolver[Any]):
         return auth
 
 
-class ImplicitPathVariableResolver(ParameterResolver[Any]):
-    """암시적 Path Variable 리졸버
+class ImplicitVariableResolver(ParameterResolver[Any]):
+    """암시적 Variable 리졸버
 
-    마커 없이 파라미터 이름이 path에 있는 경우 자동으로 추출합니다.
+    마커 없이 파라미터 이름이 있는 경우 가능한 모든 곳에서 값을 추출 합니다
 
     예: /users/{id} 에서 def handler(id: int) 처럼 선언된 경우
     """
@@ -523,7 +523,17 @@ class ImplicitPathVariableResolver(ParameterResolver[Any]):
         value = request.query_param(param.name)
         if value is not None:
             return self._convert_type(value, param.actual_type)
+        if body := await request.body():
+            import json
 
+            try:
+                body_data = json.loads(body)
+                if param.name in body_data:
+                    return self._convert_type(
+                        str(body_data[param.name]), param.actual_type
+                    )
+            except Exception:
+                pass
         # 없으면 default 또는 None
         if param.has_default:
             return param.default
@@ -622,8 +632,7 @@ class ResolverRegistry:
                 HeaderResolver(),
                 CookieResolver(),
                 # 암시적 리졸버는 마지막에
-                ImplicitPathVariableResolver(),
-                ImplicitBodyFieldResolver(),
+                ImplicitVariableResolver(),
             ]
         )
 

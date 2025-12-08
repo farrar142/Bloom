@@ -7,6 +7,7 @@ from bloom.web.asgi import ASGIApplication
 from bloom.web import GetMapping, Controller
 from bloom import Application
 from bloom.core import Component, Service, Handler
+from bloom.web.decorators import PostMapping
 
 
 @Service
@@ -44,6 +45,10 @@ class MyController:
     async def greet_handler(self, name: str) -> dict:
         print(f"greet_handler called with name={name}")
         return {"message": await self.component.service.greet(name)}
+
+    @PostMapping(path="/post/{post}")
+    async def post_handler(self, field: int, post: int) -> dict:
+        return {"field": field, "post": post}
 
 
 @pytest.fixture(scope="session", autouse=True)
