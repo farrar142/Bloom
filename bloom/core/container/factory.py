@@ -116,10 +116,10 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         kwargs: dict[str, Any] = {}
         for param_name, param_type in self.param_dependencies.items():
             # 다른 Factory에서 의존성 찾기
-            dep_instance = await manager.get_or_create_factory_instance(param_type)
+            dep_instance = await manager.factory(param_type, required=False)
             if dep_instance is None:
                 # 일반 컨테이너에서 찾기
-                dep_instance = manager.get_instance(param_type)
+                dep_instance = manager.instance(type=param_type, required=False)
             if dep_instance is None:
                 raise RuntimeError(
                     f"Cannot resolve dependency '{param_name}: {param_type.__name__}' "
@@ -197,8 +197,8 @@ class ConfigurationContainer[T](Container[T]):
             # FactoryContainer 찾기
             if attr in registry:
                 component_id = attr.__component_id__
-                factory_container = self.manager.get_container_by_container_type_and_id(
-                    FactoryContainer, component_id
+                factory_container = self.manager.container(
+                    container_type=FactoryContainer, id=component_id
                 )
                 self._factory_containers.append(factory_container)
 
@@ -262,7 +262,7 @@ class ConfigurationContainer[T](Container[T]):
         from .manager import get_container_manager
 
         manager = get_container_manager()
-        config_instance = manager.get_instance(self.kls)
+        config_instance = manager.instance(type=self.kls, required=False)
 
         if config_instance is None:
             raise RuntimeError(

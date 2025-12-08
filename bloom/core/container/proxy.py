@@ -32,7 +32,7 @@ class LazyProxy[T]:
 
             container: "Container[T]" = self._lp_container
             manager: "ContainerManager" = self._lp_manager
-            instance = manager.get_instance(container.kls)
+            instance = manager.instance(type=container.kls)
             self._lp_instance = instance
             self._lp_resolved = True
         if self._lp_instance is None:

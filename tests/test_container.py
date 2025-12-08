@@ -16,7 +16,7 @@ class TestASGIApplication:
     async def test_initialize(self, application: Application):
         """GET 요청 테스트"""
         await application.ready()
-        instance = application.container_manager.get_instance(MyComponent)
+        instance = application.container_manager.instance(type=MyComponent)
         assert isinstance(instance, MyComponent)
         pass
 
@@ -24,7 +24,7 @@ class TestASGIApplication:
     async def test_injection(self, application: Application):
         """GET 요청 테스트"""
         await application.ready()
-        instance = application.container_manager.get_instance(MyComponent)
+        instance = application.container_manager.instance(type=MyComponent)
         assert instance.service is not None
         print("before call handler method")
         frames = []
@@ -45,7 +45,7 @@ class TestASGIApplication:
     async def test_sync_async_handlers(self, application: Application):
         """동기 및 비동기 핸들러 테스트"""
         await application.ready()
-        instance = application.container_manager.get_instance(MyComponent)
+        instance = application.container_manager.instance(type=MyComponent)
         assert instance.synca_async_service is not None
         # 비동기 핸들러 테스트
         result_async = await instance.synca_async_service.async_handler(5)

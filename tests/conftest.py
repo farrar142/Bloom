@@ -197,6 +197,7 @@ class SyncAsyncService:
 class MyComponent:
     service: MyService
     synca_async_service: SyncAsyncService
+    cache_client: CacheClient
 
 
 @Controller

@@ -6,6 +6,7 @@ Spring의 @Configuration/@Factory 스타일로 외부 클래스 인스턴스를
 
 import pytest
 
+from bloom.application import Application
 from bloom.core import (
     ConfigurationContainer,
     get_container_manager,
@@ -20,6 +21,7 @@ from tests.conftest import (
     AppSettings,
     # 서비스
     LoggingService,
+    MyComponent,
     NotificationService,
     # Configuration
     InfrastructureConfig,
@@ -33,10 +35,10 @@ from tests.conftest import (
 def get_configuration_container[T](config_cls: type[T]) -> ConfigurationContainer[T]:
     """Configuration 클래스에서 ConfigurationContainer를 가져오는 헬퍼 함수"""
     manager = get_container_manager()
-    c = manager.get_container(config_cls)
+    c = manager.container(type=config_cls)
     assert c is not None, f"Container not found for {config_cls.__name__}"
-    container = manager.get_container_by_container_type_and_id(
-        ConfigurationContainer, c.component_id
+    container = manager.container(
+        container_type=ConfigurationContainer, id=c.component_id
     )
     assert (
         container is not None
@@ -122,7 +124,7 @@ class TestFactoryCreation:
         await manager.initialize()
 
         # DatabaseConnection Factory 생성
-        db = await manager.get_factory(DatabaseConnection)
+        db = await manager.factory(DatabaseConnection)
         assert isinstance(db, DatabaseConnection)
         assert db.host == "localhost"
         assert db.port == 5432
@@ -134,8 +136,8 @@ class TestFactoryCreation:
         manager = get_container_manager()
         await manager.initialize()
 
-        db1 = await manager.get_factory(DatabaseConnection)
-        db2 = await manager.get_factory(DatabaseConnection)
+        db1 = await manager.factory(DatabaseConnection)
+        db2 = await manager.factory(DatabaseConnection)
 
         # 같은 인스턴스여야 함
         assert db1 is db2
@@ -147,7 +149,7 @@ class TestFactoryCreation:
         await manager.initialize()
 
         # UserRepository는 DatabaseConnection에 의존
-        user_repo = await manager.get_factory(UserRepository)
+        user_repo = await manager.factory(UserRepository)
         assert isinstance(user_repo, UserRepository)
         assert isinstance(user_repo.db, DatabaseConnection)
         assert user_repo.db.connected is True
@@ -159,7 +161,7 @@ class TestFactoryCreation:
         await manager.initialize()
 
         # UserService는 비동기로 초기화됨
-        user_service = await manager.get_factory(UserService)
+        user_service = await manager.factory(UserService)
         assert isinstance(user_service, UserService)
         assert user_service.initialized is True
 
@@ -170,7 +172,7 @@ class TestFactoryCreation:
         await manager.initialize()
 
         # UserService -> UserRepository -> DatabaseConnection
-        user_service = await manager.get_factory(UserService)
+        user_service = await manager.factory(UserService)
 
         assert user_service.repository is not None
         assert user_service.repository.db is not None
@@ -182,9 +184,9 @@ class TestFactoryCreation:
         manager = get_container_manager()
         await manager.initialize()
 
-        db = await manager.get_factory(DatabaseConnection)
-        cache = await manager.get_factory(CacheClient)
-        settings = await manager.get_factory(AppSettings)
+        db = await manager.factory(DatabaseConnection)
+        cache = await manager.factory(CacheClient)
+        settings = await manager.factory(AppSettings)
 
         assert db.host == "localhost"
         assert cache.ttl == 600
@@ -195,16 +197,16 @@ class TestContainerManagerFactoryMethods:
     """ContainerManager의 Factory 관련 메서드 테스트"""
 
     def test_get_configurations(self):
-        """get_configurations 테스트"""
+        """configurations 테스트"""
         manager = get_container_manager()
-        configs = manager.get_configurations()
+        configs = manager.containers(ConfigurationContainer)
 
         assert len(configs) >= 2  # InfrastructureConfig, ServiceConfig
 
     def test_get_all_factory_types(self):
-        """get_all_factory_types 테스트"""
+        """factory_types 테스트"""
         manager = get_container_manager()
-        Factory_types = manager.get_all_factory_types()
+        Factory_types = manager.factory_types()
 
         assert DatabaseConnection in Factory_types
         assert CacheClient in Factory_types
@@ -213,47 +215,30 @@ class TestContainerManagerFactoryMethods:
         assert UserService in Factory_types
 
     def test_find_configuration_for_factory(self):
-        """find_configuration_for_bean 테스트"""
+        """configuration_for 테스트"""
         manager = get_container_manager()
 
-        db_config = manager.find_configuration_for_factory(DatabaseConnection)
+        db_config = manager.configuration_for(DatabaseConnection)
         assert db_config is not None
         assert db_config.kls == InfrastructureConfig
 
-        user_repo_config = manager.find_configuration_for_factory(UserRepository)
+        user_repo_config = manager.configuration_for(UserRepository)
         assert user_repo_config is not None
         assert user_repo_config.kls == ServiceConfig
 
     @pytest.mark.asyncio
-    async def test_get_or_create_factory(self):
-        """get_or_create_bean 테스트"""
+    async def test_get_or_create_factory_instance(self):
+        """factory(required=False) 테스트"""
         manager = get_container_manager()
         await manager.initialize()
 
         # 존재하는 Factory
-        db = await manager.get_or_create_factory(DatabaseConnection)
+        db = await manager.factory(DatabaseConnection, required=False)
         assert db is not None
 
         # 존재하지 않는 Factory
-        result = await manager.get_or_create_factory(str)  # str은 Factory이 아님
+        result = await manager.factory(str, required=False)  # str은 Factory이 아님
         assert result is None
-
-    @pytest.mark.asyncio
-    async def test_initialize_all_beans(self):
-        """initialize_all_beans 테스트"""
-        manager = get_container_manager()
-        await manager.initialize()
-        await manager.initialize_all_factories()
-
-        # 모든 Factory이 캐시되어 있어야 함
-        infra_container = get_configuration_container(InfrastructureConfig)
-        service_container = get_configuration_container(ServiceConfig)
-
-        assert infra_container.get_cached_factory(DatabaseConnection) is not None
-        assert infra_container.get_cached_factory(CacheClient) is not None
-        assert infra_container.get_cached_factory(AppSettings) is not None
-        assert service_container.get_cached_factory(UserRepository) is not None
-        assert service_container.get_cached_factory(UserService) is not None
 
 
 class TestFactoryWithServiceDependency:
@@ -266,7 +251,7 @@ class TestFactoryWithServiceDependency:
         await manager.initialize()
 
         # ServiceConfig는 LoggingService를 주입받음
-        logging_service = manager.get_instance(LoggingService)
+        logging_service = manager.instance(type=LoggingService)
         assert logging_service is not None
 
         # ServiceConfig 컨테이너의 Factory 캐시 초기화
@@ -277,7 +262,7 @@ class TestFactoryWithServiceDependency:
         logging_service.logs.clear()
 
         # UserRepository Factory 생성 시 로그가 기록됨
-        await manager.get_factory(UserRepository)
+        await manager.factory(UserRepository)
 
         assert any(
             "UserRepository" in log for log in logging_service.logs
@@ -290,12 +275,12 @@ class TestFactoryWithServiceDependency:
         await manager.initialize()
 
         # @Service로 등록된 것
-        logging_service = manager.get_instance(LoggingService)
-        notification_service = manager.get_instance(NotificationService)
+        logging_service = manager.instance(type=LoggingService)
+        notification_service = manager.instance(type=NotificationService)
 
         # @Factory으로 등록된 것
-        db = await manager.get_factory(DatabaseConnection)
-        user_service = await manager.get_factory(UserService)
+        db = await manager.factory(DatabaseConnection)
+        user_service = await manager.factory(UserService)
 
         assert logging_service is not None
         assert notification_service is not None
@@ -312,7 +297,7 @@ class TestFactoryFunctionality:
         manager = get_container_manager()
         await manager.initialize()
 
-        user_repo = await manager.get_factory(UserRepository)
+        user_repo = await manager.factory(UserRepository)
 
         # 사용자 저장
         user_repo.save("user1", {"id": "user1", "name": "Alice"})
@@ -328,7 +313,7 @@ class TestFactoryFunctionality:
         manager = get_container_manager()
         await manager.initialize()
 
-        user_service = await manager.get_factory(UserService)
+        user_service = await manager.factory(UserService)
         assert user_service.initialized is True
 
         # 사용자 생성
@@ -347,7 +332,7 @@ class TestFactoryFunctionality:
         manager = get_container_manager()
         await manager.initialize()
 
-        settings = await manager.get_factory(AppSettings)
+        settings = await manager.factory(AppSettings)
 
         assert settings.debug is True
         assert settings.timeout == 60
@@ -364,6 +349,18 @@ class TestFactoryErrorHandling:
         await manager.initialize()
 
         with pytest.raises(ValueError) as exc_info:
-            await manager.get_factory(dict)  # dict는 Factory이 아님
+            await manager.factory(dict)  # dict는 Factory이 아님
 
         assert "No Factory found" in str(exc_info.value)
+
+
+class TestFactoryDependencyInjection:
+    """Factory 의존성 주입 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_factory_dependency_injection(self, application: Application):
+        """Factory 의존성 주입 동작 테스트"""
+        await application.ready()
+        my_service = application.container_manager.instance(type=MyComponent)
+
+        my_service.cache_client.host

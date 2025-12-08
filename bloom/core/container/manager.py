@@ -1,3 +1,9 @@
+"""
+Container Manager 모듈
+
+컨테이너와 인스턴스를 관리하는 중앙 관리자입니다.
+"""
+
 from contextvars import ContextVar
 import inspect
 import types
@@ -5,296 +11,446 @@ from typing import TYPE_CHECKING, Any, Callable, TypeGuard, overload
 
 if TYPE_CHECKING:
     from . import Container
-    from .factory import ConfigurationContainer
+    from .factory import ConfigurationContainer, FactoryContainer
 
 type COMPONENT_ID = str
 
+# 전역 컨테이너 레지스트리
+# { 등록된_타입(클래스/함수): { component_id: Container } }
 containers = dict[type | Callable, dict[COMPONENT_ID, "Container"]]()
 
 
 def is_container_registered[T](container_type: type[T]) -> TypeGuard[type[T]]:
+    """타입이 컨테이너로 등록되어 있는지 확인"""
     return container_type in containers
 
 
+def get_container_registry() -> dict[type | Callable, dict[COMPONENT_ID, "Container"]]:
+    """전역 컨테이너 레지스트리 조회"""
+    return containers
+
+
 class ContainerManager:
+    """컨테이너 매니저
+
+    모든 컨테이너와 인스턴스를 관리합니다.
+
+    조회 메서드 요약:
+    - container(): 컨테이너 조회 (타입, ID, 컨테이너클래스 기반)
+    - instance(): 인스턴스 조회 (타입, ID 기반)
+    - factory(): Factory 인스턴스 조회
+    """
+
     def __init__(self) -> None:
-        self.instances = dict[COMPONENT_ID, object]()
-        self.containers = containers
+        self._instances = dict[COMPONENT_ID, object]()
+        self._factory_types_cache: set[type] | None = None
+
+    @property
+    def instances(self) -> dict[COMPONENT_ID, object]:
+        """인스턴스 저장소"""
+        return self._instances
+
+    # =========================================================================
+    # 초기화/종료
+    # =========================================================================
 
     async def initialize(self) -> None:
         """모든 컨테이너 초기화"""
-        for container_type, container_list in containers.items():
-            for container in container_list.values():
+        # 1. 모든 컨테이너 초기화 및 일반 의존성 주입
+        # 스냅샷 생성 (반복 중 dict 변경 방지)
+        initial_containers = [(rt, dict(cd)) for rt, cd in containers.items()]
+        for registered_type, container_dict in initial_containers:
+            for container in container_dict.values():
                 instance = await container.initialize()
-                self.add_instance(container_type, container.component_id, instance)
-                self._inject_fields_sync(container, instance)
-        target_containers = [
-            container
-            for container_type, container_list in self.containers.items()
-            if inspect.isclass(container_type)
-            for container in container_list.values()
-        ]
-        for container in target_containers:
-            await self.replace_handler_methods(container)
+                self._add_instance(container.component_id, instance)
+                self._inject_dependencies(container, instance)
 
-    async def replace_handler_methods[T](self, container: "Container[T]"):
-        for name in dir(container.kls):
-            if name.startswith("_"):
-                continue
-            attr = getattr(container.kls, name, None)
-            if attr is None:
-                continue
-            if not inspect.isfunction(attr):
-                continue
-            if not (component_id := getattr(attr, "__component_id__", None)):
-                from . import HandlerContainer
+        # 2. Factory 인스턴스 미리 생성
+        await self._initialize_factories()
 
-                handler_container = HandlerContainer.register(attr)
-                self.add_instance(
-                    attr,
-                    handler_container.component_id,
-                    await handler_container.initialize(),
-                )
-                component_id = handler_container.component_id
-            if not (handler_instance := self.get_instance(component_id)):
-                continue
-            handler_container = self.get_container(attr, component_id)
-            parent_instance = self.get_instance(container.component_id)
-            handler_container.parent_instance = parent_instance
-            handler_container.parent_container = container
-            bound_handler = types.MethodType(
-                handler_instance,  # type:ignore
-                parent_instance,
-            )
-            self.add_instance(
-                attr, component_id, bound_handler
-            )  # 바운드된 메서드로 교체
-            setattr(parent_instance, name, bound_handler)
+        # 3. Factory 의존성 주입 (스냅샷 갱신)
+        current_containers = [(rt, dict(cd)) for rt, cd in containers.items()]
+        for registered_type, container_dict in current_containers:
+            for container in container_dict.values():
+                instance = self.instance(id=container.component_id, required=False)
+                if instance is not None:
+                    await self._inject_factory_dependencies(container, instance)
+
+        # 4. Handler 메서드 바인딩 (스냅샷 사용)
+        for registered_type, container_dict in current_containers:
+            if inspect.isclass(registered_type):
+                for container in container_dict.values():
+                    await self._bind_handler_methods(container)
 
     async def shutdown(self) -> None:
         """모든 컨테이너 종료"""
-        for container_type, container_list in containers.items():
-            for container in container_list.values():
-
+        current_containers = [(rt, dict(cd)) for rt, cd in containers.items()]
+        for registered_type, container_dict in current_containers:
+            for container in container_dict.values():
                 await container.shutdown()
 
-    def add_instance[T](
+    # =========================================================================
+    # 컨테이너 조회 (통합 API)
+    # =========================================================================
+
+    @overload
+    def container[T](
         self,
-        container_type: type[T] | Callable,
-        component_id: COMPONENT_ID,
-        instance: T,
-    ) -> None:
-        """컨테이너 인스턴스 수동 추가"""
-        self.instances[component_id] = instance
-
-    def get_containers_by_container_type[T: Container](
-        self, container_type: "type[T]"
-    ) -> list[T]:
-        """특정 컨테이너 타입의 컨테이너 조회"""
-        return [
-            container
-            for _, container_dict in self.containers.items()
-            for container in container_dict.values()
-            if isinstance(container, container_type)
-        ]
-
-    def get_container_by_container_type_and_id[T: Container](
-        self, container_type: "type[T]", component_id: COMPONENT_ID
-    ) -> T:
-        containers = self.get_containers_by_container_type(container_type)
-        for container in containers:
-            if container.component_id == component_id:
-                return container
-        raise ValueError(
-            f"No container found for type: {container_type} with id: {component_id}"
-        )
-
-    def get_container_type_by_id[T](
-        self, component_id: COMPONENT_ID
-    ) -> type["Container[T]"]:
-        for _, container_dict in self.containers.items():
-            for container in container_dict.values():
-                if container.component_id == component_id:
-                    return container.__class__
-        raise ValueError(f"No container found for id: {component_id}")
-
-    def get_containers[T](self, container_type: type[T]) -> dict[str, "Container[T]"]:
-        """특정 타입의 컨테이너 조회"""
-        if container_type not in containers:
-            raise ValueError(f"No containers registered for type: {container_type}")
-        return containers.get(container_type, {})  # type:ignore
-
-    def get_container[T](
-        self,
-        container_type: type[T] | Callable,
-        component_id: COMPONENT_ID | None = None,
+        *,
+        type: type[T],
+        id: COMPONENT_ID | None = None,
     ) -> "Container[T]":
-        """특정 타입과 컴포넌트 ID의 컨테이너 조회"""
-        if container_type not in self.containers:
-            raise ValueError(f"No containers registered for type: {container_type}")
-        container_dict = containers.get(container_type, {})  # type:ignore
-        if component_id is None:
-            # 기본(첫 번째) 컨테이너 반환
-            if not container_dict:
-                raise ValueError(f"No container found for type: {container_type}")
-            return next(iter(container_dict.values()))  # type:ignore
-        if component_id not in container_dict:
-            raise ValueError(
-                f"No container found for type: {container_type} with id: {component_id}"
-            )
-        return container_dict[component_id]  # type:ignore
-
-    def get_instances[T](self, container_type: type[T]) -> list[T]:
-        """특정 타입의 컨테이너 인스턴스 조회"""
-        result = list[T]()
-        for componen_id, instance in self.instances.items():
-            if isinstance(instance, container_type):
-                result.append(instance)  # type: ignore
-        return result
+        """등록된 타입으로 컨테이너 조회"""
+        ...
 
     @overload
-    def get_instance[T](self, instance_type: type[T]) -> T: ...
+    def container[T: "Container"](
+        self,
+        *,
+        container_type: type[T],
+        id: COMPONENT_ID | None = None,
+    ) -> T:
+        """컨테이너 클래스 타입으로 조회"""
+        ...
 
     @overload
-    def get_instance[T](
-        self, instance_type: type[T], required: bool = False
-    ) -> T | None: ...
-    @overload
-    def get_instance[T](self, instance_type: COMPONENT_ID) -> T: ...
-    @overload
-    def get_instance[T](
-        self, instance_type: COMPONENT_ID, required: bool = False
-    ) -> T | None: ...
-    def get_instance[T](
-        self, instance_type: type[T] | str, required: bool = True
-    ) -> T | None:
-        if isinstance(instance_type, str):
-            for componen_id, instance in self.instances.items():
-                if componen_id == instance_type:
-                    return instance  # type: ignore
-            else:
-                if required:
-                    raise ValueError(
-                        f"No container instance found for id: {instance_type}"
-                    )
-                return None
-        """특정 타입의 컨테이너 인스턴스 단일 조회"""
-        instance = self.get_instances(instance_type)
-        if required and not instance:
-            raise ValueError(f"No container instance found for type: {instance_type}")
-        return instance[0] if instance else None
+    def container(
+        self,
+        *,
+        id: COMPONENT_ID,
+    ) -> "Container":
+        """컴포넌트 ID로 컨테이너 조회"""
+        ...
 
-    def _inject_fields_sync[T](self, container: "Container[T]", instance: T) -> None:
-        """동기적으로 필드에 LazyProxy 주입"""
-        from .proxy import LazyProxy
-
-        for dep in container.dependencies:
-            current_value = getattr(instance, dep.field_name, None)
-            if current_value is not None:
-                continue
-
-            dep_container = self.get_container(dep.field_type)
-            if dep_container is None:
-                if dep.is_optional:
-                    continue
-                raise RuntimeError(
-                    f"Cannot resolve dependency '{dep.field_name}' for '{container.kls.__name__}'"
-                )
-
-            proxy_lp: LazyProxy[T] = LazyProxy(dep_container, self)
-            setattr(instance, dep.field_name, proxy_lp)
-
-    # =========================================================================
-    # Configuration/Factory 관련 메서드
-    # =========================================================================
-
-    def get_configurations(self) -> list["ConfigurationContainer"]:
-        """모든 Configuration 컨테이너 조회"""
-        from .factory import ConfigurationContainer
-
-        return self.get_containers_by_container_type(ConfigurationContainer)
-
-    def get_all_factory_types(self) -> list[type]:
-        """모든 Configuration에서 정의된 Factory 반환 타입들 조회"""
-        factory_types: list[type] = []
-        for config in self.get_configurations():
-            factory_types.extend(config.get_factory_types())
-        return factory_types
-
-    def find_configuration_for_factory[T](
-        self, factory_type: type[T]
-    ) -> "ConfigurationContainer | None":
-        """특정 반환 타입을 생성할 수 있는 Configuration 찾기"""
-        for config in self.get_configurations():
-            if config.has_factory(factory_type):
-                return config
-        return None
-
-    async def get_or_create_factory_instance[T](
-        self, factory_type: type[T]
-    ) -> T | None:
-        """Factory 인스턴스 조회 또는 생성
-
-        먼저 캐시된 인스턴스를 찾고, 없으면 생성합니다.
+    def container[T](
+        self,
+        *,
+        type: type[T] | None = None,
+        container_type: "type[Container] | None" = None,
+        id: COMPONENT_ID | None = None,
+    ) -> "Container":
+        """컨테이너 조회
 
         Args:
-            factory_type: 반환 타입
+            type: 등록된 클래스/함수 타입
+            container_type: Container 서브클래스 타입 (ConfigurationContainer 등)
+            id: 컴포넌트 ID
 
         Returns:
-            Factory 인스턴스 또는 None (해당 타입의 Factory가 없는 경우)
+            조회된 컨테이너
+
+        Examples:
+            # 등록된 타입으로 조회
+            container = manager.container(type=MyService)
+
+            # 컨테이너 클래스로 조회
+            config = manager.container(container_type=ConfigurationContainer, id=some_id)
+
+            # ID로만 조회
+            container = manager.container(id=component_id)
         """
-        # 먼저 캐시된 인스턴스 찾기
-        for config in self.get_configurations():
-            cached = config.get_cached_factory(factory_type)
+        # ID로만 조회
+        if id is not None and type is None and container_type is None:
+            for container_dict in containers.values():
+                if id in container_dict:
+                    return container_dict[id]
+            raise ValueError(f"No container found for id: {id}")
+
+        # 컨테이너 클래스 타입으로 조회
+        if container_type is not None:
+            matched = [
+                c
+                for container_dict in containers.values()
+                for c in container_dict.values()
+                if isinstance(c, container_type)
+            ]
+            if id is not None:
+                for c in matched:
+                    if c.component_id == id:
+                        return c
+                raise ValueError(f"No {container_type.__name__} found with id: {id}")
+            if not matched:
+                raise ValueError(f"No {container_type.__name__} found")
+            return matched[0]
+
+        # 등록된 타입으로 조회
+        if type is not None:
+            if type not in containers:
+                raise ValueError(f"No container registered for type: {type}")
+            container_dict = containers[type]
+            if id is not None:
+                if id not in container_dict:
+                    raise ValueError(f"No container for {type} with id: {id}")
+                return container_dict[id]
+            if not container_dict:
+                raise ValueError(f"No container found for type: {type}")
+            return next(iter(container_dict.values()))
+
+        raise ValueError("Must provide 'type', 'container_type', or 'id'")
+
+    def containers[T: "Container"](
+        self,
+        container_type: type[T],
+    ) -> list[T]:
+        """특정 컨테이너 클래스의 모든 컨테이너 조회
+
+        Args:
+            container_type: Container 서브클래스 (ConfigurationContainer 등)
+
+        Returns:
+            해당 타입의 모든 컨테이너 리스트
+        """
+        return [
+            c
+            for container_dict in containers.values()
+            for c in container_dict.values()
+            if isinstance(c, container_type)
+        ]
+
+    # =========================================================================
+    # 인스턴스 조회 (통합 API)
+    # =========================================================================
+
+    @overload
+    def instance[T](self, *, type: type[T]) -> T:
+        """타입으로 인스턴스 조회 (required)"""
+        ...
+
+    @overload
+    def instance[T](self, *, type: type[T], required: bool) -> T | None:
+        """타입으로 인스턴스 조회"""
+        ...
+
+    @overload
+    def instance[T](self, *, id: COMPONENT_ID) -> T:
+        """ID로 인스턴스 조회 (required)"""
+        ...
+
+    @overload
+    def instance[T](self, *, id: COMPONENT_ID, required: bool) -> T | None:
+        """ID로 인스턴스 조회"""
+        ...
+
+    def instance[T](
+        self,
+        *,
+        type: type[T] | None = None,
+        id: COMPONENT_ID | None = None,
+        required: bool = True,
+    ) -> T | None:
+        """인스턴스 조회
+
+        Args:
+            type: 인스턴스 타입
+            id: 컴포넌트 ID
+            required: True면 없을 시 예외 발생
+
+        Returns:
+            조회된 인스턴스
+
+        Examples:
+            # 타입으로 조회
+            service = manager.instance(type=MyService)
+
+            # ID로 조회
+            instance = manager.instance(id=component_id)
+
+            # 옵셔널 조회
+            maybe = manager.instance(type=MyService, required=False)
+        """
+        # ID로 조회
+        if id is not None:
+            if id in self._instances:
+                return self._instances[id]  # type: ignore
+            if required:
+                raise ValueError(f"No instance found for id: {id}")
+            return None
+
+        # 타입으로 조회
+        if type is not None:
+            for inst in self._instances.values():
+                if isinstance(inst, type):
+                    return inst  # type: ignore
+            if required:
+                raise ValueError(f"No instance found for type: {type}")
+            return None
+
+        raise ValueError("Must provide 'type' or 'id'")
+
+    def instances_of[T](self, type: type[T]) -> list[T]:
+        """특정 타입의 모든 인스턴스 조회"""
+        return [
+            inst for inst in self._instances.values() if isinstance(inst, type)
+        ]  # type: ignore
+
+    # =========================================================================
+    # Factory 조회
+    # =========================================================================
+
+    async def factory[T](self, type: type[T], *, required: bool = True) -> T | None:
+        """Factory 인스턴스 조회
+
+        Args:
+            type: Factory 반환 타입
+            required: True면 없을 시 예외 발생
+
+        Returns:
+            Factory 인스턴스
+        """
+        # 캐시된 인스턴스 찾기
+        for config in self._configurations():
+            cached = config.get_cached_factory(type)
             if cached is not None:
                 return cached
 
         # Factory 정의가 있는 Configuration 찾기
-        config = self.find_configuration_for_factory(factory_type)
+        config = self.configuration_for(type)
         if config is None:
+            if required:
+                raise ValueError(f"No Factory found for type '{type.__name__}'")
             return None
 
         # Factory 인스턴스 생성
-        return await config.create_factory(factory_type)
+        return await config.create_factory(type)
 
-    async def get_factory[T](self, factory_type: type[T]) -> T:
-        """Factory 인스턴스 조회 (없으면 예외 발생)
+    def factory_types(self) -> list[type]:
+        """모든 Factory 반환 타입 조회"""
+        result: list[type] = []
+        for config in self._configurations():
+            result.extend(config.get_factory_types())
+        return result
 
-        Args:
-            factory_type: 반환 타입
+    def configuration_for[T](
+        self, factory_type: type[T]
+    ) -> "ConfigurationContainer | None":
+        """특정 타입의 Factory를 가진 Configuration 찾기"""
+        for config in self._configurations():
+            if config.has_factory(factory_type):
+                return config
+        return None
 
-        Returns:
-            Factory 인스턴스
+    # =========================================================================
+    # Private 메서드
+    # =========================================================================
 
-        Raises:
-            ValueError: 해당 타입의 Factory가 없는 경우
-        """
-        instance = await self.get_or_create_factory_instance(factory_type)
-        if instance is None:
-            raise ValueError(f"No Factory found for type '{factory_type.__name__}'")
-        return instance
+    def _add_instance(self, component_id: COMPONENT_ID, instance: object) -> None:
+        """인스턴스 저장"""
+        self._instances[component_id] = instance
 
-    async def initialize_all_factories(self) -> None:
-        """모든 Configuration의 Factory들을 초기화
+    def _configurations(self) -> list["ConfigurationContainer"]:
+        """모든 ConfigurationContainer 조회"""
+        from .factory import ConfigurationContainer
 
-        의존성 순서를 고려하여 모든 인스턴스를 생성합니다.
-        """
-        for factory_type in self.get_all_factory_types():
-            await self.get_or_create_factory_instance(factory_type)
+        return self.containers(ConfigurationContainer)
 
-    # 하위 호환성을 위한 별칭
-    get_factories = get_configurations
-    get_or_create_factory = get_or_create_factory_instance
+    def _is_factory_type(self, field_type: type) -> bool:
+        """타입이 Factory로 등록되어 있는지 확인"""
+        # 캐시 사용
+        if self._factory_types_cache is None:
+            self._factory_types_cache = set(self.factory_types())
+        return field_type in self._factory_types_cache
 
+    def _inject_dependencies[T](self, container: "Container[T]", instance: T) -> None:
+        """일반 의존성 주입 (LazyProxy 사용)"""
+        from .proxy import LazyProxy
+
+        for dep in container.dependencies:
+            if getattr(instance, dep.field_name, None) is not None:
+                continue
+
+            # Factory 타입은 나중에 처리
+            if self._is_factory_type(dep.field_type):
+                continue
+
+            try:
+                dep_container = self.container(type=dep.field_type)
+            except ValueError:
+                if dep.is_optional:
+                    continue
+                raise RuntimeError(
+                    f"Cannot resolve dependency '{dep.field_name}' "
+                    f"for '{container.kls.__name__}'"
+                )
+
+            setattr(instance, dep.field_name, LazyProxy(dep_container, self))
+
+    async def _initialize_factories(self) -> None:
+        """모든 Factory 인스턴스 미리 생성"""
+        for factory_type in self.factory_types():
+            await self.factory(factory_type, required=False)
+
+    async def _inject_factory_dependencies[T](
+        self, container: "Container[T]", instance: T
+    ) -> None:
+        """Factory 타입 필드에 인스턴스 주입"""
+        from .factory import FactoryContainer
+
+        if isinstance(container, FactoryContainer):
+            return
+
+        for dep in container.dependencies:
+            if not self._is_factory_type(dep.field_type):
+                continue
+
+            if getattr(instance, dep.field_name, None) is not None:
+                continue
+
+            factory_instance = await self.factory(dep.field_type, required=False)
+            if factory_instance is None:
+                if dep.is_optional:
+                    continue
+                raise RuntimeError(
+                    f"Cannot resolve Factory dependency '{dep.field_name}' "
+                    f"for '{container.kls.__name__}'"
+                )
+
+            setattr(instance, dep.field_name, factory_instance)
+
+    async def _bind_handler_methods[T](self, container: "Container[T]") -> None:
+        """Handler 메서드를 인스턴스에 바인딩"""
+        from . import HandlerContainer
+
+        for name in dir(container.kls):
+            if name.startswith("_"):
+                continue
+
+            attr = getattr(container.kls, name, None)
+            if attr is None or inspect.isclass(attr):
+                continue
+
+            # Handler 등록
+            component_id = getattr(attr, "__component_id__", None)
+            if not component_id:
+                handler_container = HandlerContainer.register(attr)
+                self._add_instance(
+                    handler_container.component_id,
+                    await handler_container.initialize(),
+                )
+                component_id = handler_container.component_id
+
+            handler_instance = self.instance(id=component_id, required=False)
+            if not handler_instance:
+                continue
+
+            # 바인딩
+            handler_container = self.container(type=attr, id=component_id)
+            parent_instance = self.instance(id=container.component_id)
+
+            handler_container.parent_instance = parent_instance
+            handler_container.parent_container = container
+
+            bound_handler = types.MethodType(handler_instance, parent_instance)
+            self._add_instance(component_id, bound_handler)
+            setattr(parent_instance, name, bound_handler)
+
+
+# =============================================================================
+# 전역 함수
+# =============================================================================
 
 container_manager_contexts: ContextVar[ContainerManager | None] = ContextVar(
-    "current_container", default=None
+    "container_manager", default=None
 )
-
-
-def get_container_registry() -> dict[type | Callable, dict[COMPONENT_ID, "Container"]]:
-    """현재 컨테이너 레지스트리 조회"""
-    return containers
 
 
 def get_container_manager() -> ContainerManager:
