@@ -1,10 +1,11 @@
 from contextvars import ContextVar
 import inspect
 import types
-from typing import TYPE_CHECKING, Callable, TypeGuard, overload
+from typing import TYPE_CHECKING, Any, Callable, TypeGuard, overload
 
 if TYPE_CHECKING:
     from . import Container
+    from .factory import FactoryContainer
 
 type COMPONENT_ID = str
 
@@ -193,6 +194,47 @@ class ContainerManager:
 
             proxy_lp: LazyProxy[T] = LazyProxy(dep_container, self)
             setattr(instance, dep.field_name, proxy_lp)
+
+    # =========================================================================
+    # Factory 관련 메서드
+    # =========================================================================
+
+    def get_factories(self) -> list["FactoryContainer"]:
+        """모든 Factory 컨테이너 조회"""
+        from .factory import FactoryContainer
+
+        return self.get_containers_by_container_type(FactoryContainer)
+
+    def get_factories_for_type[T](self, target_type: type[T]) -> list["FactoryContainer"]:
+        """특정 타입에 대한 Modifier를 가진 Factory들 조회"""
+        factories = self.get_factories()
+        return [f for f in factories if target_type in f.get_all_modifier_types()]
+
+    def get_factories_creating[T](self, return_type: type[T]) -> list["FactoryContainer"]:
+        """특정 타입을 생성할 수 있는 Factory들 조회"""
+        factories = self.get_factories()
+        return [f for f in factories if return_type in f.get_all_creator_types()]
+
+    async def apply_modifiers[T](self, instance: T, target_type: type[T] | None = None) -> T:
+        """인스턴스에 등록된 모든 Factory의 Modifier 적용
+
+        Args:
+            instance: 수정할 인스턴스
+            target_type: Modifier 필터링을 위한 타입 (기본: instance의 타입)
+
+        Returns:
+            모든 Modifier가 적용된 인스턴스
+        """
+        effective_type = target_type or type(instance)
+        factories = self.get_factories_for_type(effective_type)
+
+        result = instance
+        for factory in factories:
+            # 해당 타입의 모든 Modifier 메서드 실행
+            for method_name in factory.get_modifier_methods(effective_type):
+                result = await factory.modify(result, method_name)
+
+        return result
 
 
 container_manager_contexts: ContextVar[ContainerManager | None] = ContextVar(
