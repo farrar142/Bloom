@@ -286,7 +286,10 @@ class ContainerManager:
     # =========================================================================
     # Factory 조회
     # =========================================================================
-
+    @overload
+    async def factory[T](self, type: type[T]) -> T: ...
+    @overload
+    async def factory[T](self, type: type[T], *, required: bool) -> T | None: ...
     async def factory[T](self, type: type[T], *, required: bool = True) -> T | None:
         """Factory 인스턴스 조회
 
