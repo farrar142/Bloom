@@ -5,7 +5,16 @@ from .container import (
     ConfigurationContainer,
     FactoryContainer,
 )
-from .decorators import Component, Service, Handler, Configuration, Factory
+from .decorators import (
+    Component,
+    Service,
+    Handler,
+    Configuration,
+    Factory,
+    Scoped,
+    Transactional,
+)
+from .container.scope import Scope
 
 __all__ = [
     "get_container_manager",
@@ -18,4 +27,7 @@ __all__ = [
     "ConfigurationContainer",
     "FactoryContainer",
     "Factory",
+    "Scoped",
+    "Scope",
+    "Transactional",
 ]

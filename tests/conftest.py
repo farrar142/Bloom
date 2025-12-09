@@ -9,9 +9,16 @@ from httpx._transports.asgi import ASGITransport
 from bloom.web.asgi import ASGIApplication
 from bloom.web import GetMapping, Controller
 from bloom import Application
-from bloom.core import Component, Service, Handler, Configuration, Factory
+from bloom.core import (
+    Component,
+    Service,
+    Handler,
+    Configuration,
+    Factory,
+    Scoped,
+    Scope,
+)
 from bloom.core.decorators import Transactional
-from bloom.core.container.scope import Scope
 from bloom.core.abstract.autocloseable import AutoCloseable, AsyncAutoCloseable
 from bloom.web.decorators import PostMapping
 from bloom.web.params import Cookie, Header, KeyValue
@@ -254,24 +261,105 @@ class ServiceConfig:
 class ScopedFactoryConfig:
     """Scope가 적용된 Factory들"""
 
-    @Factory(scope=Scope.CALL)
+    @Factory
+    @Scoped(Scope.CALL)
     def database_session(self, db: DatabaseConnection) -> DatabaseSession:
         """CALL 스코프 세션 - 핸들러 호출마다 새로 생성, 자동 close"""
         return DatabaseSession(db)
 
-    @Factory(scope=Scope.CALL)
+    @Factory
+    @Scoped(Scope.CALL)
     async def async_database_session(
         self, db: DatabaseConnection
     ) -> AsyncDatabaseSession:
         """CALL 스코프 비동기 세션"""
         return AsyncDatabaseSession(db)
 
-    @Factory(scope=Scope.REQUEST)
+    @Factory
+    @Scoped(Scope.REQUEST)
     def request_context(self) -> RequestContext:
         """REQUEST 스코프 컨텍스트 - HTTP 요청 내 공유"""
         import uuid
 
         return RequestContext(request_id=str(uuid.uuid4()))
+
+
+# =============================================================================
+# Scoped Component 테스트용 클래스들
+# =============================================================================
+
+
+@Component
+@Scoped(Scope.CALL)
+class CallScopedComponent(AutoCloseable):
+    """CALL 스코프 컴포넌트 - 핸들러 호출마다 새로 생성, 자동 close"""
+
+    _instances: list["CallScopedComponent"] = []
+    _close_order: list[int] = []
+
+    def __init__(self):
+        self.id = len(CallScopedComponent._instances)
+        self.is_active = True
+        CallScopedComponent._instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.is_active = False
+        CallScopedComponent._close_order.append(self.id)
+
+    @classmethod
+    def _reset(cls):
+        cls._instances = []
+        cls._close_order = []
+
+
+@Scoped(Scope.REQUEST)
+@Component
+class RequestScopedComponent:
+    """REQUEST 스코프 컴포넌트 - HTTP 요청 내 공유"""
+
+    _instances: list["RequestScopedComponent"] = []
+
+    def __init__(self):
+        self.id = len(RequestScopedComponent._instances)
+        self.data: dict = {}
+        RequestScopedComponent._instances.append(self)
+
+    @classmethod
+    def _reset(cls):
+        cls._instances = []
+
+
+@Service
+class ServiceUsingCallScopedComponent:
+    """CALL 스코프 컴포넌트를 사용하는 서비스"""
+
+    call_scoped: CallScopedComponent
+
+    @Handler
+    @Transactional
+    async def do_work(self) -> int:
+        """CALL 스코프 컴포넌트 사용"""
+        return self.call_scoped.id
+
+
+@Service
+class ServiceUsingRequestScopedComponent:
+    """REQUEST 스코프 컴포넌트를 사용하는 서비스"""
+
+    request_scoped: RequestScopedComponent
+
+    @Handler
+    async def set_data(self, key: str, value: str) -> None:
+        """REQUEST 스코프 컴포넌트에 데이터 설정"""
+        self.request_scoped.data[key] = value
+
+    @Handler
+    async def get_data(self, key: str) -> str | None:
+        """REQUEST 스코프 컴포넌트에서 데이터 조회"""
+        return self.request_scoped.data.get(key)
 
 
 # =============================================================================

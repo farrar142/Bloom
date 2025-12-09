@@ -12,6 +12,41 @@ from .container.scope import Scope, transactional_scope
 from .container.functions import Method, AsyncMethod, is_coroutine
 
 
+# =============================================================================
+# Scoped 데코레이터 - 클래스 및 함수에 스코프 지정
+# =============================================================================
+
+
+def Scoped[T](scope: Scope) -> Callable[[T], T]:
+    """스코프 데코레이터: 클래스 또는 함수에 스코프를 지정합니다.
+
+    @Factory, @Component 등과 함께 사용하여 인스턴스의 생명주기를 지정합니다.
+
+    Usage:
+        @Scoped(Scope.CALL)
+        @Factory
+        def session(self) -> Session:
+            return Session()
+
+        @Scoped(Scope.REQUEST)
+        @Component
+        class RequestContext:
+            pass
+
+    Args:
+        scope: 인스턴스 스코프 (SINGLETON, CALL, REQUEST)
+
+    Returns:
+        원본 클래스/함수 (__scope__ 속성이 부여됨)
+    """
+
+    def decorator(target: T) -> T:
+        target.__scope__ = scope  # type: ignore
+        return target
+
+    return decorator
+
+
 def Component[T: type](kls: T) -> T:
     """컴포넌트 데코레이터: 클래스를 특정 컨테이너 타입에 등록합니다."""
     container = Container.register(kls)
@@ -59,31 +94,13 @@ def Configuration[T: type](kls: T) -> T:
     return kls
 
 
-@overload
 def Factory[**P, R](func: Callable[P, R]) -> Callable[P, R]:
-    """Factory 데코레이터 (scope 없이)"""
-    ...
-
-
-@overload
-def Factory[**P, R](
-    *, scope: Scope = Scope.SINGLETON
-) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Factory 데코레이터 (scope 지정)"""
-    ...
-
-
-def Factory[**P, R](
-    func: Callable[P, R] | None = None, *, scope: Scope = Scope.SINGLETON
-) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
     """Factory 데코레이터: 메서드를 FactoryContainer에 등록합니다.
 
     @Configuration 클래스 내에서 사용되며, 메서드의 반환값이
     컨테이너에 등록됩니다.
 
-    Args:
-        func: Factory를 생성하는 메서드
-        scope: 인스턴스 스코프 (SINGLETON, CALL, REQUEST)
+    스코프를 지정하려면 @Scoped 데코레이터와 함께 사용하세요.
 
     Returns:
         원본 메서드 (component_id가 부여됨)
@@ -95,32 +112,25 @@ def Factory[**P, R](
             def user_service(self) -> UserService:
                 return UserService()
 
-            @Factory(scope=Scope.CALL)
+            @Scoped(Scope.CALL)
+            @Factory
             def session(self, db: Database) -> Session:
                 return db.session()
 
-            @Factory(scope=Scope.REQUEST)
+            @Scoped(Scope.REQUEST)
+            @Factory
             async def request_context(self) -> RequestContext:
                 return RequestContext()
     """
+    deps = analyze_function(func)
+    is_async = inspect.iscoroutinefunction(func)
 
-    def decorator(fn: Callable[P, R]) -> Callable[P, R]:
-        deps = analyze_function(fn)
-        is_async = inspect.iscoroutinefunction(fn)
+    # FactoryContainer 등록 - scope는 Lazy resolution으로 나중에 읽음
+    container = FactoryContainer.register(
+        func, deps.return_type, deps.dependencies, is_async
+    )
 
-        # FactoryContainer 등록
-        container = FactoryContainer.register(
-            fn, deps.return_type, deps.dependencies, is_async, scope
-        )
-
-        return fn
-
-    if func is not None:
-        # @Factory (인자 없이)
-        return decorator(func)
-    else:
-        # @Factory(scope=Scope.CALL)
-        return decorator
+    return func
 
 
 def Transactional[**P, T, R](func: Method[P, T, R]) -> AsyncMethod[P, T, R]:

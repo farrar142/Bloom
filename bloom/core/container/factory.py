@@ -32,7 +32,7 @@ from uuid import uuid4
 
 
 from .base import Container
-from .manager import get_container_registry
+from .manager import get_container_registry, get_container_manager
 from .scope import Scope
 
 
@@ -52,7 +52,6 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
     return_type: type[R]
     param_dependencies: dict[str, type]  # Factory 메서드의 파라미터 의존성
     is_async: bool
-    scope: Scope
     _cached_instance: R | None
 
     def __init__(
@@ -62,15 +61,24 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         return_type: type[R],
         param_dependencies: dict[str, type],
         is_async: bool,
-        scope: Scope = Scope.SINGLETON,
     ) -> None:
         super().__init__(func, component_id)  # type: ignore
         self.func = func
         self.return_type = return_type
         self.param_dependencies = param_dependencies
         self.is_async = is_async
-        self.scope = scope
         self._cached_instance = None
+
+    @property
+    def scope(self) -> Scope:
+        """데코레이터 순서와 무관하게 __scope__ 메타데이터를 직접 읽음"""
+        from .scope import get_scope
+
+        return get_scope(self.func)
+
+    @scope.setter
+    def scope(self, value: Scope) -> None:
+        self._factory_scope = value
 
     async def initialize(self) -> Callable[P, R]:
         """Factory 메서드 초기화 - 원본 함수 반환"""
@@ -83,7 +91,6 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         return_type: type[R],
         dependencies: dict[str, type],
         is_async: bool,
-        scope: Scope = Scope.SINGLETON,
     ) -> "FactoryContainer[P, T, R]":
         """Factory 메서드를 FactoryContainer로 등록"""
         if not hasattr(func, "__component_id__"):
@@ -101,7 +108,6 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
                 return_type,
                 dependencies,
                 is_async,
-                scope,
             )
         container: Self = registry[func][func.__component_id__]  # type: ignore
         return container
@@ -122,10 +128,12 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         kwargs: dict[str, Any] = {}
         for param_name, param_type in self.param_dependencies.items():
             # 다른 Factory에서 의존성 찾기
-            dep_instance = await manager.factory(param_type, required=False)
+            dep_instance = await manager.registry.factory(param_type, required=False)
             if dep_instance is None:
                 # 일반 컨테이너에서 찾기
-                dep_instance = manager.instance(type=param_type, required=False)
+                dep_instance = manager.registry.instance(
+                    type=param_type, required=False
+                )
             if dep_instance is None:
                 raise RuntimeError(
                     f"Cannot resolve dependency '{param_name}: {param_type.__name__}' "
@@ -168,14 +176,16 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         for param_name, param_type in self.param_dependencies.items():
             # 캐시된 Factory에서 의존성 찾기
             dep_instance = None
-            for config in manager._configurations():
+            for config in manager.registry._configurations():
                 dep_instance = config.get_cached_factory(param_type)
                 if dep_instance is not None:
                     break
 
             if dep_instance is None:
                 # 일반 컨테이너에서 찾기
-                dep_instance = manager.instance(type=param_type, required=False)
+                dep_instance = manager.registry.instance(
+                    type=param_type, required=False
+                )
 
             if dep_instance is None:
                 raise RuntimeError(
@@ -236,6 +246,7 @@ class ConfigurationContainer[T](Container[T]):
     def _collect_factory_containers(self) -> None:
         """Configuration 클래스의 @Factory 메서드들에 대한 FactoryContainer 수집"""
         registry = get_container_registry()
+        manager = get_container_manager()
 
         for name in dir(self.kls):
             if name.startswith("_"):
@@ -252,7 +263,7 @@ class ConfigurationContainer[T](Container[T]):
             # FactoryContainer 찾기
             if attr in registry:
                 component_id = attr.__component_id__
-                factory_container = self.manager.container(
+                factory_container = manager.registry.container(
                     container_type=FactoryContainer, id=component_id
                 )
                 self._factory_containers.append(factory_container)
@@ -317,7 +328,7 @@ class ConfigurationContainer[T](Container[T]):
         from .manager import get_container_manager
 
         manager = get_container_manager()
-        config_instance = manager.instance(type=self.kls, required=False)
+        config_instance = manager.registry.instance(type=self.kls, required=False)
 
         if config_instance is None:
             raise RuntimeError(

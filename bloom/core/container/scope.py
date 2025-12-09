@@ -145,6 +145,19 @@ class Scope(Enum):
     REQUEST = "request"  # HTTP 요청 단위로 공유
 
 
+def get_scope(target: Any, default: Scope = Scope.SINGLETON) -> Scope:
+    """대상에서 @Scoped 데코레이터로 지정된 스코프 가져오기
+
+    Args:
+        target: 클래스 또는 함수
+        default: @Scoped가 없을 때 기본값
+
+    Returns:
+        스코프 값
+    """
+    return getattr(target, "__scope__", default)
+
+
 T = TypeVar("T")
 
 

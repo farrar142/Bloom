@@ -23,6 +23,7 @@ from bloom.core.decorators import (
     Configuration,
     Factory,
     Transactional,
+    Scoped,
 )
 from bloom.core.container.scope import (
     Scope,
@@ -244,39 +245,45 @@ class TestFactoryWithScope:
         assert hasattr(AppConfig.singleton_service, "__component_id__")
 
     def test_factory_call_scope(self):
-        """@Factory(scope=Scope.CALL) 테스트"""
+        """@Factory @Scoped(Scope.CALL) 테스트"""
         from bloom.core.container.factory import FactoryContainer
 
         @Configuration
         class AppConfig:
-            @Factory(scope=Scope.CALL)
+            @Factory
+            @Scoped(Scope.CALL)
             def call_scoped_service(self) -> MockAutoCloseable:
                 return MockAutoCloseable(2)
 
         assert hasattr(AppConfig.call_scoped_service, "__component_id__")
+        assert getattr(AppConfig.call_scoped_service, "__scope__") == Scope.CALL
 
     def test_factory_request_scope(self):
-        """@Factory(scope=Scope.REQUEST) 테스트"""
+        """@Factory @Scoped(Scope.REQUEST) 테스트"""
         from bloom.core.container.factory import FactoryContainer
 
         @Configuration
         class AppConfig:
-            @Factory(scope=Scope.REQUEST)
+            @Factory
+            @Scoped(Scope.REQUEST)
             def request_scoped_service(self) -> MockAutoCloseable:
                 return MockAutoCloseable(3)
 
         assert hasattr(AppConfig.request_scoped_service, "__component_id__")
+        assert getattr(AppConfig.request_scoped_service, "__scope__") == Scope.REQUEST
 
     def test_factory_async_with_scope(self):
-        """@Factory async with scope 테스트"""
+        """@Factory @Scoped async 테스트"""
 
         @Configuration
         class AppConfig:
-            @Factory(scope=Scope.CALL)
+            @Factory
+            @Scoped(Scope.CALL)
             async def async_call_scoped(self) -> MockAsyncAutoCloseable:
                 return MockAsyncAutoCloseable(4)
 
         assert hasattr(AppConfig.async_call_scoped, "__component_id__")
+        assert getattr(AppConfig.async_call_scoped, "__scope__") == Scope.CALL
 
 
 # =============================================================================
@@ -609,3 +616,86 @@ class TestDecoratorPerformance:
         # 각각 다른 context_id
         context_ids = [r[1] for r in results]
         assert len(set(context_ids)) == 5  # 모두 다른 ID
+
+
+# =============================================================================
+# @Scoped + @Component 테스트
+# =============================================================================
+
+
+class TestScopedComponent:
+    """@Scoped + @Component 데코레이터 테스트"""
+
+    def test_scoped_component_singleton(self):
+        """@Component 기본 스코프는 SINGLETON"""
+        from bloom.core.container import Container
+
+        @Component
+        class SingletonService:
+            pass
+
+        container = Container.register(SingletonService)
+        from bloom.core.container.scope import Scope
+
+        assert container.scope == Scope.SINGLETON
+
+    def test_scoped_component_call_scope(self):
+        """@Component @Scoped(Scope.CALL) 테스트"""
+        from bloom.core.container import Container
+        from bloom.core.container.scope import Scope
+
+        @Component
+        @Scoped(Scope.CALL)
+        class CallScopedService:
+            pass
+
+        container = Container.register(CallScopedService)
+        assert container.scope == Scope.CALL
+
+    def test_scoped_component_request_scope(self):
+        """@Component @Scoped(Scope.REQUEST) 테스트"""
+        from bloom.core.container import Container
+        from bloom.core.container.scope import Scope
+
+        @Component
+        @Scoped(Scope.REQUEST)
+        class RequestScopedService:
+            pass
+
+        container = Container.register(RequestScopedService)
+        assert container.scope == Scope.REQUEST
+
+    def test_scoped_service_decorator(self):
+        """@Service @Scoped 테스트"""
+        from bloom.core.container import Container
+        from bloom.core.container.scope import Scope
+
+        @Service
+        @Scoped(Scope.REQUEST)
+        class RequestScopedHandler:
+            pass
+
+        container = Container.register(RequestScopedHandler)
+        assert container.scope == Scope.REQUEST
+
+    def test_scope_attribute_on_class(self):
+        """__scope__ 속성이 클래스에 설정되는지 확인"""
+        from bloom.core.container.scope import Scope
+
+        @Scoped(Scope.CALL)
+        class MyScopedClass:
+            pass
+
+        assert hasattr(MyScopedClass, "__scope__")
+        assert MyScopedClass.__scope__ == Scope.CALL
+
+    def test_scope_attribute_on_function(self):
+        """__scope__ 속성이 함수에 설정되는지 확인"""
+        from bloom.core.container.scope import Scope
+
+        @Scoped(Scope.REQUEST)
+        def my_scoped_function():
+            pass
+
+        assert hasattr(my_scoped_function, "__scope__")
+        assert my_scoped_function.__scope__ == Scope.REQUEST

@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar, Coroutine
 
 if TYPE_CHECKING:
     from . import Container
-    from .manager import ContainerManager
+    from .manager import ContainerRegistry
     from .factory import FactoryContainer
     from .scope import Scope, ScopeContext
 
@@ -16,15 +16,15 @@ class LazyProxy(Generic[T]):
     실제 인스턴스에 대한 접근을 투명하게 위임.
     """
 
-    __slots__ = ("_lp_container", "_lp_manager", "_lp_instance", "_lp_resolved")
+    __slots__ = ("_lp_container", "_lp_registry", "_lp_instance", "_lp_resolved")
 
     def __init__(
         self,
         container: "Container[T]",
-        manager: "ContainerManager",
+        registry: "ContainerRegistry",
     ) -> None:
         self._lp_container = container
-        self._lp_manager = manager
+        self._lp_registry = registry
         self._lp_instance: T | None = None
         self._lp_resolved = False
 
@@ -35,8 +35,8 @@ class LazyProxy(Generic[T]):
         if not self._lp_resolved:
 
             container: "Container[T]" = self._lp_container
-            manager: "ContainerManager" = self._lp_manager
-            instance = manager.instance(type=container.kls)
+            registry: "ContainerRegistry" = self._lp_registry
+            instance = registry.instance(type=container.kls)
             self._lp_instance = instance
             self._lp_resolved = True
         if self._lp_instance is None:

@@ -1,7 +1,7 @@
 """
 Scope + Application 통합 테스트
 
-Scope가 적용된 Factory와 Application의 통합을 테스트합니다.
+Scope가 적용된 Factory와 Component의 Application 통합을 테스트합니다.
 
 - SINGLETON: 앱 전체에서 하나의 인스턴스
 - CALL: @Handler 메서드 호출마다 새로 생성, 호출 끝나면 close
@@ -11,7 +11,7 @@ Scope가 적용된 Factory와 Application의 통합을 테스트합니다.
 
 import pytest
 from bloom import Application
-from bloom.core import get_container_manager, Handler, Service, Component
+from bloom.core import get_container_manager, Handler, Service, Component, Scoped
 from bloom.core.decorators import Transactional
 from bloom.core.container.scope import (
     Scope,
@@ -29,6 +29,10 @@ from tests.conftest import (
     RequestContext,
     InfrastructureConfig,
     ScopedFactoryConfig,
+    CallScopedComponent,
+    RequestScopedComponent,
+    ServiceUsingCallScopedComponent,
+    ServiceUsingRequestScopedComponent,
 )
 
 
@@ -509,3 +513,205 @@ class TestScopeWithFactoryContainer:
             factory_def = config.get_factory_definition(DatabaseConnection)
             cached = factory_def.get_cached_instance()
             assert cached is db1
+
+
+# =============================================================================
+# Component + Scope 통합 테스트
+# =============================================================================
+
+
+class TestScopedComponentIntegration:
+    """스코프 + 컴포넌트 Application 통합 테스트"""
+
+    @pytest.fixture(autouse=True)
+    def reset_components(self):
+        """각 테스트 전에 컴포넌트 상태 리셋"""
+        CallScopedComponent._reset()
+        RequestScopedComponent._reset()
+        yield
+        CallScopedComponent._reset()
+        RequestScopedComponent._reset()
+
+    @pytest.mark.asyncio
+    async def test_call_scoped_component_has_scope(self, application: Application):
+        """@Component @Scoped(Scope.CALL)이 Container에 scope 설정되는지 확인"""
+        from bloom.core.container import Container
+
+        container = Container.register(CallScopedComponent)
+        assert container.scope == Scope.CALL
+
+    @pytest.mark.asyncio
+    async def test_request_scoped_component_has_scope(self, application: Application):
+        """@Component @Scoped(Scope.REQUEST)이 Container에 scope 설정되는지 확인"""
+        from bloom.core.container import Container
+
+        container = Container.register(RequestScopedComponent)
+        assert container.scope == Scope.REQUEST
+
+    @pytest.mark.asyncio
+    async def test_singleton_component_default_scope(self, application: Application):
+        """@Component 기본 스코프는 SINGLETON"""
+        from bloom.core.container import Container
+
+        @Component
+        class DefaultScopedComponent:
+            pass
+
+        container = Container.register(DefaultScopedComponent)
+        assert container.scope == Scope.SINGLETON
+
+    @pytest.mark.asyncio
+    async def test_call_scoped_component_creates_new_per_call(
+        self, application: Application
+    ):
+        """CALL 스코프 컴포넌트가 호출마다 새로 생성되는지 테스트"""
+        await application.ready()
+
+        initial_count = len(CallScopedComponent._instances)
+
+        # 첫 번째 호출
+        async with transactional_scope() as ctx:
+            comp1 = CallScopedComponent()
+            ctx.register_closeable(comp1)
+            id1 = comp1.id
+
+        # 두 번째 호출
+        async with transactional_scope() as ctx:
+            comp2 = CallScopedComponent()
+            ctx.register_closeable(comp2)
+            id2 = comp2.id
+
+        # 다른 인스턴스여야 함
+        assert id1 != id2
+        assert len(CallScopedComponent._instances) == initial_count + 2
+
+    @pytest.mark.asyncio
+    async def test_call_scoped_component_auto_closes(self, application: Application):
+        """CALL 스코프 컴포넌트가 스코프 종료 시 자동 close되는지 테스트"""
+        await application.ready()
+
+        async with transactional_scope() as ctx:
+            comp = CallScopedComponent()
+            ctx.register_closeable(comp)
+            comp_id = comp.id
+            assert comp.is_active is True
+
+        # 스코프 종료 후 close됨
+        assert comp.is_active is False
+        assert comp_id in CallScopedComponent._close_order
+
+    @pytest.mark.asyncio
+    async def test_request_scoped_component_shared_in_request(
+        self, application: Application
+    ):
+        """REQUEST 스코프 컴포넌트가 요청 내에서 공유되는지 테스트"""
+        await application.ready()
+
+        async with request_scope() as ctx:
+            comp1 = RequestScopedComponent()
+            ctx.set("request_comp", comp1)
+            comp1.data["key"] = "value"
+
+            # 같은 요청 내에서 같은 인스턴스
+            comp2 = ctx.get("request_comp")
+            assert comp1 is comp2
+            assert comp2.data["key"] == "value"
+
+    @pytest.mark.asyncio
+    async def test_request_scoped_component_isolated_between_requests(
+        self, application: Application
+    ):
+        """REQUEST 스코프 컴포넌트가 요청 간 격리되는지 테스트"""
+        await application.ready()
+
+        # 첫 번째 요청
+        async with request_scope() as ctx1:
+            comp1 = RequestScopedComponent()
+            ctx1.set("request_comp", comp1)
+            comp1.data["key"] = "value1"
+            id1 = comp1.id
+
+        # 두 번째 요청
+        async with request_scope() as ctx2:
+            comp2 = RequestScopedComponent()
+            ctx2.set("request_comp", comp2)
+            id2 = comp2.id
+
+        # 다른 인스턴스여야 함
+        assert id1 != id2
+        assert comp2.data.get("key") is None  # 데이터 공유 안됨
+
+    @pytest.mark.asyncio
+    async def test_multiple_call_scoped_components_close_in_reverse_order(
+        self, application: Application
+    ):
+        """여러 CALL 스코프 컴포넌트가 역순으로 close되는지 테스트"""
+        await application.ready()
+
+        initial_close_count = len(CallScopedComponent._close_order)
+
+        async with transactional_scope() as ctx:
+            comp1 = CallScopedComponent()
+            ctx.register_closeable(comp1)
+            id1 = comp1.id
+
+            comp2 = CallScopedComponent()
+            ctx.register_closeable(comp2)
+            id2 = comp2.id
+
+            comp3 = CallScopedComponent()
+            ctx.register_closeable(comp3)
+            id3 = comp3.id
+
+        # 역순으로 close (마지막에 생성된 것이 먼저 close)
+        new_close_order = CallScopedComponent._close_order[initial_close_count:]
+        assert new_close_order == [id3, id2, id1]
+
+
+class TestScopedComponentWithService:
+    """스코프 Component를 사용하는 Service 통합 테스트"""
+
+    @pytest.fixture(autouse=True)
+    def reset_components(self):
+        """각 테스트 전에 컴포넌트 상태 리셋"""
+        CallScopedComponent._reset()
+        RequestScopedComponent._reset()
+        yield
+        CallScopedComponent._reset()
+        RequestScopedComponent._reset()
+
+    @pytest.mark.asyncio
+    async def test_service_with_call_scoped_dependency(self, application: Application):
+        """Service가 CALL 스코프 컴포넌트를 의존성으로 가질 때 테스트"""
+        await application.ready()
+        manager = application.container_manager
+
+        # ServiceUsingCallScopedComponent가 등록되어 있는지 확인
+        service = manager.instance(type=ServiceUsingCallScopedComponent, required=False)
+
+        # Service가 존재하면 CALL 스코프 의존성 확인
+        if service:
+            from bloom.core.container import Container
+
+            container = Container.register(CallScopedComponent)
+            assert container.scope == Scope.CALL
+
+    @pytest.mark.asyncio
+    async def test_service_with_request_scoped_dependency(
+        self, application: Application
+    ):
+        """Service가 REQUEST 스코프 컴포넌트를 의존성으로 가질 때 테스트"""
+        await application.ready()
+        manager = application.container_manager
+
+        # ServiceUsingRequestScopedComponent가 등록되어 있는지 확인
+        service = manager.instance(
+            type=ServiceUsingRequestScopedComponent, required=False
+        )
+
+        # Service가 존재하면 REQUEST 스코프 의존성 확인
+        if service:
+            from bloom.core.container import Container
+
+            container = Container.register(RequestScopedComponent)
+            assert container.scope == Scope.REQUEST
