@@ -78,6 +78,24 @@ class TestCallScopeIntegration:
         AsyncDatabaseSession.reset_counters()
 
     @pytest.mark.asyncio
+    async def test_call_scope_factory_not_initialized_at_startup(
+        self, application: Application
+    ):
+        """CALL 스코프 Factory는 애플리케이션 시작 시 초기화되지 않음"""
+        # 카운터 초기화
+        DatabaseSession.reset_counters()
+        initial_created = DatabaseSession._instance_count
+
+        # 애플리케이션 시작
+        await application.ready()
+
+        # CALL 스코프 Factory는 시작 시점에 생성되지 않아야 함
+        assert DatabaseSession._instance_count == initial_created, (
+            f"CALL 스코프 Factory가 시작 시 생성됨: "
+            f"created={DatabaseSession._instance_count - initial_created}"
+        )
+
+    @pytest.mark.asyncio
     async def test_call_scope_creates_new_instance_per_handler(
         self, application: Application
     ):
@@ -94,9 +112,7 @@ class TestCallScopeIntegration:
                 if ctx:
                     # 실제로는 ScopedProxy를 통해 접근하지만,
                     # 여기서는 직접 ScopeContext 테스트
-                    session = DatabaseSession(
-                        DatabaseConnection("localhost", 5432)
-                    )
+                    session = DatabaseSession(DatabaseConnection("localhost", 5432))
                     session.__enter__()
                     ctx.register_closeable(session)
                     ctx.set("session", session)
@@ -107,9 +123,7 @@ class TestCallScopeIntegration:
             async def handler2(self):
                 ctx = get_call_scope()
                 if ctx:
-                    session = DatabaseSession(
-                        DatabaseConnection("localhost", 5432)
-                    )
+                    session = DatabaseSession(DatabaseConnection("localhost", 5432))
                     session.__enter__()
                     ctx.register_closeable(session)
                     ctx.set("session", session)
@@ -173,9 +187,7 @@ class TestTransactionalIntegration:
         AsyncDatabaseSession.reset_counters()
 
     @pytest.mark.asyncio
-    async def test_transactional_shares_scope_context(
-        self, application: Application
-    ):
+    async def test_transactional_shares_scope_context(self, application: Application):
         """@Transactional 내에서 같은 ScopeContext 공유"""
         await application.ready()
 
@@ -207,9 +219,7 @@ class TestTransactionalIntegration:
         assert context_ids[0] == context_ids[1]
 
     @pytest.mark.asyncio
-    async def test_transactional_auto_closes_on_exit(
-        self, application: Application
-    ):
+    async def test_transactional_auto_closes_on_exit(self, application: Application):
         """@Transactional 종료 시 AutoCloseable 자동 close"""
         await application.ready()
 
@@ -272,9 +282,7 @@ class TestTransactionalIntegration:
         assert "trans_scope" in call_order
 
     @pytest.mark.asyncio
-    async def test_transactional_exception_still_closes(
-        self, application: Application
-    ):
+    async def test_transactional_exception_still_closes(self, application: Application):
         """@Transactional 예외 발생 시에도 close 실행"""
         await application.ready()
 
@@ -312,9 +320,7 @@ class TestScopeIsolation:
         DatabaseSession.reset_counters()
 
     @pytest.mark.asyncio
-    async def test_call_scope_isolated_between_handlers(
-        self, application: Application
-    ):
+    async def test_call_scope_isolated_between_handlers(self, application: Application):
         """핸들러 간 CALL 스코프 격리"""
         await application.ready()
 
@@ -407,9 +413,7 @@ class TestAsyncAutoCloseableIntegration:
             @Transactional
             async def use_async_session(self):
                 ctx = get_transactional_scope()
-                session = AsyncDatabaseSession(
-                    DatabaseConnection("localhost", 5432)
-                )
+                session = AsyncDatabaseSession(DatabaseConnection("localhost", 5432))
                 await session.__aenter__()
                 ctx.register_closeable(session)
                 session_ref.append(session)
@@ -488,9 +492,7 @@ class TestScopeWithFactoryContainer:
             assert factory_def.scope == Scope.CALL
 
     @pytest.mark.asyncio
-    async def test_singleton_factory_caches_correctly(
-        self, application: Application
-    ):
+    async def test_singleton_factory_caches_correctly(self, application: Application):
         """SINGLETON Factory가 올바르게 캐시되는지 확인"""
         await application.ready()
         manager = application.container_manager

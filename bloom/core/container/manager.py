@@ -378,9 +378,18 @@ class ContainerManager:
             setattr(instance, dep.field_name, LazyProxy(dep_container, self))
 
     async def _initialize_factories(self) -> None:
-        """모든 Factory 인스턴스 미리 생성"""
-        for factory_type in self.factory_types():
-            await self.factory(factory_type, required=False)
+        """SINGLETON 스코프 Factory 인스턴스만 미리 생성
+
+        CALL, REQUEST 등의 스코프는 사용 시점에 생성됨
+        """
+        from .factory import FactoryContainer
+        from .scope import Scope
+
+        for config in self._configurations():
+            for factory_container in config.get_factory_containers():
+                # SINGLETON 스코프만 미리 초기화
+                if factory_container.scope == Scope.SINGLETON:
+                    await self.factory(factory_container.return_type, required=False)
 
     async def _inject_factory_dependencies[T](
         self, container: "Container[T]", instance: T
