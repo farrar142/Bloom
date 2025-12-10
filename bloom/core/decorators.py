@@ -1,5 +1,5 @@
 import inspect
-from typing import Callable, Concatenate, overload
+from typing import Any, Callable, Concatenate, cast, overload
 
 from bloom.utils.analyze_function import analyze_function
 from .container import (
@@ -8,6 +8,7 @@ from .container import (
     ConfigurationContainer,
     FactoryContainer,
 )
+from .container.base import ContainerTransferError
 from .container.scope import Scope, transactional_scope
 from .container.functions import Method, AsyncMethod, is_coroutine
 
@@ -16,15 +17,25 @@ from .container.functions import Method, AsyncMethod, is_coroutine
 # Scoped 데코레이터 - 클래스 및 함수에 스코프 지정
 # =============================================================================
 
+# Element key for scope
+SCOPE_ELEMENT_KEY = "scope"
+
 
 def Scoped[T](scope: Scope) -> Callable[[T], T]:
     """스코프 데코레이터: 클래스 또는 함수에 스코프를 지정합니다.
 
-    @Factory, @Component 등과 함께 사용하여 인스턴스의 생명주기를 지정합니다.
+    다른 컨테이너 데코레이터(@Factory, @Component 등)와 순서에 상관없이 사용 가능합니다.
+    - 다른 컨테이너가 먼저 적용된 경우: 해당 컨테이너의 element에 scope 추가
+    - 다른 컨테이너가 나중에 적용되는 경우: 기본 Container 등록 후, 나중에 흡수/전이됨
 
     Usage:
         @Scoped(Scope.CALL)
         @Factory
+        def session(self) -> Session:
+            return Session()
+
+        @Factory  # 순서 바뀌어도 동작
+        @Scoped(Scope.CALL)
         def session(self) -> Session:
             return Session()
 
@@ -37,11 +48,24 @@ def Scoped[T](scope: Scope) -> Callable[[T], T]:
         scope: 인스턴스 스코프 (SINGLETON, CALL, REQUEST)
 
     Returns:
-        원본 클래스/함수 (__scope__ 속성이 부여됨)
+        원본 클래스/함수 (scope가 Container element로 저장됨)
     """
+    from .container.manager import get_container_registry
 
     def decorator(target: T) -> T:
-        target.__scope__ = scope  # type: ignore
+        registry = get_container_registry()
+        component_id = getattr(target, "__component_id__", None)
+        key: Any = target
+
+        # 이미 컨테이너가 등록되어 있는 경우 -> element에 scope 추가
+        if key in registry and component_id and component_id in registry[key]:
+            existing = registry[key][component_id]
+            existing.add_element(SCOPE_ELEMENT_KEY, scope)
+            return target
+
+        # 컨테이너가 없는 경우 -> 기본 Container 등록
+        container = Container.register(target)  # type: ignore
+        container.add_element(SCOPE_ELEMENT_KEY, scope)
         return target
 
     return decorator

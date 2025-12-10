@@ -1,4 +1,4 @@
-from .base import Container
+from .base import Container, ContainerTransferError
 from .handler import HandlerContainer
 from .factory import (
     ConfigurationContainer,

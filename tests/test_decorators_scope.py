@@ -247,6 +247,7 @@ class TestFactoryWithScope:
     def test_factory_call_scope(self):
         """@Factory @Scoped(Scope.CALL) 테스트"""
         from bloom.core.container.factory import FactoryContainer
+        from bloom.core.container.manager import get_container_registry
 
         @Configuration
         class AppConfig:
@@ -256,11 +257,16 @@ class TestFactoryWithScope:
                 return MockAutoCloseable(2)
 
         assert hasattr(AppConfig.call_scoped_service, "__component_id__")
-        assert getattr(AppConfig.call_scoped_service, "__scope__") == Scope.CALL
+        # container의 scope element에서 확인
+        registry = get_container_registry()
+        component_id = AppConfig.call_scoped_service.__component_id__
+        container = registry[AppConfig.call_scoped_service][component_id]
+        assert container.scope == Scope.CALL
 
     def test_factory_request_scope(self):
         """@Factory @Scoped(Scope.REQUEST) 테스트"""
         from bloom.core.container.factory import FactoryContainer
+        from bloom.core.container.manager import get_container_registry
 
         @Configuration
         class AppConfig:
@@ -270,10 +276,15 @@ class TestFactoryWithScope:
                 return MockAutoCloseable(3)
 
         assert hasattr(AppConfig.request_scoped_service, "__component_id__")
-        assert getattr(AppConfig.request_scoped_service, "__scope__") == Scope.REQUEST
+        # container의 scope element에서 확인
+        registry = get_container_registry()
+        component_id = AppConfig.request_scoped_service.__component_id__
+        container = registry[AppConfig.request_scoped_service][component_id]
+        assert container.scope == Scope.REQUEST
 
     def test_factory_async_with_scope(self):
         """@Factory @Scoped async 테스트"""
+        from bloom.core.container.manager import get_container_registry
 
         @Configuration
         class AppConfig:
@@ -283,7 +294,11 @@ class TestFactoryWithScope:
                 return MockAsyncAutoCloseable(4)
 
         assert hasattr(AppConfig.async_call_scoped, "__component_id__")
-        assert getattr(AppConfig.async_call_scoped, "__scope__") == Scope.CALL
+        # container의 scope element에서 확인
+        registry = get_container_registry()
+        component_id = AppConfig.async_call_scoped.__component_id__
+        container = registry[AppConfig.async_call_scoped][component_id]
+        assert container.scope == Scope.CALL
 
 
 # =============================================================================
@@ -679,23 +694,25 @@ class TestScopedComponent:
         assert container.scope == Scope.REQUEST
 
     def test_scope_attribute_on_class(self):
-        """__scope__ 속성이 클래스에 설정되는지 확인"""
+        """scope가 container element에 설정되는지 확인"""
         from bloom.core.container.scope import Scope
+        from bloom.core.container import Container
 
         @Scoped(Scope.CALL)
         class MyScopedClass:
             pass
 
-        assert hasattr(MyScopedClass, "__scope__")
-        assert MyScopedClass.__scope__ == Scope.CALL
+        container = Container.register(MyScopedClass)
+        assert container.scope == Scope.CALL
 
     def test_scope_attribute_on_function(self):
-        """__scope__ 속성이 함수에 설정되는지 확인"""
+        """scope가 container element에 설정되는지 확인 (함수)"""
         from bloom.core.container.scope import Scope
+        from bloom.core.container import Container
 
         @Scoped(Scope.REQUEST)
         def my_scoped_function():
             pass
 
-        assert hasattr(my_scoped_function, "__scope__")
-        assert my_scoped_function.__scope__ == Scope.REQUEST
+        container = Container.register(my_scoped_function)  # type: ignore
+        assert container.scope == Scope.REQUEST

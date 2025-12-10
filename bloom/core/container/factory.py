@@ -71,14 +71,11 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
 
     @property
     def scope(self) -> Scope:
-        """데코레이터 순서와 무관하게 __scope__ 메타데이터를 직접 읽음"""
-        from .scope import get_scope
-
-        return get_scope(self.func)
-
-    @scope.setter
-    def scope(self, value: Scope) -> None:
-        self._factory_scope = value
+        """element에서 scope 조회 (없으면 SINGLETON 기본값)"""
+        try:
+            return self.get_element("scope", Scope.SINGLETON)
+        except KeyError:
+            return Scope.SINGLETON
 
     async def initialize(self) -> Callable[P, R]:
         """Factory 메서드 초기화 - 원본 함수 반환"""
@@ -92,25 +89,23 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         dependencies: dict[str, type],
         is_async: bool,
     ) -> "FactoryContainer[P, T, R]":
-        """Factory 메서드를 FactoryContainer로 등록"""
+        """Factory 메서드를 FactoryContainer로 등록
+
+        기존 Container가 있으면 elements를 흡수합니다.
+        """
+        from .base import Container
+
         if not hasattr(func, "__component_id__"):
             func.__component_id__ = str(uuid4())
 
-        registry = get_container_registry()
-
-        if func not in registry:
-            registry[func] = {}
-
-        if func.__component_id__ not in registry[func]:
-            registry[func][func.__component_id__] = cls(
-                func,
-                func.__component_id__,
-                return_type,
-                dependencies,
-                is_async,
-            )
-        container: Self = registry[func][func.__component_id__]  # type: ignore
-        return container
+        new_container = cls(
+            func,
+            func.__component_id__,
+            return_type,
+            dependencies,
+            is_async,
+        )
+        return Container.transfer_or_absorb(func, new_container)  # type: ignore
 
     async def create_instance(self, config_instance: Any) -> R:
         """Factory 인스턴스 생성

@@ -68,18 +68,15 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
         return wraps(self.func)(final_method)  # type:ignore
 
     @classmethod
-    def register(cls, func: Method[P, T, R]):
+    def register(cls, func: Method[P, T, R]) -> "HandlerContainer[P, T, R]":
+        """Handler 메서드를 HandlerContainer로 등록
+
+        기존 Container가 있으면 elements를 흡수합니다.
+        """
+        from .base import Container
+
         if not hasattr(func, "__component_id__"):
             func.__component_id__ = str(uuid4())
 
-        registry = get_container_registry()
-
-        if func not in registry:
-            registry[func] = {}
-
-        if func.__component_id__ not in registry[func]:
-
-            registry[func][func.__component_id__] = cls(func, func.__component_id__)
-        container: Self = registry[func][func.__component_id__]  # type:ignore
-
-        return container
+        new_container = cls(func, func.__component_id__)
+        return Container.transfer_or_absorb(func, new_container)  # type: ignore

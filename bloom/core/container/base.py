@@ -2,12 +2,19 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
+    Self,
 )
 from uuid import uuid4
 from .manager import get_container_manager, get_container_registry
 
 if TYPE_CHECKING:
     from .scope import Scope
+
+
+class ContainerTransferError(Exception):
+    """컨테이너 간 흡수/전이 불가능 시 발생하는 예외"""
+
+    pass
 
 
 class Element[T]:
@@ -60,10 +67,13 @@ class Container[T]:
 
     @property
     def scope(self) -> "Scope":
-        """데코레이터 순서와 무관하게 __scope__ 메타데이터를 직접 읽음"""
-        from .scope import get_scope
+        """element에서 scope 조회 (없으면 SINGLETON 기본값)"""
+        from .scope import Scope
 
-        return get_scope(self.kls)
+        try:
+            return self.get_element("scope", Scope.SINGLETON)
+        except KeyError:
+            return Scope.SINGLETON
 
     @property
     def dependencies(self) -> list[DependencyInfo]:
@@ -84,18 +94,15 @@ class Container[T]:
 
     @classmethod
     def register[U: type](cls, kls: U) -> "Container[U]":
+        """클래스를 Container로 등록
+
+        기존에 더 구체적인 컨테이너(subclass)가 있으면 elements만 추가합니다.
+        """
         if not hasattr(kls, "__component_id__"):
             kls.__component_id__ = str(uuid4())
 
-        registry = get_container_registry()
-
-        if kls not in registry:
-            registry[kls] = {}
-
-        if kls.__component_id__ not in registry[kls]:
-            registry[kls][kls.__component_id__] = Container(kls, kls.__component_id__)
-        container = registry[kls][kls.__component_id__]
-        return container
+        new_container = cls(kls, kls.__component_id__)
+        return cls.transfer_or_absorb(kls, new_container)
 
     def add_element(self, key: str, value: object) -> None:
         element = Element(key, value)
@@ -113,3 +120,124 @@ class Container[T]:
             if default is not None:
                 return default
             raise KeyError(f"Element with key '{key}' not found.")
+
+    # =========================================================================
+    # 컨테이너 흡수/전이 시스템
+    # =========================================================================
+
+    def can_transfer_to(self, other_type: type["Container"]) -> bool:
+        """다른 컨테이너 타입으로 전이 가능한지 확인
+
+        규칙:
+        - 같은 타입: 가능
+        - self가 other의 subclass (더 구체적): 불가능 (other가 self를 흡수해야 함)
+        - other가 self의 subclass (더 구체적): 가능 (self -> other로 전이)
+        - 상속 관계 없음: 불가능
+        """
+        self_type = type(self)
+
+        # 같은 타입
+        if self_type == other_type:
+            return True
+
+        # other가 self의 subclass (예: Container -> HandlerContainer)
+        # self의 element를 other로 전이
+        if issubclass(other_type, self_type):
+            return True
+
+        return False
+
+    def can_absorb_from(self, other: "Container") -> bool:
+        """다른 컨테이너의 element를 흡수할 수 있는지 확인
+
+        규칙:
+        - 같은 타입: 가능
+        - self가 other의 subclass (더 구체적): 가능 (self가 other 흡수)
+        - other가 self의 subclass: 불가능 (other가 self를 흡수해야 함)
+        - 상속 관계 없음: 불가능
+        """
+        self_type = type(self)
+        other_type = type(other)
+
+        # 같은 타입
+        if self_type == other_type:
+            return True
+
+        # self가 other의 subclass (예: HandlerContainer가 Container 흡수)
+        if issubclass(self_type, other_type):
+            return True
+
+        return False
+
+    def absorb_elements_from(self, other: "Container") -> None:
+        """다른 컨테이너의 elements를 흡수"""
+        if not self.can_absorb_from(other):
+            raise ContainerTransferError(
+                f"Cannot absorb: {type(self).__name__} cannot absorb from {type(other).__name__}. "
+                f"They are incompatible container types."
+            )
+
+        # other의 모든 elements 복사
+        for element in other.elements:
+            self.add_element(element.key, element.value)
+
+    @classmethod
+    def transfer_or_absorb[U](
+        cls,
+        kls: U,
+        new_container: "Container[U]",
+    ) -> "Container[U]":
+        """기존 컨테이너가 있으면 흡수/전이 처리, 없으면 새 컨테이너 등록
+
+        Args:
+            kls: 대상 클래스/함수
+            new_container: 새로 생성하려는 컨테이너
+
+        Returns:
+            최종 컨테이너 (흡수/전이 결과 또는 new_container)
+
+        Raises:
+            ContainerTransferError: 호환 불가능한 컨테이너 타입 간 충돌 시
+        """
+        registry = get_container_registry()
+        component_id = getattr(kls, "__component_id__", None)
+
+        # 기존 컨테이너가 없으면 새 컨테이너 등록
+        if kls not in registry or not component_id or component_id not in registry[kls]:
+            if not hasattr(kls, "__component_id__"):
+                kls.__component_id__ = new_container.component_id  # type: ignore
+            if kls not in registry:
+                registry[kls] = {}
+            registry[kls][new_container.component_id] = new_container
+            return new_container
+
+        existing = registry[kls][component_id]
+        new_type = type(new_container)
+        existing_type = type(existing)
+
+        # 같은 타입이면 elements만 합침
+        if existing_type == new_type:
+            for element in new_container.elements:
+                existing.add_element(element.key, element.value)
+            return existing
+
+        # existing이 new로 전이 가능 (예: Container -> HandlerContainer)
+        # new가 existing의 elements를 흡수
+        if existing.can_transfer_to(new_type):
+            new_container.absorb_elements_from(existing)
+            registry[kls][component_id] = new_container
+            return new_container
+
+        # new가 existing으로 전이 가능 (예: Container가 먼저, HandlerContainer가 나중)
+        # 위 조건에서 이미 처리됨 (can_transfer_to는 subclass 방향)
+
+        # existing이 new를 흡수 가능 (예: HandlerContainer가 Container 흡수)
+        if existing.can_absorb_from(new_container):
+            existing.absorb_elements_from(new_container)
+            return existing
+
+        # 호환 불가능
+        raise ContainerTransferError(
+            f"Cannot combine containers: {existing_type.__name__} and {new_type.__name__} "
+            f"are incompatible. They have no inheritance relationship."
+        )
