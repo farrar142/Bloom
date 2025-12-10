@@ -27,7 +27,7 @@ Factory Container 모듈 - Spring @Factory 스타일 구현
             return db.session()
 """
 
-from typing import Any, Callable, Self
+from typing import Callable
 from uuid import uuid4
 
 
@@ -62,7 +62,7 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         param_dependencies: dict[str, type],
         is_async: bool,
     ) -> None:
-        super().__init__(func, component_id)  # type: ignore
+        super().__init__(func, component_id)
         self.func = func
         self.return_type = return_type
         self.param_dependencies = param_dependencies
@@ -88,7 +88,7 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         return_type: type[R],
         dependencies: dict[str, type],
         is_async: bool,
-    ) -> "FactoryContainer[P, T, R]":
+    ) -> "Container":
         """Factory 메서드를 FactoryContainer로 등록
 
         기존 Container가 있으면 elements를 흡수합니다.
@@ -105,9 +105,9 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
             dependencies,
             is_async,
         )
-        return Container.transfer_or_absorb(func, new_container)  # type: ignore
+        return cls.transfer_or_absorb(func, new_container)
 
-    async def create_instance(self, config_instance: Any) -> R:
+    async def create_instance(self, config_instance: object) -> R:
         """Factory 인스턴스 생성
 
         SINGLETON 스코프일 경우 캐시된 인스턴스를 반환합니다.
@@ -120,7 +120,7 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         manager = get_container_manager()
 
         # 의존성 해결
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, object] = {}
         for param_name, param_type in self.param_dependencies.items():
             # 다른 Factory에서 의존성 찾기
             dep_instance = await manager.registry.factory(param_type, required=False)
@@ -149,7 +149,7 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
 
         return result
 
-    def create_instance_sync(self, config_instance: Any) -> R:
+    def create_instance_sync(self, config_instance: object) -> R:
         """Factory 인스턴스 생성 (sync)
 
         async가 아닌 Factory만 지원합니다.
@@ -167,7 +167,7 @@ class FactoryContainer[**P, T, R](Container[Callable[P, R]]):
         manager = get_container_manager()
 
         # 의존성 해결 (sync)
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, object] = {}
         for param_name, param_type in self.param_dependencies.items():
             # 캐시된 Factory에서 의존성 찾기
             dep_instance = None

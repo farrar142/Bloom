@@ -1,4 +1,4 @@
-from typing import Callable, Self, cast
+from typing import Callable, cast
 from functools import reduce, wraps
 from uuid import uuid4
 
@@ -65,10 +65,10 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
             reversed(self._wrappers),
             self.func,
         )
-        return wraps(self.func)(final_method)  # type:ignore
+        return cast(Method[P, T, R], wraps(self.func)(final_method))
 
     @classmethod
-    def register(cls, func: Method[P, T, R]) -> "HandlerContainer[P, T, R]":
+    def register(cls, func: Method[P, T, R]) -> "Container":
         """Handler 메서드를 HandlerContainer로 등록
 
         기존 Container가 있으면 elements를 흡수합니다.
@@ -79,4 +79,4 @@ class HandlerContainer[**P, T, R](Container[Method[P, T, R]]):
             func.__component_id__ = str(uuid4())
 
         new_container = cls(func, func.__component_id__)
-        return Container.transfer_or_absorb(func, new_container)  # type: ignore
+        return cls.transfer_or_absorb(func, new_container)

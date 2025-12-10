@@ -1,9 +1,5 @@
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Self,
-)
+from typing import TYPE_CHECKING, Callable
 from uuid import uuid4
 from .manager import get_container_manager, get_container_registry
 
@@ -33,9 +29,9 @@ class DependencyInfo:
     field_name: str  # 필드명
     field_type: type  # 타입 (AsyncProxy[T]인 경우 T)
     is_optional: bool = False  # Optional 여부
-    default_value: Any = None  # 기본값
+    default_value: object = None  # 기본값
     is_async_proxy: bool = False  # AsyncProxy[T]로 선언되었는지 여부
-    raw_type_hint: Any = None  # 원본 타입 힌트 (AsyncProxy[T] 등)
+    raw_type_hint: object = None  # 원본 타입 힌트 (AsyncProxy[T] 등)
 
 
 class HandlerWrapper[**P, T: type, R]:
@@ -93,7 +89,7 @@ class Container[T]:
         """컨테이너 종료 메서드 (비동기)"""
 
     @classmethod
-    def register[U: type](cls, kls: U) -> "Container[U]":
+    def register(cls, kls: type) -> "Container":
         """클래스를 Container로 등록
 
         기존에 더 구체적인 컨테이너(subclass)가 있으면 elements만 추가합니다.
@@ -182,11 +178,11 @@ class Container[T]:
             self.add_element(element.key, element.value)
 
     @classmethod
-    def transfer_or_absorb[U](
+    def transfer_or_absorb(
         cls,
-        kls: U,
-        new_container: "Container[U]",
-    ) -> "Container[U]":
+        kls: type | Callable,
+        new_container: "Container",
+    ) -> "Container":
         """기존 컨테이너가 있으면 흡수/전이 처리, 없으면 새 컨테이너 등록
 
         Args:
@@ -205,7 +201,7 @@ class Container[T]:
         # 기존 컨테이너가 없으면 새 컨테이너 등록
         if kls not in registry or not component_id or component_id not in registry[kls]:
             if not hasattr(kls, "__component_id__"):
-                kls.__component_id__ = new_container.component_id  # type: ignore
+                kls.__component_id__ = new_container.component_id  # type: ignore[attr-defined]
             if kls not in registry:
                 registry[kls] = {}
             registry[kls][new_container.component_id] = new_container

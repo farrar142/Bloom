@@ -77,35 +77,51 @@ class TestContainerTransferRules:
 
     def test_container_can_transfer_to_subclass(self):
         """Container -> HandlerContainer 전이 가능"""
-        container = Container("test", "id1")
+        container = Container(str, "id1")
         assert container.can_transfer_to(HandlerContainer)
 
     def test_container_can_transfer_to_factory_subclass(self):
         """Container -> FactoryContainer 전이 가능 (subclass이므로)"""
-        container = Container("test", "id1")
+        container = Container(str, "id1")
         # FactoryContainer도 Container의 subclass이므로 전이 가능
         assert container.can_transfer_to(FactoryContainer)
 
     def test_subclass_cannot_transfer_to_superclass(self):
         """HandlerContainer -> Container 전이 불가 (반대로 흡수해야 함)"""
-        handler_container = HandlerContainer(lambda: None, "id1")
+
+        def test_func(self):
+            return
+
+        handler_container = HandlerContainer(test_func, "id1")
         assert not handler_container.can_transfer_to(Container)
 
     def test_subclass_can_absorb_superclass(self):
         """HandlerContainer가 Container를 흡수 가능"""
-        handler_container = HandlerContainer(lambda: None, "id1")
-        container = Container("test", "id2")
+
+        def test_func(self):
+            return
+
+        handler_container = HandlerContainer(test_func, "id1")
+        container = Container(str, "id2")
         assert handler_container.can_absorb_from(container)
 
     def test_superclass_cannot_absorb_subclass(self):
         """Container가 HandlerContainer를 흡수 불가"""
-        container = Container("test", "id1")
-        handler_container = HandlerContainer(lambda: None, "id2")
+
+        def test_func(self):
+            return
+
+        container = Container(str, "id1")
+        handler_container = HandlerContainer(test_func, "id2")
         assert not container.can_absorb_from(handler_container)
 
     def test_unrelated_cannot_absorb(self):
         """HandlerContainer와 FactoryContainer는 서로 흡수 불가"""
-        handler = HandlerContainer(lambda: None, "id1")
+
+        def test_func(self):
+            return
+
+        handler = HandlerContainer(test_func, "id1")
 
         # FactoryContainer는 추가 파라미터가 필요해서 직접 생성
         def factory_func() -> TestResult1:
@@ -185,7 +201,7 @@ class TestScopedDecoratorOrder:
             pass
 
         registry = get_container_registry()
-        component_id = ScopedComponent.__component_id__
+        component_id = ScopedComponent.__component_id__  # type:ignore
         container = registry[ScopedComponent][component_id]
 
         # Container여야 함 (Component는 기본 Container)
@@ -202,7 +218,7 @@ class TestScopedDecoratorOrder:
             pass
 
         registry = get_container_registry()
-        component_id = ComponentBeforeScoped.__component_id__
+        component_id = ComponentBeforeScoped.__component_id__  # type:ignore
         container = registry[ComponentBeforeScoped][component_id]
 
         assert container.scope == Scope.CALL
@@ -217,7 +233,7 @@ class TestIncompatibleContainerError:
         # (Factory와 Handler는 다른 상황에서 사용됨)
         # 하지만 수동으로 테스트 가능
 
-        def test_func() -> TestResult3:
+        def test_func(self) -> TestResult3:
             return TestResult3()
 
         # 먼저 HandlerContainer로 등록
@@ -295,7 +311,7 @@ class TestDefaultScopeWhenNoScoped:
             pass
 
         registry = get_container_registry()
-        component_id = PlainComponent.__component_id__
+        component_id = PlainComponent.__component_id__  # type:ignore
         container = registry[PlainComponent][component_id]
 
         assert container.scope == Scope.SINGLETON
@@ -308,7 +324,7 @@ class TestDefaultScopeWhenNoScoped:
             pass
 
         registry = get_container_registry()
-        component_id = PlainService.__component_id__
+        component_id = PlainService.__component_id__  # type:ignore
         container = registry[PlainService][component_id]
 
         assert container.scope == Scope.SINGLETON
