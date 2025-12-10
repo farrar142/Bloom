@@ -160,6 +160,15 @@ class ContainerRegistry:
         """ID로 인스턴스 조회"""
         ...
 
+    @overload
+    def instance[T](
+        self,
+        *,
+        type: type[T] | None = None,
+        id: COMPONENT_ID | None = None,
+        required: bool = True,
+    ) -> T | None: ...
+
     def instance[T](
         self,
         *,

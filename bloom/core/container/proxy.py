@@ -175,7 +175,7 @@ class AsyncProxy(Generic[T]):
 
         # SINGLETON은 매니저에서 관리
         if scope == Scope.SINGLETON:
-            return await manager.factory(factory.return_type)  # type: ignore
+            return await manager.registry.factory(factory.return_type)  # type: ignore
 
         # 스코프 컨텍스트에서 기존 인스턴스 확인
         scope_context = get_scope_context(scope)

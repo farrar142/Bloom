@@ -42,15 +42,15 @@ class ContainerManager:
         manager = get_container_manager()
 
         # 조회 (shortcut 메서드)
-        container = manager.container(type=MyService)
-        instance = manager.instance(type=MyService)
+        container = manager.registry.container(type=MyService)
+        instance = manager.registry.instance(type=MyService)
 
         # 또는 하위 매니저 직접 접근
         container = manager.registry.container(type=MyService)
         instance = manager.registry.instance(type=MyService)
 
         # 의존성 분석
-        deps = manager.factory.analyze_dependencies(container)
+        deps = manager.registry.factory.analyze_dependencies(container)
 
         # 라이프사이클
         await manager.initialize()  # shortcut
@@ -86,92 +86,6 @@ class ContainerManager:
     def lifecycle(self) -> ContainerLifecycle:
         """라이프사이클 매니저"""
         return self._lifecycle
-
-    # =========================================================================
-    # Shortcut 메서드 - registry 위임
-    # =========================================================================
-
-    @overload
-    def container[T](
-        self,
-        *,
-        type: type[T],
-        id: COMPONENT_ID | None = None,
-    ) -> "Container[T]": ...
-
-    @overload
-    def container[T: "Container"](
-        self,
-        *,
-        container_type: type[T],
-        id: COMPONENT_ID | None = None,
-    ) -> T: ...
-
-    @overload
-    def container(
-        self,
-        *,
-        id: COMPONENT_ID,
-    ) -> "Container": ...
-
-    def container[T](
-        self,
-        *,
-        type: type[T] | None = None,
-        container_type: "type[Container] | None" = None,
-        id: COMPONENT_ID | None = None,
-    ) -> "Container":
-        """컨테이너 조회 (registry.container 위임)"""
-        return self._registry.container(type=type, container_type=container_type, id=id)
-
-    def containers[T: "Container"](
-        self,
-        container_type: type[T],
-    ) -> list[T]:
-        """특정 컨테이너 클래스의 모든 컨테이너 조회 (registry.containers 위임)"""
-        return self._registry.containers(container_type)
-
-    @overload
-    def instance[T](self, *, type: type[T]) -> T: ...
-    @overload
-    def instance[T](self, *, type: type[T], required: bool) -> T | None: ...
-    @overload
-    def instance[T](self, *, id: COMPONENT_ID) -> T: ...
-    @overload
-    def instance[T](self, *, id: COMPONENT_ID, required: bool) -> T | None: ...
-
-    def instance[T](
-        self,
-        *,
-        type: type[T] | None = None,
-        id: COMPONENT_ID | None = None,
-        required: bool = True,
-    ) -> T | None:
-        """인스턴스 조회 (registry.instance 위임)"""
-        return self._registry.instance(type=type, id=id, required=required)
-
-    def instances_of[T](self, type: type[T]) -> list[T]:
-        """특정 타입의 모든 인스턴스 조회 (registry.instances_of 위임)"""
-        return self._registry.instances_of(type)
-
-    @overload
-    async def factory[T](self, type: type[T]) -> T: ...
-    @overload
-    async def factory[T](self, type: type[T], *, required: bool) -> T | None: ...
-
-    async def factory[T](self, type: type[T], *, required: bool = True) -> T | None:
-        """Factory 인스턴스 조회 (registry.factory 위임)"""
-        return await self._registry.factory(type, required=required)
-
-    def factory_types(self) -> list[type]:
-        """모든 Factory 반환 타입 조회 (registry.factory_types 위임)"""
-        return self._registry.factory_types()
-
-    def configuration_for[T](
-        self, factory_type: type[T]
-    ) -> "ConfigurationContainer | None":
-        """특정 타입의 Factory를 가진 Configuration 찾기 (registry.configuration_for 위임)"""
-        return self._registry.configuration_for(factory_type)
 
     # =========================================================================
     # Shortcut 메서드 - lifecycle 위임

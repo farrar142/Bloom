@@ -40,7 +40,7 @@ class Container[T]:
 
     Container는 메타데이터만 저장하고, 로직은 manager 하위 모듈이 담당합니다.
     - scope 조회 → __scope__ 메타데이터 직접 읽기
-    - 의존성 분석 → manager.factory.analyze_dependencies(container)
+    - 의존성 분석 → manager.registry.factory.analyze_dependencies(container)
     - 핸들러 바인딩 → manager.lifecycle._bind_handler_methods(container)
     """
 

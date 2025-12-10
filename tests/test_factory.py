@@ -35,9 +35,9 @@ from tests.conftest import (
 def get_configuration_container[T](config_cls: type[T]) -> ConfigurationContainer[T]:
     """Configuration 클래스에서 ConfigurationContainer를 가져오는 헬퍼 함수"""
     manager = get_container_manager()
-    c = manager.container(type=config_cls)
+    c = manager.registry.container(type=config_cls)
     assert c is not None, f"Container not found for {config_cls.__name__}"
-    container = manager.container(
+    container = manager.registry.container(
         container_type=ConfigurationContainer, id=c.component_id
     )
     assert (
@@ -124,7 +124,7 @@ class TestFactoryCreation:
         await manager.initialize()
 
         # DatabaseConnection Factory 생성
-        db = await manager.factory(DatabaseConnection)
+        db = await manager.registry.factory(DatabaseConnection)
         assert isinstance(db, DatabaseConnection)
         assert db.host == "localhost"
         assert db.port == 5432
@@ -136,8 +136,8 @@ class TestFactoryCreation:
         manager = get_container_manager()
         await manager.initialize()
 
-        db1 = await manager.factory(DatabaseConnection)
-        db2 = await manager.factory(DatabaseConnection)
+        db1 = await manager.registry.factory(DatabaseConnection)
+        db2 = await manager.registry.factory(DatabaseConnection)
 
         # 같은 인스턴스여야 함
         assert db1 is db2
@@ -149,7 +149,7 @@ class TestFactoryCreation:
         await manager.initialize()
 
         # UserRepository는 DatabaseConnection에 의존
-        user_repo = await manager.factory(UserRepository)
+        user_repo = await manager.registry.factory(UserRepository)
         assert isinstance(user_repo, UserRepository)
         assert isinstance(user_repo.db, DatabaseConnection)
         assert user_repo.db.connected is True
@@ -161,7 +161,7 @@ class TestFactoryCreation:
         await manager.initialize()
 
         # UserService는 비동기로 초기화됨
-        user_service = await manager.factory(UserService)
+        user_service = await manager.registry.factory(UserService)
         assert isinstance(user_service, UserService)
         assert user_service.initialized is True
 
@@ -172,7 +172,7 @@ class TestFactoryCreation:
         await manager.initialize()
 
         # UserService -> UserRepository -> DatabaseConnection
-        user_service = await manager.factory(UserService)
+        user_service = await manager.registry.factory(UserService)
 
         assert user_service.repository is not None
         assert user_service.repository.db is not None
@@ -184,9 +184,9 @@ class TestFactoryCreation:
         manager = get_container_manager()
         await manager.initialize()
 
-        db = await manager.factory(DatabaseConnection)
-        cache = await manager.factory(CacheClient)
-        settings = await manager.factory(AppSettings)
+        db = await manager.registry.factory(DatabaseConnection)
+        cache = await manager.registry.factory(CacheClient)
+        settings = await manager.registry.factory(AppSettings)
 
         assert db.host == "localhost"
         assert cache.ttl == 600
@@ -199,14 +199,14 @@ class TestContainerManagerFactoryMethods:
     def test_get_configurations(self):
         """configurations 테스트"""
         manager = get_container_manager()
-        configs = manager.containers(ConfigurationContainer)
+        configs = manager.registry.containers(ConfigurationContainer)
 
         assert len(configs) >= 2  # InfrastructureConfig, ServiceConfig
 
     def test_get_all_factory_types(self):
         """factory_types 테스트"""
         manager = get_container_manager()
-        Factory_types = manager.factory_types()
+        Factory_types = manager.registry.factory_types()
 
         assert DatabaseConnection in Factory_types
         assert CacheClient in Factory_types
@@ -218,11 +218,11 @@ class TestContainerManagerFactoryMethods:
         """configuration_for 테스트"""
         manager = get_container_manager()
 
-        db_config = manager.configuration_for(DatabaseConnection)
+        db_config = manager.registry.configuration_for(DatabaseConnection)
         assert db_config is not None
         assert db_config.kls == InfrastructureConfig
 
-        user_repo_config = manager.configuration_for(UserRepository)
+        user_repo_config = manager.registry.configuration_for(UserRepository)
         assert user_repo_config is not None
         assert user_repo_config.kls == ServiceConfig
 
@@ -233,11 +233,13 @@ class TestContainerManagerFactoryMethods:
         await manager.initialize()
 
         # 존재하는 Factory
-        db = await manager.factory(DatabaseConnection, required=False)
+        db = await manager.registry.factory(DatabaseConnection, required=False)
         assert db is not None
 
         # 존재하지 않는 Factory
-        result = await manager.factory(str, required=False)  # str은 Factory이 아님
+        result = await manager.registry.factory(
+            str, required=False
+        )  # str은 Factory이 아님
         assert result is None
 
 
@@ -251,7 +253,7 @@ class TestFactoryWithServiceDependency:
         await manager.initialize()
 
         # ServiceConfig는 LoggingService를 주입받음
-        logging_service = manager.instance(type=LoggingService)
+        logging_service = manager.registry.instance(type=LoggingService)
         assert logging_service is not None
 
         # ServiceConfig 컨테이너의 Factory 캐시 초기화
@@ -262,7 +264,7 @@ class TestFactoryWithServiceDependency:
         logging_service.logs.clear()
 
         # UserRepository Factory 생성 시 로그가 기록됨
-        await manager.factory(UserRepository)
+        await manager.registry.factory(UserRepository)
 
         assert any(
             "UserRepository" in log for log in logging_service.logs
@@ -275,12 +277,12 @@ class TestFactoryWithServiceDependency:
         await manager.initialize()
 
         # @Service로 등록된 것
-        logging_service = manager.instance(type=LoggingService)
-        notification_service = manager.instance(type=NotificationService)
+        logging_service = manager.registry.instance(type=LoggingService)
+        notification_service = manager.registry.instance(type=NotificationService)
 
         # @Factory으로 등록된 것
-        db = await manager.factory(DatabaseConnection)
-        user_service = await manager.factory(UserService)
+        db = await manager.registry.factory(DatabaseConnection)
+        user_service = await manager.registry.factory(UserService)
 
         assert logging_service is not None
         assert notification_service is not None
@@ -297,7 +299,7 @@ class TestFactoryFunctionality:
         manager = get_container_manager()
         await manager.initialize()
 
-        user_repo = await manager.factory(UserRepository)
+        user_repo = await manager.registry.factory(UserRepository)
 
         # 사용자 저장
         user_repo.save("user1", {"id": "user1", "name": "Alice"})
@@ -313,7 +315,7 @@ class TestFactoryFunctionality:
         manager = get_container_manager()
         await manager.initialize()
 
-        user_service = await manager.factory(UserService)
+        user_service = await manager.registry.factory(UserService)
         assert user_service.initialized is True
 
         # 사용자 생성
@@ -332,7 +334,7 @@ class TestFactoryFunctionality:
         manager = get_container_manager()
         await manager.initialize()
 
-        settings = await manager.factory(AppSettings)
+        settings = await manager.registry.factory(AppSettings)
 
         assert settings.debug is True
         assert settings.timeout == 60
@@ -349,7 +351,7 @@ class TestFactoryErrorHandling:
         await manager.initialize()
 
         with pytest.raises(ValueError) as exc_info:
-            await manager.factory(dict)  # dict는 Factory이 아님
+            await manager.registry.factory(dict)  # dict는 Factory이 아님
 
         assert "No Factory found" in str(exc_info.value)
 
@@ -361,6 +363,6 @@ class TestFactoryDependencyInjection:
     async def test_factory_dependency_injection(self, application: Application):
         """Factory 의존성 주입 동작 테스트"""
         await application.ready()
-        my_service = application.container_manager.instance(type=MyComponent)
+        my_service = application.container_manager.registry.instance(type=MyComponent)
 
         my_service.cache_client.host

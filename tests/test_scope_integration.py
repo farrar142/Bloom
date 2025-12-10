@@ -47,8 +47,8 @@ class TestSingletonScopeIntegration:
         await application.ready()
         manager = application.container_manager
 
-        db1 = await manager.factory(DatabaseConnection)
-        db2 = await manager.factory(DatabaseConnection)
+        db1 = await manager.registry.factory(DatabaseConnection)
+        db2 = await manager.registry.factory(DatabaseConnection)
 
         assert db1 is db2
         assert db1.connected is True
@@ -62,14 +62,14 @@ class TestSingletonScopeIntegration:
         manager = application.container_manager
 
         # 직접 조회
-        db_direct = await manager.factory(DatabaseConnection)
+        db_direct = await manager.registry.factory(DatabaseConnection)
 
         # MyComponent에 주입된 CacheClient도 같은 인스턴스
         from tests.conftest import MyComponent, CacheClient
 
-        component = manager.instance(type=MyComponent)
+        component = manager.registry.instance(type=MyComponent)
         cache_from_component = component.cache_client
-        cache_direct = await manager.factory(CacheClient)
+        cache_direct = await manager.registry.factory(CacheClient)
 
         assert cache_from_component is cache_direct
 
@@ -137,7 +137,7 @@ class TestCallScopeIntegration:
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=TestService)
+        service = manager.registry.instance(type=TestService)
 
         # 핸들러 호출
         await service.handler1()
@@ -165,6 +165,7 @@ class TestCallScopeIntegration:
             @Handler
             async def create_session(self):
                 ctx = get_call_scope()
+                assert ctx is not None
                 session = DatabaseSession(DatabaseConnection("localhost", 5432))
                 session.__enter__()
                 ctx.register_closeable(session)
@@ -175,7 +176,7 @@ class TestCallScopeIntegration:
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=AutoCloseTestService)
+        service = manager.registry.instance(type=AutoCloseTestService)
         await service.create_session()
 
         # 핸들러 종료 후 자동 close
@@ -202,6 +203,7 @@ class TestTransactionalIntegration:
             @Transactional
             async def outer_method(self):
                 ctx = get_transactional_scope()
+                assert ctx is not None
                 context_ids.append(ctx.context_id)
                 await self.inner_method()
                 return "outer"
@@ -209,13 +211,14 @@ class TestTransactionalIntegration:
             @Transactional
             async def inner_method(self):
                 ctx = get_transactional_scope()
+                assert ctx is not None
                 context_ids.append(ctx.context_id)
                 return "inner"
 
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=TransactionalService)
+        service = manager.registry.instance(type=TransactionalService)
         await service.outer_method()
 
         # 같은 context_id (중첩 transactional은 같은 context 공유)
@@ -234,6 +237,7 @@ class TestTransactionalIntegration:
             @Transactional
             async def do_work(self):
                 ctx = get_transactional_scope()
+                assert ctx is not None
                 session = DatabaseSession(DatabaseConnection("localhost", 5432))
                 session.__enter__()
                 ctx.register_closeable(session)
@@ -247,7 +251,7 @@ class TestTransactionalIntegration:
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=TransactionalCloseService)
+        service = manager.registry.instance(type=TransactionalCloseService)
         result = await service.do_work()
 
         assert result == "done"
@@ -277,7 +281,7 @@ class TestTransactionalIntegration:
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=CombinedService)
+        service = manager.registry.instance(type=CombinedService)
         result = await service.handler_with_transaction()
 
         assert result == "combined"
@@ -297,6 +301,7 @@ class TestTransactionalIntegration:
             @Transactional
             async def failing_method(self):
                 ctx = get_transactional_scope()
+                assert ctx is not None
                 session = DatabaseSession(DatabaseConnection("localhost", 5432))
                 session.__enter__()
                 ctx.register_closeable(session)
@@ -307,7 +312,7 @@ class TestTransactionalIntegration:
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=ExceptionService)
+        service = manager.registry.instance(type=ExceptionService)
 
         with pytest.raises(ValueError, match="Intentional error"):
             await service.failing_method()
@@ -335,6 +340,7 @@ class TestScopeIsolation:
             @Handler
             async def handler_a(self):
                 ctx = get_call_scope()
+                assert ctx is not None
                 session = DatabaseSession(DatabaseConnection("localhost", 5432))
                 session.__enter__()
                 ctx.set("session", session)
@@ -345,6 +351,7 @@ class TestScopeIsolation:
             @Handler
             async def handler_b(self):
                 ctx = get_call_scope()
+                assert ctx is not None
                 session = DatabaseSession(DatabaseConnection("localhost", 5432))
                 session.__enter__()
                 ctx.set("session", session)
@@ -355,7 +362,7 @@ class TestScopeIsolation:
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=IsolationService)
+        service = manager.registry.instance(type=IsolationService)
 
         await service.handler_a()
         await service.handler_b()
@@ -378,19 +385,21 @@ class TestScopeIsolation:
             @Transactional
             async def method_a(self):
                 ctx = get_transactional_scope()
+                assert ctx is not None
                 context_ids.append(("a", ctx.context_id))
                 return "a"
 
             @Transactional
             async def method_b(self):
                 ctx = get_transactional_scope()
+                assert ctx is not None
                 context_ids.append(("b", ctx.context_id))
                 return "b"
 
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=IsolatedTransactionalService)
+        service = manager.registry.instance(type=IsolatedTransactionalService)
 
         await service.method_a()
         await service.method_b()
@@ -417,6 +426,7 @@ class TestAsyncAutoCloseableIntegration:
             @Transactional
             async def use_async_session(self):
                 ctx = get_transactional_scope()
+                assert ctx is not None
                 session = AsyncDatabaseSession(DatabaseConnection("localhost", 5432))
                 await session.__aenter__()
                 ctx.register_closeable(session)
@@ -429,7 +439,7 @@ class TestAsyncAutoCloseableIntegration:
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=AsyncSessionService)
+        service = manager.registry.instance(type=AsyncSessionService)
         result = await service.use_async_session()
 
         assert "SELECT 1" in result
@@ -459,6 +469,7 @@ class TestAsyncAutoCloseableIntegration:
             @Transactional
             async def use_multiple_sessions(self):
                 ctx = get_transactional_scope()
+                assert ctx is not None
                 conn = DatabaseConnection("localhost", 5432)
 
                 for i in range(3):
@@ -471,7 +482,7 @@ class TestAsyncAutoCloseableIntegration:
         manager = application.container_manager
         await manager.initialize()
 
-        service = manager.instance(type=MultiSessionService)
+        service = manager.registry.instance(type=MultiSessionService)
         await service.use_multiple_sessions()
 
         # 역순으로 close: 2, 1, 0
@@ -488,7 +499,7 @@ class TestScopeWithFactoryContainer:
         manager = application.container_manager
 
         # ScopedFactoryConfig에서 Factory 정의 확인
-        config = manager.configuration_for(DatabaseSession)
+        config = manager.registry.configuration_for(DatabaseSession)
 
         if config:
             factory_def = config.get_factory_definition(DatabaseSession)
@@ -502,15 +513,16 @@ class TestScopeWithFactoryContainer:
         manager = application.container_manager
 
         # DatabaseConnection은 SINGLETON
-        db1 = await manager.factory(DatabaseConnection)
-        db2 = await manager.factory(DatabaseConnection)
+        db1 = await manager.registry.factory(DatabaseConnection)
+        db2 = await manager.registry.factory(DatabaseConnection)
 
         assert db1 is db2
 
         # 캐시 확인
-        config = manager.configuration_for(DatabaseConnection)
+        config = manager.registry.configuration_for(DatabaseConnection)
         if config:
             factory_def = config.get_factory_definition(DatabaseConnection)
+            assert factory_def is not None
             cached = factory_def.get_cached_instance()
             assert cached is db1
 
@@ -610,10 +622,12 @@ class TestScopedComponentIntegration:
         async with request_scope() as ctx:
             comp1 = RequestScopedComponent()
             ctx.set("request_comp", comp1)
+            assert ctx is not None
             comp1.data["key"] = "value"
 
             # 같은 요청 내에서 같은 인스턴스
             comp2 = ctx.get("request_comp")
+            assert comp2 is not None
             assert comp1 is comp2
             assert comp2.data["key"] == "value"
 
@@ -687,7 +701,9 @@ class TestScopedComponentWithService:
         manager = application.container_manager
 
         # ServiceUsingCallScopedComponent가 등록되어 있는지 확인
-        service = manager.instance(type=ServiceUsingCallScopedComponent, required=False)
+        service = manager.registry.instance(
+            type=ServiceUsingCallScopedComponent, required=False
+        )
 
         # Service가 존재하면 CALL 스코프 의존성 확인
         if service:
@@ -705,7 +721,7 @@ class TestScopedComponentWithService:
         manager = application.container_manager
 
         # ServiceUsingRequestScopedComponent가 등록되어 있는지 확인
-        service = manager.instance(
+        service = manager.registry.instance(
             type=ServiceUsingRequestScopedComponent, required=False
         )
 

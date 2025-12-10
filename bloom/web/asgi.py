@@ -45,9 +45,11 @@ class ASGIApplication:
 
     async def collect_routes(self) -> None:
         """애플리케이션에서 모든 라우트 수집"""
-        routes = self.application.container_manager.containers(RouteContainer)
+        routes = self.application.container_manager.registry.containers(RouteContainer)
         for route in routes:
-            handler = self.application.container_manager.instance(id=route.component_id)
+            handler = self.application.container_manager.registry.instance(
+                id=route.component_id
+            )
             prefix = ""
             if parent := route.parent_container:
                 prefix = parent.get_element("path_prefix", "")
