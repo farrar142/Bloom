@@ -14,20 +14,33 @@ from .decorators import (
     Scoped,
     Transactional,
 )
+from .injection import (
+    Autowired,
+    Primary,
+    Lazy,
+    Qualifier,
+)
 from .container.scope import Scope
 
 __all__ = [
+    # Container
     "get_container_manager",
-    "Component",
-    "Service",
-    "Handler",
-    "Configuration",
     "Container",
     "HandlerContainer",
     "ConfigurationContainer",
     "FactoryContainer",
+    # Decorators
+    "Component",
+    "Service",
+    "Handler",
+    "Configuration",
     "Factory",
     "Scoped",
     "Scope",
     "Transactional",
+    # DI Decorators
+    "Autowired",
+    "Primary",
+    "Lazy",
+    "Qualifier",
 ]

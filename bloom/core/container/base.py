@@ -32,6 +32,9 @@ class DependencyInfo:
     default_value: object = None  # 기본값
     is_async_proxy: bool = False  # AsyncProxy[T]로 선언되었는지 여부
     raw_type_hint: object = None  # 원본 타입 힌트 (AsyncProxy[T] 등)
+    qualifier: str | None = None  # @Qualifier로 지정된 빈 이름
+    is_lazy: bool = False  # @Lazy로 명시된 지연 초기화
+    is_primary: bool = False  # @Primary로 지정된 기본 빈 여부
 
 
 class HandlerWrapper[**P, T: type, R]:
@@ -108,14 +111,11 @@ class Container[T]:
         """특정 키에 해당하는 요소들 반환"""
         return [element.value for element in self.elements if element.key == key]
 
-    def get_element[U](self, key: str, default: U | None = None) -> U:
+    def get_element[U](self, key: str, default: U | None = None) -> U | None:
         elements = self.get_elements(key)
         if elements:
             return elements[0]  # 첫 번째 요소 반환
-        else:
-            if default is not None:
-                return default
-            raise KeyError(f"Element with key '{key}' not found.")
+        return default
 
     # =========================================================================
     # 컨테이너 흡수/전이 시스템

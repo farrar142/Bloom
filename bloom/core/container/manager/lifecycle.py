@@ -132,6 +132,7 @@ class ContainerLifecycle:
     async def _bind_handler_methods[T](self, container: "Container[T]") -> None:
         """Handler 메서드를 인스턴스에 바인딩"""
         from .. import HandlerContainer
+        from ...injection import AutowiredField
 
         for name in dir(container.kls):
             if name.startswith("_"):
@@ -140,10 +141,17 @@ class ContainerLifecycle:
             attr = getattr(container.kls, name, None)
             if attr is None or inspect.isclass(attr):
                 continue
+            
+            # AutowiredField 마커는 스킵 (의존성 주입용)
+            if isinstance(attr, AutowiredField):
+                continue
 
             # Handler 등록
             component_id = getattr(attr, "__component_id__", None)
             if not component_id:
+                # callable이 아니면 스킵 (속성값 등)
+                if not callable(attr):
+                    continue
                 handler_container = HandlerContainer.register(attr)
                 self._add_instance(
                     handler_container.component_id,

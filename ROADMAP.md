@@ -63,12 +63,12 @@
 
 ## 🚀 Phase 1: Core 안정화 (v0.2.0)
 
-### 의존성 주입 개선
-- [ ] `@Autowired` 데코레이터 - 명시적 필드 주입
-- [ ] `@Qualifier` - 동일 타입 여러 빈 중 선택
-- [ ] `@Primary` - 기본 빈 지정
-- [ ] `@Lazy` - 지연 초기화 명시
-- [ ] `Optional[T]` 의존성 - 없으면 None
+### 의존성 주입 개선 ✅
+- [x] `Autowired()` - 명시적 필드 주입 (qualifier, required, lazy 옵션)
+- [x] `@Qualifier("name")` - 동일 타입 여러 빈 중 이름으로 선택
+- [x] `@Primary` - 기본 빈 지정
+- [x] `@Lazy` - 지연 초기화 명시
+- [x] `Optional[T]` 의존성 - 빈이 없으면 None
 
 ### 라이프사이클 훅
 - [ ] `@PostConstruct` - 초기화 후 콜백
