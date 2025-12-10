@@ -264,7 +264,7 @@ class ConfigurationContainer[T](Container[T]):
                 self._factory_containers.append(factory_container)
 
     @classmethod
-    def register[U: type](cls, kls: U) -> "ConfigurationContainer[U]":
+    def register(cls, kls: type) -> "Container":
         """Configuration 클래스를 ConfigurationContainer로 등록"""
         if not hasattr(kls, "__component_id__"):
             kls.__component_id__ = str(uuid4())
@@ -279,7 +279,7 @@ class ConfigurationContainer[T](Container[T]):
                 kls, kls.__component_id__
             )
         container = registry[kls][kls.__component_id__]
-        return container  # type: ignore
+        return container
 
     async def initialize(self) -> T:
         """Configuration 인스턴스 초기화"""
